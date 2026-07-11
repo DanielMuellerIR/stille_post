@@ -1,0 +1,310 @@
+import XCTest
+@testable import StillePostCore
+
+/// Tests für WAV-Verarbeitung, Plausibilitätsprüfung, Artefakt-Filter,
+/// Segment-Zusammenfügen und Config-Toleranz.
+final class CoreTests: XCTestCase {
+
+    // MARK: WAV
+
+    func testWavRoundTrip() throws {
+        // Samples -> WAV-Daten -> Datei -> wieder einlesen: Werte müssen (bis auf
+        // 16-Bit-Quantisierung) erhalten bleiben.
+        let original: [Float] = (0..<1600).map { 0.8 * sin(Float($0) * 0.05) }
+        let data = WavCodec.wavData(from: original)
+        XCTAssertEqual(data.count, 44 + original.count * 2, "Header 44 Bytes + 2 Bytes pro Sample")
+
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("roundtrip-\(UUID()).wav")
+        try data.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let restored = try WavCodec.samples(fromWavFile: url)
+        XCTAssertEqual(restored.count, original.count)
+        for (a, b) in zip(original, restored) {
+            XCTAssertEqual(a, b, accuracy: 0.001)
+        }
+    }
+
+    func testWavFileWriterProducesReadableFile() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("writer-\(UUID()).wav")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let writer = try WavFileWriter(url: url)
+        try writer.append([Float](repeating: 0.5, count: 800))
+        try writer.append([Float](repeating: -0.5, count: 800))
+        try writer.finish()
+
+        let restored = try WavCodec.samples(fromWavFile: url)
+        XCTAssertEqual(restored.count, 1600)
+        XCTAssertEqual(restored[0], 0.5, accuracy: 0.001)
+        XCTAssertEqual(restored[1599], -0.5, accuracy: 0.001)
+    }
+
+    // MARK: Plausibilitätsprüfung der Bereinigung
+
+    func testSanityCheckAcceptsNormalCleanup() {
+        let raw = "also ähm ich wollte halt mal kurz sagen dass das mit dem diktieren noch nicht so richtig schnell läuft"
+        let cleaned = "Ich wollte mal kurz sagen, dass das mit dem Diktieren noch nicht so richtig schnell läuft."
+        XCTAssertNil(CleanupService.sanityCheckFailure(raw: raw, cleaned: cleaned))
+    }
+
+    func testSanityCheckRejectsMassiveShortening() {
+        // Simuliert den realen Fehlerfall: Modell kürzt langes Diktat auf einen Satz.
+        let raw = String(repeating: "das ist ein längerer diktierter satz mit vielen wörtern ", count: 10)
+        let cleaned = "Okay."
+        XCTAssertNotNil(CleanupService.sanityCheckFailure(raw: raw, cleaned: cleaned))
+    }
+
+    func testSanityCheckRejectsAnswering() {
+        // Simuliert: Modell "beantwortet" das Diktat statt zu putzen (Ausgabe wächst stark).
+        let raw = "welche lokalen modelle empfiehlst du für textbereinigung"
+        let cleaned = String(repeating: "Hier ist eine Tabelle empfohlener Modelle … ", count: 20)
+        XCTAssertNotNil(CleanupService.sanityCheckFailure(raw: raw, cleaned: cleaned))
+    }
+
+    func testSanityCheckAllowsShortInputs() {
+        // Kurze Diktate dürfen stark schrumpfen ("ähm ja Punkt" -> "Ja.").
+        XCTAssertNil(CleanupService.sanityCheckFailure(raw: "ähm ja punkt", cleaned: "Ja."))
+    }
+
+    func testSanityCheckRejectsEmpty() {
+        XCTAssertNotNil(CleanupService.sanityCheckFailure(raw: "hallo welt", cleaned: ""))
+    }
+
+    func testSanityCheckRejectsMarkdownStructures() {
+        // Realer Fehlerfall (bei einem anderen Diktat-Tool beobachtet): Das Modell
+        // "beantwortet" das Diktat und erzeugt Codeblöcke/Beispiel-Befehle.
+        let raw = "bitte noch ein startgeräusch ergänzen das kannst du mit dem generierungstool machen"
+        let answered = "Bitte noch ein Startgeräusch ergänzen.\n```\ntool generate --name blup\n```"
+        XCTAssertNotNil(CleanupService.sanityCheckFailure(raw: raw, cleaned: answered))
+        // Aber: Diktiert jemand selbst über Markdown, dürfen vorhandene Marker bleiben.
+        XCTAssertNil(CleanupService.sanityCheckFailure(
+            raw: "der code steht in einem ```-Block ähm im readme",
+            cleaned: "Der Code steht in einem ```-Block im README."))
+    }
+
+    // MARK: Whisper-Artefakte
+
+    func testArtifactMarkersRemoved() {
+        XCTAssertEqual(WhisperClient.cleanWhisperArtifacts(" [Musik] Hallo Welt (Räuspern) "), "Hallo Welt")
+    }
+
+    func testKnownHallucinationBecomesEmpty() {
+        XCTAssertEqual(WhisperClient.cleanWhisperArtifacts("Untertitel im Auftrag des ZDF für funk, 2017"), "")
+        XCTAssertEqual(WhisperClient.cleanWhisperArtifacts("Vielen Dank für's Zuschauen!"), "")
+    }
+
+    func testNormalTextUntouched() {
+        XCTAssertEqual(WhisperClient.cleanWhisperArtifacts("Ganz normaler Satz."), "Ganz normaler Satz.")
+    }
+
+    // MARK: Denk-Blöcke von Reasoning-Modellen
+
+    func testStripThinking() {
+        XCTAssertEqual(CleanupService.stripThinking("<think>Überlegung…</think>Fertiger Text"), "Fertiger Text")
+        XCTAssertEqual(CleanupService.stripThinking("Ohne Denkblock"), "Ohne Denkblock")
+    }
+
+    // MARK: Segmente zusammenfügen
+
+    func testJoinSegments() {
+        XCTAssertEqual(DictationEngine.joinSegments(["Erster Teil.", " Zweiter Teil. ", ""]),
+                       "Erster Teil. Zweiter Teil.")
+        XCTAssertEqual(DictationEngine.joinSegments([]), "")
+    }
+
+    // MARK: Config
+
+    func testConfigToleratesMissingFields() throws {
+        // Eine alte/minimale Config-Datei darf nicht crashen — fehlende Felder = Defaults.
+        let json = #"{"cleanup": {"model": "anderes-modell"}}"#
+        let config = try JSONDecoder().decode(Config.self, from: Data(json.utf8))
+        XCTAssertEqual(config.cleanup.model, "anderes-modell")
+        XCTAssertEqual(config.cleanup.provider, "ollama", "fehlendes Feld muss Default bekommen")
+        XCTAssertEqual(config.whisper.threads, 4, "fehlende Sektion muss komplette Defaults bekommen")
+    }
+
+    func testConfigRoundTrip() throws {
+        var config = Config()
+        config.cleanup.provider = "openai"
+        config.cleanup.remote.baseURL = "https://api.example.com/v1"
+        let data = try JSONEncoder().encode(config)
+        let restored = try JSONDecoder().decode(Config.self, from: data)
+        XCTAssertEqual(restored, config)
+    }
+
+    // MARK: Bereinigungs-Kette (primär + Fallbacks)
+
+    func testCleanupChainWithoutFallbacksIsJustPrimary() throws {
+        // Eine Config ohne fallbacks-Feld (alle Bestands-Configs!) muss sich exakt
+        // wie bisher verhalten: Kette = nur der primäre Endpoint.
+        let json = #"{"cleanup": {"ollamaURL": "http://127.0.0.1:11434", "model": "test-modell"}}"#
+        let config = try JSONDecoder().decode(Config.self, from: Data(json.utf8))
+        let chain = config.cleanup.chain
+        XCTAssertEqual(chain.count, 1)
+        XCTAssertEqual(chain[0].model, "test-modell")
+        XCTAssertEqual(chain[0].provider, "ollama")
+    }
+
+    func testCleanupChainOrderAndDefaults() throws {
+        // Kette: entfernter Ollama-Rechner -> lokales Ollama -> Cloud-Anbieter.
+        // Fehlende Felder in einem Fallback-Eintrag müssen Defaults bekommen.
+        let json = """
+        {"cleanup": {
+            "ollamaURL": "http://192.168.1.50:11434",
+            "fallbacks": [
+                {"provider": "ollama"},
+                {"provider": "openai", "remote": {"baseURL": "https://api.example.com/v1", "model": "cloud-modell"}}
+            ]
+        }}
+        """
+        let config = try JSONDecoder().decode(Config.self, from: Data(json.utf8))
+        let chain = config.cleanup.chain
+        XCTAssertEqual(chain.count, 3)
+        XCTAssertEqual(chain[0].ollamaURL, "http://192.168.1.50:11434")
+        XCTAssertEqual(chain[1].ollamaURL, "http://127.0.0.1:11434", "fehlende Felder im Fallback = Defaults")
+        XCTAssertEqual(chain[1].model, "qwen3.5:9b")
+        XCTAssertEqual(chain[2].provider, "openai")
+        XCTAssertEqual(chain[2].label, "cloud-modell @ https://api.example.com/v1")
+    }
+
+    func testPrimaryDirectRequestRetriesOnFreshConnection() throws {
+        // Kürzlich erreichbarer Primär-Endpoint: clean() schickt die Anfrage DIREKT
+        // (keine Probe); scheitert sie, folgt sofort ein zweiter Versuch über eine
+        // frische Verbindung (onPrimaryRetry wird gemeldet). Hier ist der Endpoint
+        // tot (geschlossener Port) -> beide Versuche scheitern schnell, Ergebnis
+        // ist der Rohtext.
+        var cleanup = Config.Cleanup()
+        cleanup.ollamaURL = "http://127.0.0.1:1"
+        let service = CleanupService(config: cleanup)
+        service.notePrimarySuccess()
+        var retryReported = false
+        service.onPrimaryRetry = { retryReported = true }
+
+        let expectation = expectation(description: "clean")
+        var result: CleanupService.Result?
+        Task {
+            result = await service.clean("roher text der bereinigt werden soll")
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 15)
+        XCTAssertTrue(retryReported, "Zweitversuch muss gemeldet werden (Overlay-Transparenz)")
+        XCTAssertEqual(result?.usedFallback, true)
+    }
+
+    func testNoDirectRequestWithoutRecentPrimaryContact() throws {
+        // OHNE kürzlichen Kontakt (App unterwegs gestartet) gilt der Probe-Pfad:
+        // toter Primär-Endpoint => schnell weiter in der Kette, KEIN Zweitversuch.
+        var cleanup = Config.Cleanup()
+        cleanup.ollamaURL = "http://127.0.0.1:1"
+        let service = CleanupService(config: cleanup)
+        var retryReported = false
+        service.onPrimaryRetry = { retryReported = true }
+
+        let started = Date()
+        let expectation = expectation(description: "clean")
+        Task {
+            _ = await service.clean("roher text")
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 15)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "Probe-Pfad muss schnell aufgeben")
+        XCTAssertFalse(retryReported, "ohne Recency-Marker kein Direkt-Zweitversuch")
+    }
+
+    func testStreamChunkParsing() {
+        // Normales Häppchen
+        var parsed = CleanupService.streamChunk(fromLine: #"{"message":{"content":"Hallo "},"done":false}"#)
+        XCTAssertEqual(parsed.chunk, "Hallo ")
+        XCTAssertFalse(parsed.done)
+        // Letzte Zeile: done + oft leerer content
+        parsed = CleanupService.streamChunk(fromLine: #"{"message":{"content":""},"done":true}"#)
+        XCTAssertTrue(parsed.done)
+        // Kaputte/fremde Zeilen still überspringen
+        parsed = CleanupService.streamChunk(fromLine: "kein json")
+        XCTAssertNil(parsed.chunk)
+        XCTAssertFalse(parsed.done)
+    }
+
+    func testStreamingCleanAgainstLocalOllamaIfAvailable() throws {
+        // Integrationstest des Streaming-Pfads gegen ein ECHTES lokales Ollama —
+        // wird übersprungen, wenn keins läuft oder das Default-Modell fehlt
+        // (Entwickler-Maschinen-Test, kein harter Bestandteil der Suite).
+        let cleanup = Config.Cleanup()
+        struct Tags: Decodable { struct M: Decodable { let name: String }; let models: [M] }
+        guard let data = try? Data(contentsOf: URL(string: "\(cleanup.ollamaURL)/api/tags")!),
+              let tags = try? JSONDecoder().decode(Tags.self, from: data),
+              tags.models.contains(where: { $0.name == cleanup.model || $0.name.hasPrefix(cleanup.model + ":") }) else {
+            throw XCTSkip("Kein lokales Ollama mit \(cleanup.model) — Streaming-Integrationstest übersprungen")
+        }
+        let service = CleanupService(config: cleanup)
+        service.notePrimarySuccess()  // erzwingt den Streaming-Direktpfad
+        let expectation = expectation(description: "clean")
+        var result: CleanupService.Result?
+        Task {
+            result = await service.clean("also ähm das ist ist ein streaming test")
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 60)
+        XCTAssertEqual(result?.usedFallback, false, "Streaming-Bereinigung muss durchlaufen: \(result?.fallbackReason ?? "")")
+        XCTAssertFalse(result?.text.isEmpty ?? true)
+    }
+
+    func testCleanFallsBackToRawWhenAllEndpointsDead() throws {
+        // Zwei bewusst tote Endpoints (geschlossene lokale Ports): clean() darf
+        // nicht hängen oder werfen, sondern muss den Rohtext zurückgeben und
+        // beide Ausfälle im Fallback-Grund benennen.
+        var cleanup = Config.Cleanup()
+        cleanup.ollamaURL = "http://127.0.0.1:1"
+        var fallback = Config.Cleanup.Endpoint()
+        fallback.ollamaURL = "http://127.0.0.1:2"
+        cleanup.fallbacks = [fallback]
+
+        let raw = "das ist der rohe text"
+        let expectation = expectation(description: "clean")
+        var result: CleanupService.Result?
+        Task {
+            result = await CleanupService(config: cleanup).clean(raw)
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 15)
+        XCTAssertEqual(result?.text, raw)
+        XCTAssertEqual(result?.usedFallback, true)
+        XCTAssertNil(result?.endpoint)
+        XCTAssertTrue(result?.fallbackReason?.contains("127.0.0.1:1") ?? false)
+        XCTAssertTrue(result?.fallbackReason?.contains("127.0.0.1:2") ?? false)
+    }
+
+    // MARK: Verlauf
+
+    func testHistoryStoreAppendAndDeleteAll() throws {
+        let baseDir = FileManager.default.temporaryDirectory.appendingPathComponent("sp-test-\(UUID())")
+        try FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: baseDir) }
+
+        let store = HistoryStore(baseDir: baseDir)
+        // Fehlgeschlagenen Eintrag mit Audio-Datei anlegen.
+        let audioURL = store.newRecordingURL()
+        try Data("wav".utf8).write(to: audioURL)
+        store.append(HistoryStore.Entry(rawText: "", cleanText: "", status: "failed",
+                                        errorMessage: "Test", audioFileName: audioURL.lastPathComponent,
+                                        durationSec: 3))
+        store.append(HistoryStore.Entry(rawText: "roh", cleanText: "sauber", status: "ok", durationSec: 5,
+                                        cleanupEndpoint: "modell @ http://127.0.0.1:11434", cleanupSec: 1.2))
+
+        XCTAssertEqual(store.list().count, 2)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
+
+        // Neu laden (Persistenz prüfen) — inkl. der Diagnose-Felder der Bereinigung.
+        let reloaded = HistoryStore(baseDir: baseDir)
+        XCTAssertEqual(reloaded.list().count, 2)
+        let okEntry = reloaded.list().first { $0.status == "ok" }
+        XCTAssertEqual(okEntry?.cleanupEndpoint, "modell @ http://127.0.0.1:11434")
+        XCTAssertEqual(okEntry?.cleanupSec, 1.2)
+
+        // Alle löschen muss auch die Audio-Datei entfernen.
+        reloaded.deleteAll()
+        XCTAssertEqual(reloaded.list().count, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
+    }
+}

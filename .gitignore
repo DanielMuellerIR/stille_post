@@ -1,0 +1,10 @@
+# Build-Artefakte
+.build/
+build/
+
+# macOS
+.DS_Store
+
+# Xcode (falls jemand das Package in Xcode öffnet)
+*.xcodeproj
+.swiftpm/

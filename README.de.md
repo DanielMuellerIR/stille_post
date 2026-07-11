@@ -1,0 +1,166 @@
+# Stille Post
+
+**🌐 Sprache / Language:** [English](README.md) · [Deutsch](README.de.md)
+
+Lokale Diktier-App für macOS: Globaler Hotkey, Spracherkennung mit Whisper und
+Textbereinigung mit einem lokalen Sprachmodell. Der fertige Text landet direkt an
+der Cursor-Position. Aufnahmen verlassen den Rechner nicht.
+
+Ja, das ist vermutlich der millionste Whisper-Diktat-Klon. Der Unterschied liegt im
+Anspruch: **Keine spürbare Wartezeit** nach dem Diktieren (auch bei langen Diktaten)
+und eine Textbereinigung, die **putzt statt dichtet**. Gängige Diktat-Tools warten mit
+der Verarbeitung, bis man fertig gesprochen hat, und ihre Bereinigungs-Modelle
+formulieren um, kürzen oder „beantworten" das Diktat. Beides ist hier konstruktiv
+ausgeschlossen.
+
+## Wie die Wartezeit verschwindet
+
+Stille Post verarbeitet das Audio **während** des Sprechens: Eine Stille-Erkennung
+schneidet den Aufnahme-Strom an Sprechpausen in Segmente, jedes fertige Segment wird
+sofort transkribiert, parallel zur weiterlaufenden Aufnahme. Beim Stopp ist die
+Spracherkennung damit praktisch fertig; es folgt nur noch die Textbereinigung, die
+bewusst **einmal über das ganze Diktat** läuft. Nur mit dem Gesamtzusammenhang kann
+das Modell Satzzeichen korrekt setzen, statt an jeder Sprechpause einen falschen
+Punkt zu hinterlassen. Zusätzlich wird das Bereinigungs-Modell schon beim
+Aufnahme-**Start** vorgewärmt, damit kein Modell-Kaltstart in die Wartezeit fällt.
+
+## Wie die Bereinigung ehrlich bleibt
+
+1. Ein strikter, mit Beispielen abgesicherter System-Prompt: Nur Füllwörter,
+   Versprecher, Stottern und Doppelungen entfernen; nie umformulieren, nie
+   zusammenfassen, nie Fragen aus dem Diktat beantworten.
+2. Eine **Plausibilitätsprüfung nach dem Modell**: Weicht die bereinigte Fassung in
+   der Länge stark vom Rohtext ab (Indiz für Kürzen, Dazuerfinden oder „Antworten"),
+   wird automatisch der Rohtext verwendet und das im Verlauf gekennzeichnet.
+   Ein Diktat kann durch die Bereinigung nie zerstört werden.
+3. Schlägt die Bereinigung fehl, wird immer der Rohtext eingefügt, nie nichts.
+4. **Abweichungen sind sichtbar:** Das Overlay zeigt an, wenn die Bereinigung auf
+   einen Ausweich-Endpoint wechselt oder unbereinigter Rohtext eingefügt wurde;
+   der Verlauf speichert zu jedem Diktat den benutzten Endpoint und die Dauer.
+
+## Features
+
+- **Globaler Hotkey** (Standard ⌘⌥D, konfigurierbar): Aufnahme ein/aus.
+- **Unübersehbarer Aufnahme-Indikator:** Großes rotes Overlay an der Mausposition
+  (bei aktiver Bildschirm-Zoom-Funktion trotzdem sichtbar, weil der Zoom dem Cursor
+  folgt) mit **Live-Mikrofonpegel**, an dem man sieht, dass wirklich Ton ankommt. Dazu
+  deutlich unterscheidbare Start-/Stopp-/Fehler-Sounds und ein rotes Menüleisten-Symbol.
+- **Stille-Erkennung:** Reine Stille wird nie an Whisper geschickt (keine
+  Halluzinationen bei Denkpausen); nach längerer Abwesenheit stoppt die Aufnahme
+  automatisch.
+- **Verlauf mit Fenster:** Alle Diktate ansehen und kopieren (auch den Rohtext vor
+  der Bereinigung), alles auf einen Klick löschen.
+- **Aufnahmen werden sofort nach erfolgreicher Transkription gelöscht.** Nur bei
+  einem Fehlschlag bleibt die Aufnahme erhalten und lässt sich im Verlauf per
+  „Erneut transkribieren" nachholen. Klappt es, wird sie danach ebenfalls gelöscht.
+- **Automatische Mikrofon-Wahl:** Es wird immer das im System eingestellte
+  Standard-Mikrofon verwendet.
+- **Datenschutz:** Spracherkennung und Bereinigung laufen komplett lokal. Optional
+  lässt sich die Bereinigung an einen beliebigen OpenAI-kompatiblen Anbieter geben.
+  Dann geht ausschließlich der transkribierte **Text** dorthin, niemals Audio.
+
+## Steuerbar ohne GUI (Skripte & AI-Agenten)
+
+Die komplette Pipeline ist headless nutzbar, mit gleicher Logik und gleicher Konfiguration:
+
+```bash
+stillepost-cli doctor                  # prüft Abhängigkeiten (Exit-Code 0 = bereit)
+stillepost-cli transcribe datei.wav    # WAV -> Text (mit Bereinigung) auf stdout
+stillepost-cli transcribe datei.wav --raw
+stillepost-cli cleanup "roher text"    # nur die Textbereinigung ("-" liest stdin)
+stillepost-cli history list --json     # Verlauf maschinenlesbar
+stillepost-cli history clear
+stillepost-cli set-cleanup-key         # API-Key für Cloud-Bereinigung (liest stdin)
+```
+
+Diagnose geht nach stderr, das Ergebnis nach stdout, Fehler geben Exit-Code ≠ 0.
+Gebaut für Pipes und Automatisierung. Die Umgebungsvariable `STILLEPOST_CONFIG`
+zeigt auf eine alternative Konfigurationsdatei (z. B. für Tests).
+
+## Installation
+
+Voraussetzungen: macOS 14+, [Homebrew](https://brew.sh), [Ollama](https://ollama.com).
+
+```bash
+brew install whisper-cpp          # lokaler Whisper-Server (whisper.cpp)
+ollama pull qwen3.5:9b            # Standard-Bereinigungsmodell (~6 GB)
+# Alternative mit mehr RAM: gemma4:e4b (~10 GB geladen), in eigenen Tests
+# etwas schneller und wortgetreuer; per config.json/Einstellungen wählbar.
+scripts/install-model.sh          # Whisper-Modell large-v3-turbo (~1,6 GB)
+scripts/build-app.sh --install    # baut die App und installiert nach /Applications
+open /Applications/StillePost.app
+```
+
+Beim ersten Start fragt macOS nach zwei Berechtigungen: **Mikrofon** (Aufnahme) und
+**Bedienungshilfen** (fürs Einfügen an der Cursor-Position per simuliertem ⌘V).
+
+## Konfiguration
+
+Alle Einstellungen gibt es im Menüleisten-Menü unter **„Einstellungen …"** als
+Dialog. Darunter liegt `~/Library/Application Support/StillePost/config.json`
+(entsteht beim ersten Start, Menüpunkt „Konfigurationsdatei öffnen"). Die Datei
+bleibt von Hand editierbar. Die wichtigsten Schalter:
+
+| Bereich | Feld | Bedeutung |
+|---|---|---|
+| `hotkey` | `keyCode`, `modifiers` | Aufnahme-Hotkey (Default ⌘⌥D) |
+| `whisper` | `language` | `"auto"` oder fest z. B. `"de"`. **Empfehlung: Festnageln.** Bei `auto` rät Whisper die Sprache pro Sprech-Segment und übersetzt bei Fehl-Erkennung ungefragt |
+| `cleanup` | `enabled` | Bereinigung an/aus |
+| `cleanup` | `provider` | `"ollama"` (lokal/eigenes Netz) oder `"openai"` (Cloud, nur Text) |
+| `cleanup` | `model` | Ollama-Modellname |
+| `cleanup` | `ollamaURL` | Ollama-Endpoint; darf auch ein anderer Rechner im eigenen Netz sein |
+| `cleanup.remote` | `baseURL`, `model` | OpenAI-kompatibler Anbieter |
+| `cleanup` | `fallbacks` | Ausweich-Endpoints, falls der primäre nicht antwortet (s. u.) |
+| `vad` | `autoStopAfterSilenceSec` | Abwesenheits-Stopp (0 = aus) |
+| `ui` | `overlayPosition` | `"mouse"` oder `"bottomCenter"` |
+
+Cloud-Bereinigung einrichten (Beispiel, funktioniert mit jedem OpenAI-kompatiblen
+Anbieter):
+
+```jsonc
+"cleanup": {
+  "provider": "openai",
+  "remote": { "baseURL": "https://api.example.com/v1", "model": "modell-name" }
+}
+```
+
+Der API-Key kommt **nicht** in die Datei, sondern in den Schlüsselbund
+(`stillepost-cli set-cleanup-key`) oder in die Umgebungsvariable
+`STILLEPOST_CLEANUP_API_KEY`.
+
+### Bereinigung auf einem stärkeren Rechner (mit Fallback)
+
+Auf einem schwächeren Laptop lohnt es sich, die Bereinigung an einen stärkeren
+Rechner im eigenen Netz abzugeben: Das Modell bleibt dort dauerhaft warm, und der
+Laptop spart die ~8 GB RAM fürs lokale Modell. `fallbacks` listet Ausweich-Endpoints,
+die der Reihe nach probiert werden, wenn der primäre nicht antwortet (Probe-Timeout
+2 s; unterwegs ohne Heimnetz übernimmt also fast verzögerungsfrei das lokale Ollama):
+
+```jsonc
+"cleanup": {
+  "ollamaURL": "http://192.168.1.50:11434",   // starker Rechner im LAN (primär)
+  "model": "qwen3.5:9b",
+  "fallbacks": [
+    { "provider": "ollama", "ollamaURL": "http://127.0.0.1:11434", "model": "qwen3.5:9b" },
+    { "provider": "openai", "remote": { "baseURL": "https://api.example.com/v1", "model": "modell-name" } }
+  ]
+}
+```
+
+Voraussetzung auf dem starken Rechner: Ollama muss auf dem Netz-Interface lauschen
+(`OLLAMA_HOST=0.0.0.0`, in der Ollama-App der Schalter „Expose Ollama to the network").
+Es geht dabei nur transkribierter TEXT über das eigene Netz, nie Audio. Welcher
+Endpoint zum Zug kam, zeigt `stillepost-cli cleanup` an; `stillepost-cli doctor`
+prüft die ganze Kette.
+
+## Entwicklung & Tests
+
+```bash
+swift test            # Unit-Tests (VAD, WAV, Plausibilitätsprüfung, Verlauf …)
+scripts/e2e-test.sh   # Ende-zu-Ende: say-Stimme -> Whisper -> Bereinigung -> Prüfung
+```
+
+## Status
+
+Früh, aber benutzbar. Geplant: Vergleichs-Benchmark (Qualität und Latenz) gegen
+andere lokale Diktat-Tools und Cloud-Dienste.
