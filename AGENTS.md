@@ -2,6 +2,11 @@
 
 Stand: 2026-07-11
 
+## Typ & Zweck
+- **Typ:** GUI-App (+ CLI)
+- **Zweck:** Lokale macOS-Diktier-App transkribiert Sprache mit Whisper und bereinigt den Text optional per LLM, bevor sie ihn zuverlässig am Cursor einfügt.
+- **Plattform:** macOS-GUI, CLI
+
 Lokale Diktier-App für macOS (Whisper-STT + LLM-Textbereinigung), gebaut als
 qualitativ bessere Alternative zu bestehenden Diktat-Tools. Nutzer-Doku: README.de.md.
 
@@ -198,3 +203,15 @@ Developer-ID-Signatur + Notarisierung, Installation nach /Applications.
       Aufnahme schon vor; bewusst zurückgestellt)
 - [ ] Optional: Silero-VAD statt RMS-Schwelle, falls die einfache Erkennung in
       lauter Umgebung zu oft anschlägt
+
+## Verzeichnisstruktur
+
+<!-- directory-structure: generated -->
+- [AGENTS.md](AGENTS.md) — Projektprofil, Arbeitsregeln und dieses Datei-Verzeichnis.
+- [README.de.md](README.de.md) — Projekt-Einstieg und Nutzerdokumentation.
+- [README.md](README.md) — Projekt-Einstieg und Nutzerdokumentation.
+- `Resources/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+- `Sources/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+- `Tests/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+- `scripts/` — Projektbestandteil; Details stehen im Code bzw. in der verlinkten Dokumentation.
+<!-- /directory-structure -->
