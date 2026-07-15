@@ -58,6 +58,20 @@ public struct Config: Codable, Equatable {
         /// dann belegt ein 9B-Modell 14 GB statt ~8 GB und der Runner stirbt auf
         /// 18-GB-Macs. 16384 reicht auch für sehr lange Diktate locker.
         public var numCtx: Int = 16384
+        /// Wie lange Ollama das Modell nach der letzten Anfrage im Speicher behält
+        /// (`keep_alive`). Schreibweise wie bei Ollama: `"2h"`, `"30m"`, `"0"`
+        /// (sofort entladen) oder `"-1"` (dauerhaft geladen).
+        ///
+        /// Diese Einstellung schickt die App bei JEDER Anfrage mit — in Ollama selbst
+        /// ist dafür nichts zu konfigurieren. Der Default `"2h"` ist ein Kompromiss:
+        /// Diktiert man innerhalb von zwei Stunden erneut, ist das Modell sofort da;
+        /// danach gibt Ollama den Speicher von selbst frei. Ein Kaltstart fällt dabei
+        /// selten ins Gewicht, weil das Modell schon beim Aufnahme-START vorgewärmt
+        /// wird und lädt, während man noch spricht (siehe CleanupService.warmUp()).
+        ///
+        /// `"-1"` (dauerhaft) hält den Speicher belegt, vermeidet dafür jeden
+        /// Kaltstart — sinnvoll auf einem Rechner mit viel RAM.
+        public var keepAlive: String = "2h"
         /// Einstellungen für den OpenAI-kompatiblen Weg (nur relevant bei provider="openai").
         public var remote: Remote = Remote()
         /// Ausweich-Endpoints in Probier-Reihenfolge (leer = kein Fallback, nur der
@@ -70,6 +84,11 @@ public struct Config: Codable, Equatable {
             public var ollamaURL: String = "http://127.0.0.1:11434"
             public var model: String = "qwen3.5:9b"
             public var numCtx: Int = 16384
+            /// Wie beim primären Endpoint — hier aber mit `"30m"` als Default: Springt
+            /// z. B. wegen eines Netz-Aussetzers das lokale Modell ein, soll es auf
+            /// einem knappen Laptop nicht stundenlang RAM belegen. 30 Minuten
+            /// überbrücken eine Diktier-Sitzung ohne wiederholte Kaltstarts.
+            public var keepAlive: String = "30m"
             public var remote: Remote = Remote()
 
             public init() {}
@@ -90,6 +109,7 @@ public struct Config: Codable, Equatable {
             primary.ollamaURL = ollamaURL
             primary.model = model
             primary.numCtx = numCtx
+            primary.keepAlive = keepAlive
             primary.remote = remote
             return [primary] + fallbacks
         }
@@ -245,7 +265,7 @@ extension Config.Whisper {
 }
 
 extension Config.Cleanup {
-    private enum CodingKeys: String, CodingKey { case enabled, provider, ollamaURL, model, numCtx, remote, fallbacks }
+    private enum CodingKeys: String, CodingKey { case enabled, provider, ollamaURL, model, numCtx, keepAlive, remote, fallbacks }
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -254,13 +274,14 @@ extension Config.Cleanup {
         ollamaURL = try c.decodeIfPresent(String.self, forKey: .ollamaURL) ?? ollamaURL
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? model
         numCtx = try c.decodeIfPresent(Int.self, forKey: .numCtx) ?? numCtx
+        keepAlive = try c.decodeIfPresent(String.self, forKey: .keepAlive) ?? keepAlive
         remote = try c.decodeIfPresent(Config.Cleanup.Remote.self, forKey: .remote) ?? remote
         fallbacks = try c.decodeIfPresent([Config.Cleanup.Endpoint].self, forKey: .fallbacks) ?? fallbacks
     }
 }
 
 extension Config.Cleanup.Endpoint {
-    private enum CodingKeys: String, CodingKey { case provider, ollamaURL, model, numCtx, remote }
+    private enum CodingKeys: String, CodingKey { case provider, ollamaURL, model, numCtx, keepAlive, remote }
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -268,6 +289,7 @@ extension Config.Cleanup.Endpoint {
         ollamaURL = try c.decodeIfPresent(String.self, forKey: .ollamaURL) ?? ollamaURL
         model = try c.decodeIfPresent(String.self, forKey: .model) ?? model
         numCtx = try c.decodeIfPresent(Int.self, forKey: .numCtx) ?? numCtx
+        keepAlive = try c.decodeIfPresent(String.self, forKey: .keepAlive) ?? keepAlive
         remote = try c.decodeIfPresent(Config.Cleanup.Remote.self, forKey: .remote) ?? remote
     }
 }

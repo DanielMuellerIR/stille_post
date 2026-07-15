@@ -146,6 +146,57 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(chain[0].provider, "ollama")
     }
 
+    // MARK: keep_alive (wie lange das Modell geladen bleibt)
+
+    func testKeepAliveNumericValuesBecomeNumbers() {
+        // "-1" und "0" muss Ollama als ZAHL sehen — als String versteht es sie nicht.
+        XCTAssertEqual(CleanupService.keepAliveValue("-1") as? Int, -1)
+        XCTAssertEqual(CleanupService.keepAliveValue("0") as? Int, 0)
+        XCTAssertEqual(CleanupService.keepAliveValue("7200") as? Int, 7200, "Sekunden bleiben Sekunden")
+    }
+
+    func testKeepAliveDurationsStayStrings() {
+        XCTAssertEqual(CleanupService.keepAliveValue("2h") as? String, "2h")
+        XCTAssertEqual(CleanupService.keepAliveValue("30m") as? String, "30m")
+        XCTAssertEqual(CleanupService.keepAliveValue(" 20M ") as? String, "20m", "Leerzeichen/Großschreibung tolerieren")
+    }
+
+    func testKeepAliveGarbageFallsBackToFiniteValue() {
+        // Ein Tippfehler in einer handgeschriebenen config.json darf weder den
+        // Request zerschießen noch dauerhaft RAM belegen.
+        XCTAssertEqual(CleanupService.keepAliveValue("für immer") as? String, "30m")
+        XCTAssertEqual(CleanupService.keepAliveValue("") as? String, "30m")
+    }
+
+    func testPinsForeverOnlyForNegativeValues() {
+        // Daran hängt der Minuten-Timer der App: Er darf NUR im Dauer-Modus laufen.
+        XCTAssertTrue(CleanupService.pinsForever("-1"))
+        XCTAssertFalse(CleanupService.pinsForever("2h"))
+        XCTAssertFalse(CleanupService.pinsForever("0"), "sofort entladen ist nicht dauerhaft")
+        XCTAssertFalse(CleanupService.pinsForever("unsinn"))
+    }
+
+    func testKeepAliveDefaultsAreTwoHoursPrimaryAndThirtyMinutesFallback() throws {
+        // Bestands-Configs kennen das Feld nicht — sie müssen die neuen Defaults
+        // bekommen und dürfen nicht auf einem leeren Wert landen.
+        let json = #"{"cleanup": {"model": "test-modell", "fallbacks": [{"provider": "ollama"}]}}"#
+        let config = try JSONDecoder().decode(Config.self, from: Data(json.utf8))
+        let chain = config.cleanup.chain
+        XCTAssertEqual(chain[0].keepAlive, "2h", "primär: befristet, aber lang genug für eine Sitzung")
+        XCTAssertEqual(chain[1].keepAlive, "30m", "Fallback belegt auf knappen Macs nur kurz RAM")
+    }
+
+    func testConfiguredKeepAliveReachesTheChain() throws {
+        // Der im Dialog gewählte Wert muss beim primären Endpoint ankommen —
+        // sonst schickt die App weiter den alten fest verdrahteten Wert.
+        let json = #"{"cleanup": {"keepAlive": "-1", "fallbacks": [{"keepAlive": "5m"}]}}"#
+        let config = try JSONDecoder().decode(Config.self, from: Data(json.utf8))
+        let chain = config.cleanup.chain
+        XCTAssertEqual(chain[0].keepAlive, "-1")
+        XCTAssertEqual(chain[1].keepAlive, "5m")
+        XCTAssertTrue(CleanupService.pinsForever(chain[0].keepAlive))
+    }
+
     func testCleanupChainOrderAndDefaults() throws {
         // Kette: entfernter Ollama-Rechner -> lokales Ollama -> Cloud-Anbieter.
         // Fehlende Felder in einem Fallback-Eintrag müssen Defaults bekommen.

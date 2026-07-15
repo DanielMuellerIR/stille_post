@@ -12,7 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var overlay: OverlayController!
     private var historyWindow: HistoryWindowController!
     private var settingsWindow: SettingsWindowController!
-    /// Hält das primäre Bereinigungs-Modell dauerhaft geladen (siehe buildComponents).
+    /// Pinnt das primäre Bereinigungs-Modell jede Minute neu — läuft nur im Modus
+    /// "dauerhaft geladen" (siehe buildComponents); bei befristetem keep_alive nil.
     private var warmUpTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -89,14 +90,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return (self.engine.currentLevelDb, self.engine.recordingDuration)
         }
 
-        // Bereinigungs-Modell dauerhaft warmhalten: sofort beim Start und dann
-        // jede Minute neu anpinnen (Kosten pro Tick: ein Ping + ein leerer
-        // Generate-Request, <1 s). Übersteht Ollama-Neustarts und fremde
-        // keep_alive-Resets — und weil die Kette durchfällt, ist bei einem
-        // Ausfall des primären Rechners (WLAN-Aussetzer, unterwegs) das
-        // Fallback-Modell binnen ~1 min vorgewärmt statt erst mitten im Diktat.
+        // Bereinigungs-Modell einmal beim Start vorwärmen, damit schon das erste
+        // Diktat ohne Kaltstart auskommt.
         engine.keepCleanupModelWarm()
         warmUpTimer?.invalidate()
+        warmUpTimer = nil
+
+        // Jede Minute NEU anpinnen darf die App nur im Modus "dauerhaft geladen":
+        // Der Tick (ein Ping + ein leerer Generate-Request, <1 s) übersteht
+        // Ollama-Neustarts und fremde keep_alive-Resets. Bei einer BEFRISTETEN Frist
+        // wäre derselbe Tick fatal — er würde die Uhr jede Minute zurücksetzen, das
+        // Modell entlüde also nie, und die Einstellung wäre wirkungslos.
+        //
+        // Ohne diesen Timer bleibt das Vorwärmen beim Aufnahme-Start die Absicherung
+        // gegen Kaltstarts (DictationEngine.start()): Es lädt das Modell, während man
+        // noch spricht, und schiebt die Frist bei jedem Diktat neu an.
+        guard CleanupService.pinsForever(config.cleanup.keepAlive) else { return }
         warmUpTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.engine.keepCleanupModelWarm()
         }

@@ -51,8 +51,10 @@ public final class CleanupService {
     }
 
     /// War der primäre Endpoint vor höchstens 3 Minuten erreichbar? Dann darf die
-    /// Bereinigung ihm direkt vertrauen (keine Probe) — die Minuten-Warmhaltung
-    /// hätte einen echten Ausfall längst bemerkt.
+    /// Bereinigung ihm direkt vertrauen (keine Probe) — das Vorwärmen beim
+    /// Aufnahme-Start (und im Dauer-Modus zusätzlich der Minuten-Timer) hätte einen
+    /// echten Ausfall längst bemerkt. Nur ein Diktat, das selbst länger als 3 min
+    /// dauert, fällt zurück auf den Probe-Pfad — dort ist die Probe verschmerzbar.
     private var primaryWasRecentlyReachable: Bool {
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -132,13 +134,13 @@ public final class CleanupService {
                         // Verbindung (falls eine gestorbene Pool-Verbindung schuld war).
                         do {
                             cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
-                                                               pinForever: true, streamingOn: streamSession)
+                                                               streamingOn: streamSession)
                         } catch {
                             onPrimaryRetry?()
                             let freshSession = Self.makeStreamSession()
                             defer { freshSession.finishTasksAndInvalidate() }
                             cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
-                                                               pinForever: true, streamingOn: freshSession)
+                                                               streamingOn: freshSession)
                         }
                         notePrimarySuccess()
                     } else {
@@ -153,7 +155,7 @@ public final class CleanupService {
                             throw CleanupError.unreachable(endpoint.ollamaURL)
                         }
                         cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
-                                                           pinForever: index == 0, streamingOn: nil)
+                                                           streamingOn: nil)
                         if index == 0 { notePrimarySuccess() }
                     }
                 }
@@ -181,13 +183,16 @@ public final class CleanupService {
     /// bei jedem Diktat mehrere GB RAM belegen. (OpenAI-Endpoints brauchen kein
     /// Vorwärmen.)
     ///
-    /// Die App ruft das zusätzlich beim Start und danach jede Minute auf (Timer im
-    /// AppDelegate): Der aktive Endpoint bleibt so dauerhaft geladen — auch nach
-    /// Ollama-Neustarts oder fremden keep_alive-Resets. Und weil die Kette hier
-    /// durchfällt, wird bei einem Ausfall des primären Rechners (z. B. WLAN weg,
-    /// unterwegs) das Fallback-Modell schon VOR dem nächsten Diktat geladen — der
-    /// teure Kaltstart (real gemessen: ~35 s für ein 6,6-GB-Modell auf einem
-    /// RAM-knappen Laptop) fällt sonst mitten in die Wartezeit nach dem Diktat.
+    /// Die App ruft das zusätzlich beim Start auf — und NUR im Modus "dauerhaft"
+    /// (keepAlive = -1) danach jede Minute erneut (Timer im AppDelegate): Der aktive
+    /// Endpoint bleibt so geladen, auch nach Ollama-Neustarts oder fremden
+    /// keep_alive-Resets. Bei einer befristeten Frist darf dieser Timer nicht laufen,
+    /// weil er die Frist sonst jede Minute zurücksetzen würde — dann liefe sie nie ab.
+    ///
+    /// Weil die Kette hier durchfällt, wird bei einem Ausfall des primären Rechners
+    /// (z. B. WLAN weg, unterwegs) das Fallback-Modell schon beim Aufnahme-Start
+    /// geladen — der teure Kaltstart (real gemessen: ~35 s für ein 6,6-GB-Modell auf
+    /// einem RAM-knappen Laptop) fällt sonst mitten in die Wartezeit nach dem Diktat.
     public func warmUp() {
         guard config.enabled else { return }
         let chain = config.chain
@@ -195,10 +200,11 @@ public final class CleanupService {
             for (index, endpoint) in chain.enumerated() where endpoint.provider != "openai" {
                 guard await isReachable(ollamaURL: endpoint.ollamaURL) else { continue }
                 // Erreichbarkeit des Primärs protokollieren — Grundlage der
-                // Blip-Toleranz in clean() (die Minuten-Warmhaltung hält den
-                // Zeitstempel im Normalbetrieb dauerhaft frisch).
+                // Blip-Toleranz in clean(). Weil warmUp() beim Aufnahme-START
+                // läuft, ist der Zeitstempel frisch, wenn clean() nach dem Diktat
+                // dran ist; im Dauer-Modus hält ihn zusätzlich der Minuten-Timer.
                 if index == 0 { notePrimarySuccess() }
-                sendWarmUpRequest(endpoint, pinForever: index == 0)
+                sendWarmUpRequest(endpoint)
                 break
             }
         }
@@ -207,7 +213,7 @@ public final class CleanupService {
     /// Schickt den eigentlichen Vorwärm-Request (leerer Prompt lädt das Modell).
     /// ACHTUNG: num_ctx muss identisch zum Bereinigungs-Request sein — Ollama lädt
     /// sonst pro num_ctx-Wert eine EIGENE Modell-Instanz (doppelter RAM!).
-    private func sendWarmUpRequest(_ endpoint: Config.Cleanup.Endpoint, pinForever: Bool) {
+    private func sendWarmUpRequest(_ endpoint: Config.Cleanup.Endpoint) {
         guard let url = URL(string: "\(endpoint.ollamaURL)/api/generate") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -215,20 +221,38 @@ public final class CleanupService {
         request.httpBody = try? JSONSerialization.data(withJSONObject: [
             "model": endpoint.model,
             "prompt": "",
-            "keep_alive": Self.keepAliveValue(pinForever: pinForever),
+            "keep_alive": Self.keepAliveValue(endpoint.keepAlive),
             "options": ["num_ctx": endpoint.numCtx],
         ] as [String: Any])
         session.dataTask(with: request).resume()  // Antwort ist egal, reines Vorwärmen
     }
 
-    /// keep_alive-Wert je nach Ketten-Position: Der PRIMÄRE Endpoint bleibt dauerhaft
-    /// geladen (-1, nie Kaltstart im Normalbetrieb). FALLBACK-Endpoints nur befristet:
-    /// Springt z. B. wegen eines einmaligen Netz-Aussetzers das lokale Modell ein,
-    /// soll es auf einem knappen Laptop nicht für immer ~8 GB RAM belegen — 30 min
-    /// überbrücken eine Diktier-Sitzung ohne wiederholte Kaltstarts und geben den
-    /// Speicher danach von selbst frei.
-    static func keepAliveValue(pinForever: Bool) -> Any {
-        pinForever ? -1 : "30m"
+    /// Übersetzt den keep_alive-Wert aus der Config in das, was Ollama im JSON erwartet.
+    ///
+    /// Ollama akzeptiert ZWEI Schreibweisen, und der Unterschied ist wichtig: eine
+    /// Dauer als STRING ("2h", "30m") oder Sekunden als ZAHL (-1 = dauerhaft,
+    /// 0 = sofort entladen). `"-1"` als String versteht Ollama NICHT — deshalb wird
+    /// alles rein Numerische hier zur Zahl.
+    ///
+    /// Unbekannte Eingaben (Tippfehler in einer handgeschriebenen config.json)
+    /// landen bewusst auf einem befristeten Wert statt roh bei Ollama: Ein
+    /// abgelehnter Request würde die ganze Bereinigung kosten, und ein Tippfehler
+    /// soll erst recht nicht dauerhaft RAM belegen.
+    static func keepAliveValue(_ raw: String) -> Any {
+        let value = raw.trimmingCharacters(in: .whitespaces).lowercased()
+        if let seconds = Int(value) { return seconds }
+        if value.range(of: "^[0-9]+(\\.[0-9]+)?(ms|s|m|h)$", options: .regularExpression) != nil {
+            return value
+        }
+        return "30m"
+    }
+
+    /// Soll dieser Wert das Modell DAUERHAFT geladen halten? (Ollama: jede negative
+    /// Zahl.) Die App entscheidet daran, ob sie das Modell zusätzlich jede Minute
+    /// neu anpinnt — bei einem befristeten Wert darf sie das nicht, sonst liefe die
+    /// eingestellte Frist nie ab (siehe AppDelegate).
+    public static func pinsForever(_ raw: String) -> Bool {
+        (keepAliveValue(raw) as? Int).map { $0 < 0 } ?? false
     }
 
     /// Antwortet der Ollama-Server unter dieser URL? (GET /api/version, 2-s-Timeout)
@@ -290,7 +314,7 @@ public final class CleanupService {
     ///    ein kalt startendes Modell schweigt erst mal minutenlang — dort wäre ein
     ///    Leerlauf-Timeout genau falsch).
     private func cleanViaOllama(_ text: String, endpoint: Config.Cleanup.Endpoint,
-                                pinForever: Bool, streamingOn: URLSession?) async throws -> String {
+                                streamingOn: URLSession?) async throws -> String {
         guard let url = URL(string: "\(endpoint.ollamaURL)/api/chat") else {
             throw CleanupError.badConfig("Ungültige Ollama-URL: \(endpoint.ollamaURL)")
         }
@@ -304,9 +328,10 @@ public final class CleanupService {
             // nichts außer VIEL Wartezeit (gemessen: 53 s statt <1 s bei qwen3.5:9b).
             // Nicht-Thinking-Modelle ignorieren das Feld einfach.
             "think": false,
-            // Primär: Modell dauerhaft geladen halten -> kein Kaltstart beim nächsten
-            // Diktat. Fallback: nur befristet (siehe keepAliveValue).
-            "keep_alive": Self.keepAliveValue(pinForever: pinForever),
+            // Wie lange das Modell nach diesem Diktat geladen bleibt — aus der Config
+            // des Endpoints (siehe keepAliveValue). Muss identisch zum Vorwärm-Request
+            // sein, sonst verschiebt jeder Diktat-Zyklus die Frist anders als gedacht.
+            "keep_alive": Self.keepAliveValue(endpoint.keepAlive),
             "options": [
                 "temperature": 0,        // deterministisch, kein kreatives Umschreiben
                 "repeat_penalty": 1.0,   // wichtig: >1 drängt aktiv zu Synonymen/Umformulierung

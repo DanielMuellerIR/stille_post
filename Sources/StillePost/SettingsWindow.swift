@@ -227,6 +227,7 @@ private struct CleanupTab: View {
                 endpoint.ollamaURL = cleanup.ollamaURL
                 endpoint.model = cleanup.model
                 endpoint.numCtx = cleanup.numCtx
+                endpoint.keepAlive = cleanup.keepAlive
                 endpoint.remote = cleanup.remote
                 return endpoint
             },
@@ -235,6 +236,7 @@ private struct CleanupTab: View {
                 cleanup.ollamaURL = endpoint.ollamaURL
                 cleanup.model = endpoint.model
                 cleanup.numCtx = endpoint.numCtx
+                cleanup.keepAlive = endpoint.keepAlive
                 cleanup.remote = endpoint.remote
             }
         )
@@ -257,8 +259,33 @@ private struct EndpointEditor: View {
             TextField("Ollama-URL", text: $endpoint.ollamaURL)
             TextField("Modell", text: $endpoint.model)
             TextField("Kontextfenster (num_ctx)", value: $endpoint.numCtx, format: .number.grouping(.never))
+            Picker("Geladen lassen (keep_alive)", selection: $endpoint.keepAlive) {
+                ForEach(Self.keepAliveChoices, id: \.value) { choice in
+                    Text(choice.label).tag(choice.value)
+                }
+                // Ein von Hand in die config.json geschriebener Wert (z. B. "45m")
+                // steht nicht in der Liste. Ohne diesen Eintrag zeigte das Menü nichts
+                // an und überschriebe den Wert beim ersten Speichern stillschweigend.
+                if !Self.keepAliveChoices.contains(where: { $0.value == endpoint.keepAlive }) {
+                    Text(endpoint.keepAlive).tag(endpoint.keepAlive)
+                }
+            }
+            Text("Wie lange Ollama das Modell nach dem Diktat im Speicher behält. Die App stellt das bei jeder Anfrage selbst ein — in Ollama ist dafür nichts zu konfigurieren. „Dauerhaft“ vermeidet jeden Kaltstart, belegt den Speicher aber durchgehend.")
+                .font(.caption)
+                .foregroundColor(.secondary)
         }
     }
+
+    /// Auswahl fürs keep_alive-Menü. Schreibweise wie bei Ollama (siehe Config).
+    private static let keepAliveChoices: [(label: String, value: String)] = [
+        ("dauerhaft geladen", "-1"),
+        ("2 Stunden", "2h"),
+        ("1 Stunde", "1h"),
+        ("30 Minuten", "30m"),
+        ("20 Minuten", "20m"),
+        ("5 Minuten", "5m"),
+        ("sofort entladen", "0"),
+    ]
 }
 
 /// Zeile für den Cloud-API-Key: liegt NUR im Schlüsselbund, nie in der Config-Datei.
