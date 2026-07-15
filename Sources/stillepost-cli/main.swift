@@ -7,6 +7,7 @@ import StillePostCore
 /// Skripten und AI-Agenten aus (maschinenlesbarer Output, saubere Exit-Codes):
 ///
 ///   stillepost-cli doctor                  # prüft whisper-server, Modell, Ollama, Cleanup-Provider
+///   stillepost-cli install-model           # Whisper-Modell laden (Default: large-v3-turbo)
 ///   stillepost-cli transcribe datei.wav    # WAV -> Transkription + Bereinigung -> stdout
 ///   stillepost-cli transcribe datei.wav --raw    # ohne Bereinigung
 ///   stillepost-cli cleanup "roher text"    # nur die Textbereinigung
@@ -28,9 +29,23 @@ func fail(_ message: String, code: Int32 = 1) -> Never {
     exit(code)
 }
 
+/// Kleiner thread-sicherer Wert. Gebraucht für die Fortschrittsanzeige des
+/// Modell-Downloads: Der Callback kommt aus dem URLSession-Task, nicht vom
+/// Main-Thread, soll aber mitzählen, welche Prozentzahl zuletzt zu sehen war.
+final class Atomic<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: T
+    init(_ value: T) { stored = value }
+    var value: T {
+        get { lock.lock(); defer { lock.unlock() }; return stored }
+        set { lock.lock(); stored = newValue; lock.unlock() }
+    }
+}
+
 let usage = """
 Verwendung:
   stillepost-cli doctor
+  stillepost-cli install-model [large-v3-turbo|large-v3] [--force]
   stillepost-cli transcribe <datei.wav> [--raw]
   stillepost-cli cleanup <text|->
   stillepost-cli history list [--json]
@@ -71,10 +86,24 @@ case "doctor":
     print(FileManager.default.isExecutableFile(atPath: binary)
         ? "✓ whisper-server-Binary: \(binary)"
         : { problems += 1; return "✗ whisper-server-Binary fehlt: \(binary) (brew install whisper-cpp)" }())
-    let model = Config.expandPath(config.whisper.modelPath)
-    print(FileManager.default.fileExists(atPath: model)
-        ? "✓ Whisper-Modell: \(model)"
-        : { problems += 1; return "✗ Whisper-Modell fehlt: \(model) (scripts/install-model.sh)" }())
+    // Bewusst über den Zustandsbegriff statt `fileExists`: Letzteres folgt Symlinks
+    // und meldet auch dann "✓ Modell da", wenn hier nur ein Verweis auf einen
+    // fremden Cache liegt — dann ist das Modell weg, sobald das fremde Programm
+    // aufräumt.
+    switch ModelInstaller.state(atPath: config.whisper.modelPath) {
+    case .installed(let path, let bytes):
+        print("✓ Whisper-Modell: \(path) (\(bytes / 1_048_576) MB)")
+    case .borrowed(let path, let target):
+        problems += 1
+        print("✗ Whisper-Modell ist nur geliehen: \(path)")
+        print("  verweist auf: \(target)")
+        print("  Räumt das fremde Programm auf, ist das Modell weg — eigene Kopie holen:")
+        print("  stillepost-cli install-model")
+    case .missing(let path):
+        problems += 1
+        print("✗ Whisper-Modell fehlt: \(path)")
+        print("  herunterladen mit: stillepost-cli install-model")
+    }
 
     // Läuft der Server? (Falls nicht: kein Fehler — die App startet ihn selbst.)
     let reachable = try runBlocking { await whisperClient.isReachable() }
@@ -141,6 +170,53 @@ case "doctor":
 
     print(problems == 0 ? "Alles bereit." : "\(problems) Problem(e) gefunden.")
     exit(problems == 0 ? 0 : 1)
+
+// MARK: install-model — Whisper-Modell selbst beschaffen
+case "install-model":
+    let modelName = arguments.dropFirst().first { !$0.hasPrefix("--") } ?? ModelCatalog.turbo.name
+    guard let model = ModelCatalog.model(named: modelName) else {
+        let known = ModelCatalog.offered.map(\.name).joined(separator: ", ")
+        fail("Unbekanntes Modell \"\(modelName)\". Angeboten werden: \(known)", code: 2)
+    }
+    let force = arguments.contains("--force")
+    let targetPath = config.whisper.modelPath
+
+    // Schon da? Dann nichts tun — der Befehl ist damit gefahrlos wiederholbar
+    // (z. B. aus einem Setup-Skript).
+    if case .installed(let path, let bytes) = ModelInstaller.state(atPath: targetPath), !force {
+        print("Modell ist schon da: \(path) (\(bytes / 1_048_576) MB)")
+        exit(0)
+    }
+    if case .borrowed(let path, let target) = ModelInstaller.state(atPath: targetPath) {
+        log("Hinweis: \(path) ist bislang nur ein Verweis auf \(target)")
+        log("         Der Verweis wird durch eine eigene Kopie ersetzt; das Ziel bleibt unangetastet.")
+    }
+
+    log("Lade \(model.name) (~\(model.approximateBytes / 1_048_576) MB) von Hugging Face …")
+    // Fortschritt nach stderr, damit stdout für das Ergebnis sauber bleibt. Nur bei
+    // einem Terminal die Zeile überschreiben — in eine Datei oder Pipe geloggt wäre
+    // ein Wagenrücklauf-Gewitter unlesbar.
+    let interactive = isatty(fileno(stderr)) == 1
+    let installer = ModelInstaller()
+    let lastShownPercent = Atomic(-1)
+    do {
+        let finalPath = try runBlocking {
+            try await installer.install(model, to: targetPath) { progress in
+                guard let fraction = progress.fraction else { return }
+                let percent = Int(fraction * 100)
+                guard percent > lastShownPercent.value else { return }
+                lastShownPercent.value = percent
+                let line = "  \(percent) % (\(progress.receivedBytes / 1_048_576) von \(progress.totalBytes / 1_048_576) MB)"
+                FileHandle.standardError.write(Data((interactive ? "\r\(line)   " : line + "\n").utf8))
+            }
+        }
+        if interactive { FileHandle.standardError.write(Data("\n".utf8)) }
+        print(finalPath)
+        exit(0)
+    } catch {
+        if interactive { FileHandle.standardError.write(Data("\n".utf8)) }
+        fail("\(error.localizedDescription)")
+    }
 
 // MARK: transcribe — WAV-Datei durch die Pipeline schicken
 case "transcribe":

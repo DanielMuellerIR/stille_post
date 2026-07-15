@@ -15,6 +15,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Pinnt das primäre Bereinigungs-Modell jede Minute neu — läuft nur im Modus
     /// "dauerhaft geladen" (siehe buildComponents); bei befristetem keep_alive nil.
     private var warmUpTimer: Timer?
+    /// Fragt beim Start nach dem Whisper-Modell, falls keines da ist. Als Feld
+    /// gehalten, damit der laufende Download nicht mitsamt Controller wegoptimiert wird.
+    private let modelDownload = ModelDownloadController()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Einzelinstanz-Schutz: Läuft schon eine Stille Post, beendet sich die neue
@@ -47,6 +50,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // weil der System-Dialog dort nur stören würde.
         if ProcessInfo.processInfo.environment["STILLEPOST_NO_AX_PROMPT"] == nil {
             _ = PasteService.ensureAccessibilityPermission()
+        }
+
+        // Ohne Modell kann die App nichts — deshalb gleich beim Start fragen und
+        // nicht erst beim ersten Diktat scheitern lassen. Fragt nur, wenn wirklich
+        // etwas fehlt (oder das Modell nur geliehen ist).
+        modelDownload.offerIfNeeded(whisper: config.whisper) { [weak self] in
+            // Nach dem Laden die Bausteine neu aufsetzen, damit der whisper-server
+            // mit dem frischen Modell startet.
+            self?.buildComponents()
         }
 
         // Für automatisierte GUI-Checks (headless-Testweg): Einstellungsfenster

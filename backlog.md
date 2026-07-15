@@ -1,10 +1,10 @@
 # Aktiver Backlog
 
-## Whisper-Modell selbst beschaffen (Entscheidung 2026-07-15, noch nicht umgesetzt)
+## Whisper-Modell selbst beschaffen (gebaut in 0.8.0, READMEs offen)
 
 Ziel: Stille Post soll auf einem nackten Mac benutzbar sein, ohne dass man sich
-selbst um Whisper kümmert. Heute funktioniert die App nur, weil vorher OpenWhispr
-das Modell installiert hatte — das ist kein Zustand für andere Nutzer.
+selbst um Whisper kümmert. Bis 0.8.0 lief die App nur, weil vorher OpenWhispr das
+Modell installiert hatte — das war kein Zustand für andere Nutzer.
 
 Daniels Festlegung: **Nur `large-v3-turbo` anbieten, keine kleineren Modelle.** So
 groß ist Turbo nicht (~1,6 GB), und schlechtere Qualität will niemand. Die App darf
@@ -36,33 +36,26 @@ App fängt sie seit 0.7.2 ohnehin vorher ab (`minSpeechSec`). Eine Konfidenz-Sch
 hilft übrigens nicht: Auf reiner Stille meldet Whisper `no_speech_prob: 2.95e-08`
 und `avg_logprob: -0.25`, ist sich also absolut sicher.
 
-Ist-Zustand, damit niemand doppelt sucht:
+Stand nach 0.8.0 — die Beschaffung selbst ist gebaut:
 
-- `scripts/install-model.sh` lädt bereits `large-v3-turbo` von Hugging Face und
-  nimmt einen Modellnamen als Argument. `scripts/install-model.sh large-v3` lädt
-  also schon heute das volle Modell — danach muss `whisper.modelPath` in der
-  config.json darauf zeigen. Seit 0.7.3 erkennt es Symlinks, setzt abgebrochene
-  Downloads fort und prüft die Vollständigkeit gegen die erwartete Größe.
-- Die App selbst kann nichts laden. Wer nur die `.app` installiert (der normale
-  Weg für andere Nutzer), steht ohne Modell da.
-- **Der Modellpfad auf dem M3 hängt noch an OpenWhispr:**
-  `~/Library/Application Support/StillePost/models/ggml-large-v3-turbo.bin` ist dort
-  ein Symlink nach `~/.cache/openwhispr/whisper-models/`. Räumt OpenWhispr seinen
-  Cache, verliert Stille Post sein Modell. `scripts/install-model.sh large-v3-turbo`
-  ersetzt den Verweis inzwischen durch eine eigene Kopie (1,6 GB) — auf dem M3 noch
-  nicht ausgeführt.
+- `stillepost-cli install-model [large-v3-turbo|large-v3]` lädt das Modell nach
+  `whisper.modelPath`, mit Fortschritt, Wiederaufnahme und Größenprüfung.
+  Wiederholbar (schon da -> Exit 0), stdout enthält nur den Pfad.
+- Die App fragt beim Start, wenn das Modell fehlt oder nur geliehen ist, und lädt
+  es mit Fortschrittsbalken. Bewusst als Frage: 1,6 GB zieht man niemandem ungefragt.
+- `doctor` unterscheidet jetzt eigene Kopie / geliehener Verweis / fehlt und nennt
+  den passenden Befehl.
+- `scripts/install-model.sh` bleibt als skriptbarer Weg und kann dasselbe.
+- Der M3 hat seit 2026-07-15 eine eigene Kopie; der OpenWhispr-Cache ist weg.
 
-Zu bauen:
+Offen:
 
-- Modell-Download in die App bzw. die CLI holen, mit Fortschrittsanzeige und
-  Wiederaufnahme; Zielpfad ist `whisper.modelPath`. Beim ersten Start anbieten,
-  wenn das Modell fehlt — nicht ungefragt 1,6 GB ziehen.
-- `stillepost-cli doctor` soll das fehlende Modell nicht nur melden, sondern das
-  Nachladen anbieten (die CLI ist der skriptbare Weg, siehe Repo-Regel).
-- Ehrlich bleiben: Das Modell ist nur die halbe Miete. Der `whisper-server` kommt
-  weiterhin aus Homebrew (`brew install whisper-cpp`). Entweder das mit abdecken
-  oder im README klar als einzige verbleibende Voraussetzung nennen.
-- READMEs (beide Sprachen) entsprechend anpassen.
+- **READMEs (beide Sprachen).** Modellbeschaffung erklären und ehrlich bleiben: Das
+  Modell ist nur die halbe Miete, der `whisper-server` kommt weiterhin aus Homebrew
+  (`brew install whisper-cpp`). Daniels Entscheidung 2026-07-15: nur dokumentieren,
+  nicht abdecken — die App ruft keine fremden Paketmanager auf und bettet nichts ein.
+- Der Modell-Download der App ist noch nicht per GUI-Smoke-Test gesehen worden;
+  Kern und CLI sind gegen das echte Hugging Face verifiziert.
 
 ## „Vielen Dank"-Artefaktfilter (zurückgestellt 2026-07-15)
 
