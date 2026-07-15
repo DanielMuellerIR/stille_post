@@ -32,7 +32,7 @@ final class ModelDownloadController {
         guard ProcessInfo.processInfo.environment["STILLEPOST_NO_MODEL_PROMPT"] == nil else { return }
 
         let model = ModelCatalog.turbo
-        let megabytes = model.approximateBytes / 1_048_576
+        let megabytes = model.approximateMegabytes
 
         let alert = NSAlert()
         switch ModelInstaller.state(atPath: whisper.modelPath) {
@@ -113,10 +113,10 @@ final class ModelDownloadController {
     }
 
     private func update(progress: ModelInstaller.Progress) {
-        guard let fraction = progress.fraction else { return }
+        guard let fraction = progress.fraction, let percent = progress.percent else { return }
         progressBar?.doubleValue = fraction
-        statusLabel?.stringValue = "\(Int(fraction * 100)) % — "
-            + "\(progress.receivedBytes / 1_048_576) von \(progress.totalBytes / 1_048_576) MB"
+        statusLabel?.stringValue = "\(percent) % — "
+            + "\(progress.receivedMegabytes) von \(progress.totalMegabytes) MB"
     }
 
     private func finish(onFinished: () -> Void) {

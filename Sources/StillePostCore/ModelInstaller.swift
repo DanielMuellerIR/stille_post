@@ -1,5 +1,16 @@
 import Foundation
 
+/// Rechnet Byte-Zahlen in die Einheit um, in der Oberfläche und CLI Modellgrößen
+/// nennen.
+///
+/// Steht bewusst an EINER Stelle: App und CLI zeigen dieselben Downloads an und
+/// müssen dieselbe Zahl nennen. Vorher stand der Teiler siebenmal im Code — ein
+/// Vertipper (1_000_000 statt 1_048_576) wäre nur an einer der Stellen aufgefallen.
+public enum ByteSize {
+    /// Bytes als ganze Mebibyte. Abgerundet, weil die Zahl nur zur Anzeige dient.
+    public static func megabytes(_ bytes: Int64) -> Int64 { bytes / 1_048_576 }
+}
+
 /// Beschafft das Whisper-Modell selbst, damit die App auf einem nackten Mac
 /// benutzbar ist.
 ///
@@ -18,6 +29,9 @@ public struct WhisperModel: Equatable {
     public let approximateBytes: Int64
     /// Einzeiler für die Oberfläche.
     public let summary: String
+
+    /// Dieselbe ungefähre Größe in MB, wie App und CLI sie vor dem Download nennen.
+    public var approximateMegabytes: Int64 { ByteSize.megabytes(approximateBytes) }
 
     /// Dateiname im Modell-Ordner, in der Namenskonvention von whisper.cpp.
     public var fileName: String { "ggml-\(name).bin" }
@@ -98,6 +112,11 @@ public final class ModelInstaller {
         public var fraction: Double? {
             totalBytes > 0 ? Double(receivedBytes) / Double(totalBytes) : nil
         }
+        /// Ganze Prozent, oder nil solange die Gesamtgröße unbekannt ist.
+        public var percent: Int? { fraction.map { Int($0 * 100) } }
+        /// Geladen und erwartet in MB — die Zahlen, die Fortschrittstexte zeigen.
+        public var receivedMegabytes: Int64 { ByteSize.megabytes(receivedBytes) }
+        public var totalMegabytes: Int64 { ByteSize.megabytes(totalBytes) }
     }
 
     /// Lädt `model` nach `rawPath`. Bricht der Download ab, setzt der nächste Aufruf
@@ -119,8 +138,7 @@ public final class ModelInstaller {
         let expected = try await expectedSize(of: model)
 
         // Wie weit ist ein früherer Versuch gekommen?
-        let alreadyHave = (try? manager.attributesOfItem(atPath: partialPath))
-            .flatMap { ($0[.size] as? NSNumber)?.int64Value } ?? 0
+        let alreadyHave = Self.fileSize(atPath: partialPath)
 
         if alreadyHave < expected {
             try await download(model, from: alreadyHave, expected: expected,
@@ -130,15 +148,14 @@ public final class ModelInstaller {
         // Vollständigkeit belegen. Ohne diese Prüfung sieht eine abgebrochene
         // Wiederaufnahme aus wie ein Erfolg — und whisper-server scheitert später
         // an einer halben Datei, wo niemand die Ursache vermutet.
-        let finalSize = (try? manager.attributesOfItem(atPath: partialPath))
-            .flatMap { ($0[.size] as? NSNumber)?.int64Value } ?? 0
+        let finalSize = Self.fileSize(atPath: partialPath)
         guard finalSize == expected else {
             throw InstallError.incomplete(got: finalSize, expected: expected, partialPath: partialPath)
         }
 
-        // `replaceItemAt` ersetzt auch einen vorhandenen Symlink — und zwar den
-        // Verweis selbst, nicht dessen Ziel. Der fremde Cache bleibt unangetastet.
-        if manager.fileExists(atPath: path) || Self.isSymlink(path) {
+        // Was hier liegt, muss weg, bevor verschoben wird — und zwar der Verweis
+        // selbst, nicht dessen Ziel. Der fremde Cache bleibt unangetastet.
+        if Self.exists(atPath: path) {
             try? manager.removeItem(atPath: path)
         }
         try manager.moveItem(atPath: partialPath, toPath: path)
@@ -305,9 +322,20 @@ public final class ModelInstaller {
         }
     }
 
-    private static func isSymlink(_ path: String) -> Bool {
+    /// Größe der Datei am Pfad, oder 0 wenn dort nichts liegt.
+    private static func fileSize(atPath path: String) -> Int64 {
         (try? FileManager.default.attributesOfItem(atPath: path))
-            .map { $0[.type] as? FileAttributeType == .typeSymbolicLink } ?? false
+            .flatMap { ($0[.size] as? NSNumber)?.int64Value } ?? 0
+    }
+
+    /// Liegt am Pfad überhaupt etwas — eine Datei ODER ein Verweis, auch ein toter?
+    ///
+    /// Bewusst nicht `fileExists`: Das folgt Symlinks und meldet für einen Verweis
+    /// ins Leere "nichts da", obwohl der Verweis sehr wohl im Weg liegt.
+    /// `attributesOfItem` (lstat) folgt nicht und sieht ihn — dieselbe Eigenschaft,
+    /// auf der auch `state(atPath:)` beruht.
+    private static func exists(atPath path: String) -> Bool {
+        (try? FileManager.default.attributesOfItem(atPath: path)) != nil
     }
 
     public enum InstallError: Error, LocalizedError, Equatable {

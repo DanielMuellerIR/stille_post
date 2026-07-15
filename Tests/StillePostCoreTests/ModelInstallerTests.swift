@@ -104,4 +104,23 @@ final class ModelInstallerTests: XCTestCase {
         XCTAssertNil(ModelInstaller.Progress(receivedBytes: 50, totalBytes: 0).fraction,
                      "Ohne bekannte Gesamtgröße gibt es keinen Bruchteil")
     }
+
+    /// Prozent und MB sind das, was App und CLI dem Nutzer zeigen. Beide steigen an
+    /// derselben Stelle aus, wenn die Gesamtgröße noch unbekannt ist.
+    func testProgressDisplayValues() {
+        let progress = ModelInstaller.Progress(receivedBytes: 52_428_800, totalBytes: 104_857_600)
+        XCTAssertEqual(progress.percent, 50)
+        XCTAssertEqual(progress.receivedMegabytes, 50)
+        XCTAssertEqual(progress.totalMegabytes, 100)
+        XCTAssertNil(ModelInstaller.Progress(receivedBytes: 50, totalBytes: 0).percent,
+                     "Ohne Gesamtgröße gibt es auch keine Prozentzahl")
+    }
+
+    /// MB werden in Mebibyte gerechnet (1 MB = 1024 KiB), nicht in Millionen Bytes —
+    /// sonst nennt die App eine andere Zahl als der Finder.
+    func testByteSizeUsesMebibytes() {
+        XCTAssertEqual(ByteSize.megabytes(1_048_576), 1)
+        XCTAssertEqual(ByteSize.megabytes(1_000_000), 0, "Abgerundet, kein Dezimal-Megabyte")
+        XCTAssertEqual(ModelCatalog.turbo.approximateMegabytes, 1549)
+    }
 }

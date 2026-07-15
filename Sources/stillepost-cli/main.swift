@@ -92,7 +92,7 @@ case "doctor":
     // aufräumt.
     switch ModelInstaller.state(atPath: config.whisper.modelPath) {
     case .installed(let path, let bytes):
-        print("✓ Whisper-Modell: \(path) (\(bytes / 1_048_576) MB)")
+        print("✓ Whisper-Modell: \(path) (\(ByteSize.megabytes(bytes)) MB)")
     case .borrowed(let path, let target):
         problems += 1
         print("✗ Whisper-Modell ist nur geliehen: \(path)")
@@ -184,7 +184,7 @@ case "install-model":
     // Schon da? Dann nichts tun — der Befehl ist damit gefahrlos wiederholbar
     // (z. B. aus einem Setup-Skript).
     if case .installed(let path, let bytes) = ModelInstaller.state(atPath: targetPath), !force {
-        print("Modell ist schon da: \(path) (\(bytes / 1_048_576) MB)")
+        print("Modell ist schon da: \(path) (\(ByteSize.megabytes(bytes)) MB)")
         exit(0)
     }
     if case .borrowed(let path, let target) = ModelInstaller.state(atPath: targetPath) {
@@ -192,7 +192,7 @@ case "install-model":
         log("         Der Verweis wird durch eine eigene Kopie ersetzt; das Ziel bleibt unangetastet.")
     }
 
-    log("Lade \(model.name) (~\(model.approximateBytes / 1_048_576) MB) von Hugging Face …")
+    log("Lade \(model.name) (~\(model.approximateMegabytes) MB) von Hugging Face …")
     // Fortschritt nach stderr, damit stdout für das Ergebnis sauber bleibt. Nur bei
     // einem Terminal die Zeile überschreiben — in eine Datei oder Pipe geloggt wäre
     // ein Wagenrücklauf-Gewitter unlesbar.
@@ -202,11 +202,10 @@ case "install-model":
     do {
         let finalPath = try runBlocking {
             try await installer.install(model, to: targetPath) { progress in
-                guard let fraction = progress.fraction else { return }
-                let percent = Int(fraction * 100)
+                guard let percent = progress.percent else { return }
                 guard percent > lastShownPercent.value else { return }
                 lastShownPercent.value = percent
-                let line = "  \(percent) % (\(progress.receivedBytes / 1_048_576) von \(progress.totalBytes / 1_048_576) MB)"
+                let line = "  \(percent) % (\(progress.receivedMegabytes) von \(progress.totalMegabytes) MB)"
                 FileHandle.standardError.write(Data((interactive ? "\r\(line)   " : line + "\n").utf8))
             }
         }
