@@ -1,5 +1,47 @@
 # Aktiver Backlog
 
+## Whisper-Modell selbst beschaffen (Entscheidung 2026-07-15, noch nicht umgesetzt)
+
+Ziel: Stille Post soll auf einem nackten Mac benutzbar sein, ohne dass man sich
+selbst um Whisper kümmert. Heute funktioniert die App nur, weil vorher OpenWhispr
+das Modell installiert hatte — das ist kein Zustand für andere Nutzer.
+
+Daniels Festlegung: **Nur `large-v3-turbo` anbieten, keine kleineren Modelle.** So
+groß ist Turbo nicht (~1,6 GB), und schlechtere Qualität will niemand. Die App darf
+diese Entscheidung vorwegnehmen, statt sie dem Nutzer aufzuhalsen.
+
+Optional als einzige Wahl daneben: **volles `large-v3`**. Daniel will es
+ausprobieren, ob es Fremdwörter und Fachbegriffe besser trifft. Wenn es sich als
+besser erweist, kann es Standard werden — die Repo-Regel verlangt dafür Qualitäts-
+UND Latenzmessung; der Stille-Repro aus dem Abschnitt unten eignet sich zusätzlich
+als Prüfstein für Halluzinationen.
+
+Ist-Zustand, damit niemand doppelt sucht:
+
+- `scripts/install-model.sh` lädt bereits `large-v3-turbo` von Hugging Face und
+  nimmt einen Modellnamen als Argument. `scripts/install-model.sh large-v3` lädt
+  also schon heute das volle Modell — danach muss `whisper.modelPath` in der
+  config.json darauf zeigen.
+- **Bug im Skript:** Zeile 14 prüft `if [ -f "$DEST" ]`. Das ist auch für einen
+  SYMLINK wahr. Auf Daniels M3 zeigt der Modellpfad auf
+  `~/.cache/openwhispr/whisper-models/` — das Skript meldet deshalb „Modell ist
+  schon da" und lädt nie. Vor jeder Messung sicherstellen, dass wirklich eine
+  eigene Kopie liegt.
+- Die App selbst kann nichts laden. Wer nur die `.app` installiert (der normale
+  Weg für andere Nutzer), steht ohne Modell da.
+
+Zu bauen:
+
+- Modell-Download in die App bzw. die CLI holen, mit Fortschrittsanzeige und
+  Wiederaufnahme; Zielpfad ist `whisper.modelPath`. Beim ersten Start anbieten,
+  wenn das Modell fehlt — nicht ungefragt 1,6 GB ziehen.
+- `stillepost-cli doctor` soll das fehlende Modell nicht nur melden, sondern das
+  Nachladen anbieten (die CLI ist der skriptbare Weg, siehe Repo-Regel).
+- Ehrlich bleiben: Das Modell ist nur die halbe Miete. Der `whisper-server` kommt
+  weiterhin aus Homebrew (`brew install whisper-cpp`). Entweder das mit abdecken
+  oder im README klar als einzige verbleibende Voraussetzung nennen.
+- READMEs (beide Sprachen) entsprechend anpassen.
+
 ## „Vielen Dank" erscheint in Diktaten (befundet 2026-07-15, noch nicht behoben)
 
 Betrifft rund jedes dritte Diktat (11 von 29 Verlaufseinträgen). Es sind ZWEI
@@ -85,9 +127,10 @@ Latenzmessung vor einem Wechsel.
 
 ### Nebenbefund: Modellpfad hängt an OpenWhispr
 
-`~/Library/Application Support/StillePost/models/ggml-large-v3-turbo.bin` ist ein
-Symlink nach `~/.cache/openwhispr/whisper-models/`. Wird OpenWhispr deinstalliert
-oder räumt seinen Cache, verliert Stille Post sein Modell. Eigene Kopie erwägen.
+`~/Library/Application Support/StillePost/models/ggml-large-v3-turbo.bin` ist auf
+dem M3 ein Symlink nach `~/.cache/openwhispr/whisper-models/`. Räumt OpenWhispr
+seinen Cache, verliert Stille Post sein Modell. Gehört zum Abschnitt
+„Whisper-Modell selbst beschaffen" oben.
 
 ## Warm-on-Intent statt Dauer-Pin (beschlossen 2026-07-15, noch nicht umgesetzt)
 
