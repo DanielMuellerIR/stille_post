@@ -1,5 +1,94 @@
 # Aktiver Backlog
 
+## „Vielen Dank" erscheint in Diktaten (befundet 2026-07-15, noch nicht behoben)
+
+Betrifft rund jedes dritte Diktat (11 von 29 Verlaufseinträgen). Es sind ZWEI
+unabhängige Fehler, die nur zusammen dieses Bild ergeben.
+
+### Repro (billig und zuverlässig)
+
+Fünf Sekunden digitale Stille genügen — kein Mikrofon, kein Raum nötig:
+
+```bash
+python3 - <<'PY'
+import wave, struct
+with wave.open("/tmp/silence.wav","w") as w:
+    w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+    w.writeframes(struct.pack("<%dh" % (16000*5), *([0]*(16000*5))))
+PY
+curl -s http://127.0.0.1:8181/inference -F file=@/tmp/silence.wav \
+     -F response_format=json -F temperature=0 -F language=de
+# liefert: {"text":" Vielen Dank.\n"}
+```
+
+Wichtig für die Lösungssuche: Eine Konfidenz-Schwelle hilft NICHT. Bei genau dieser
+Stille meldet Whisper `no_speech_prob: 2.95e-08` und `avg_logprob: -0.25` — es ist
+sich absolut sicher, Sprache gehört zu haben. `verbose_json` liefert diese Felder,
+aber sie taugen hier nicht als Signal.
+
+### Fehler 1 — Whisper bekommt Stille, die es nie sehen dürfte
+
+`VadSegmenter.closeSegment` kürzt die Stille am Segmentende nur
+`if reason == .pause`. Beim Stopp der Aufnahme (`.flush`) und am 30-s-Limit
+(`.maxLength`) bleibt sie im Segment und geht an Whisper. Dazu passt die
+Positionsverteilung im Verlauf: 7 von 11 Fällen kleben am ENDE des Textes, 2 am
+Anfang, 2 mittendrin, 0 stehen allein.
+
+Belegt: dass Whisper auf Stille halluziniert und dass dieser Trim fehlt.
+Hypothese: dass genau dieser Pfad die beobachteten Fälle erzeugt. Vor dem Fix mit
+einer WAV aus „okay" + 10 s Stille durch beide Pfade nachweisen.
+
+Fix: Stille am Segmentende bei JEDEM Schließgrund auf `paddingSec` kürzen. Dabei
+auch prüfen, ob die Stille am Segment-ANFANG gekürzt gehört (Aufnahmestart bis zum
+ersten Wort ist heute ungekürzt). Testbar in `VadSegmenterTests`.
+
+### Fehler 2 — die Bereinigung löscht echten Text
+
+Der schlimmere Teil. Verlaufseintrag 2026-07-15T19:38:06:
+
+```
+rawText   (Whisper):     "Okay. Vielen Dank."
+cleanText (Bereinigung): "Vielen Dank."
+```
+
+Whisper hatte das gesprochene „Okay." korrekt erfasst; die Bereinigung hat es
+gelöscht und die Halluzination behalten. Die Plausibilitätsprüfung
+(`CleanupService.sanityCheckFailure`) erlaubt bei Rohtexten unter 60 Zeichen
+Schrumpfung bis auf 20 % — 18 → 12 Zeichen rutscht durch.
+
+Fix: Korridor für kurze Texte enger ziehen, ohne den legitimen Fall zu brechen
+(„ähm ja Punkt" → „Ja." ist gewollt und steht als Kommentar im Code). Ein Diktat
+darf nie Inhalt verlieren; im Zweifel Rohtext liefern.
+
+### Fehler 3 — der Artefakt-Filter kann prinzipiell nicht greifen
+
+`WhisperClient.cleanWhisperArtifacts` kennt `"vielen dank fürs zuschauen"`, aber
+nicht das nackte `"vielen dank"` — und vergleicht auf exakte Gleichheit der GANZEN
+Ausgabe. Da die Floskel immer an echtem Text klebt (0 von 11 Fällen standen allein),
+greift der Filter nie.
+
+Fix zuletzt und vorsichtig: die Floskel auch als führenden/schließenden Satz
+entfernen. Heikel, weil „Vielen Dank." am Ende eines Diktats echt gemeint sein kann.
+Am liebsten nur anwenden, wenn Stille im Spiel war — sonst löscht die App echten
+Text, und das ist genau der Fehler, den wir gerade beheben. Erst Fehler 1 lösen und
+messen, ob danach überhaupt noch etwas übrig bleibt.
+
+### Whisper-Modellwechsel — beantwortet, aber schwach
+
+Läuft bereits auf `large-v3-turbo`. Nach oben gäbe es nur das volle `large-v3`
+(~3 GB, nicht lokal vorhanden). Die Stille-Halluzination ist bei allen
+Whisper-Modellen dokumentiert und steckt in den Trainingsdaten (YouTube-Untertitel),
+nicht in der Modellgröße — ein Wechsel würde sie höchstens seltener machen, nicht
+beheben. Fehler 1 zuerst. Falls danach noch gemessen werden soll: Der Repro oben
+eignet sich als Prüfstein, und die Repo-Regel verlangt ohnehin Qualitäts- UND
+Latenzmessung vor einem Wechsel.
+
+### Nebenbefund: Modellpfad hängt an OpenWhispr
+
+`~/Library/Application Support/StillePost/models/ggml-large-v3-turbo.bin` ist ein
+Symlink nach `~/.cache/openwhispr/whisper-models/`. Wird OpenWhispr deinstalliert
+oder räumt seinen Cache, verliert Stille Post sein Modell. Eigene Kopie erwägen.
+
 ## Warm-on-Intent statt Dauer-Pin (beschlossen 2026-07-15, noch nicht umgesetzt)
 
 Ziel: Das Bereinigungsmodell soll nicht mehr dauerhaft im Speicher hängen, sondern
