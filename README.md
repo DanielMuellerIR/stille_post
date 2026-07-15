@@ -57,6 +57,13 @@ ever lands in your wait time.
   can be delegated to any OpenAI-compatible provider. In that case only the
   transcribed **text** is sent, never audio.
 
+## Menu bar & history
+
+| | |
+|:---:|:---:|
+| ![Menu bar menu](assets/menu.jpg) | ![History window](assets/history.jpg) |
+| *Menu bar: start/stop, history, settings, quit* | *History: every dictation (raw + cleaned), copy with one click* |
+
 ## Scriptable without the GUI (scripts & AI agents)
 
 The entire pipeline is usable headless, with the same logic and configuration:
@@ -98,7 +105,19 @@ On first launch macOS asks for two permissions: **Microphone** (recording) and
 All settings are available as a dialog in the menu bar menu under **"Einstellungen …"**
 (Settings). Underneath lives `~/Library/Application Support/StillePost/config.json`
 (created on first launch, menu item "Konfigurationsdatei öffnen"). The file stays
-hand-editable. The most important switches:
+hand-editable.
+
+The dialog is organized into four tabs, so the common cases never require editing
+JSON (the cleanup model shown is just an example, not a recommendation):
+
+| | |
+|:---:|:---:|
+| ![General tab](assets/settings-general.jpg) | ![Cleanup tab](assets/settings-cleanup.jpg) |
+| *General — recording hotkey & overlay* | *Cleanup — provider, model, context, fallbacks* |
+| ![Speech recognition tab](assets/settings-speech.jpg) | ![Recording tab](assets/settings-recording.jpg) |
+| *Speech recognition — language & Whisper server* | *Recording — silence detection & auto-stop* |
+
+The most important switches:
 
 | Section | Field | Meaning |
 |---|---|---|

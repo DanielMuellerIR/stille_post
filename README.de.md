@@ -59,6 +59,13 @@ Aufnahme-**Start** vorgewärmt, damit kein Modell-Kaltstart in die Wartezeit fä
   lässt sich die Bereinigung an einen beliebigen OpenAI-kompatiblen Anbieter geben.
   Dann geht ausschließlich der transkribierte **Text** dorthin, niemals Audio.
 
+## Menüleiste & Verlauf
+
+| | |
+|:---:|:---:|
+| ![Menüleisten-Menü](assets/menu.jpg) | ![Verlauf-Fenster](assets/history.jpg) |
+| *Menüleiste: Start/Stopp, Verlauf, Einstellungen, Beenden* | *Verlauf: jedes Diktat (roh + bereinigt), Kopieren per Klick* |
+
 ## Steuerbar ohne GUI (Skripte & AI-Agenten)
 
 Die komplette Pipeline ist headless nutzbar, mit gleicher Logik und gleicher Konfiguration:
@@ -100,7 +107,19 @@ Beim ersten Start fragt macOS nach zwei Berechtigungen: **Mikrofon** (Aufnahme) 
 Alle Einstellungen gibt es im Menüleisten-Menü unter **„Einstellungen …"** als
 Dialog. Darunter liegt `~/Library/Application Support/StillePost/config.json`
 (entsteht beim ersten Start, Menüpunkt „Konfigurationsdatei öffnen"). Die Datei
-bleibt von Hand editierbar. Die wichtigsten Schalter:
+bleibt von Hand editierbar.
+
+Der Dialog ist in vier Tabs gegliedert, die üblichen Fälle brauchen also kein JSON
+(das gezeigte Bereinigungsmodell ist nur ein Beispiel, keine Empfehlung):
+
+| | |
+|:---:|:---:|
+| ![Tab Allgemein](assets/settings-general.jpg) | ![Tab Bereinigung](assets/settings-cleanup.jpg) |
+| *Allgemein — Aufnahme-Hotkey & Overlay* | *Bereinigung — Anbieter, Modell, Kontext, Fallbacks* |
+| ![Tab Spracherkennung](assets/settings-speech.jpg) | ![Tab Aufnahme](assets/settings-recording.jpg) |
+| *Spracherkennung — Sprache & Whisper-Server* | *Aufnahme — Stille-Erkennung & Auto-Stopp* |
+
+Die wichtigsten Schalter:
 
 | Bereich | Feld | Bedeutung |
 |---|---|---|
