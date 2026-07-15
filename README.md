@@ -70,6 +70,7 @@ The entire pipeline is usable headless, with the same logic and configuration:
 
 ```bash
 stillepost-cli doctor                  # check dependencies (exit code 0 = ready)
+stillepost-cli install-model           # fetch the Whisper model (resumable)
 stillepost-cli transcribe file.wav     # WAV -> cleaned text on stdout
 stillepost-cli transcribe file.wav --raw
 stillepost-cli cleanup "raw text"      # cleanup only ("-" reads stdin)
@@ -82,6 +83,16 @@ Diagnostics go to stderr, results to stdout, failures exit non-zero. Built for
 pipes and automation. The `STILLEPOST_CONFIG` environment variable points to an
 alternative config file (e.g. for tests).
 
+The CLI ships inside the app bundle and is not on your PATH by default. Link it once:
+
+```bash
+sudo ln -sf /Applications/StillePost.app/Contents/MacOS/stillepost-cli \
+            /usr/local/bin/stillepost-cli
+```
+
+Without the link, the full path works too:
+`/Applications/StillePost.app/Contents/MacOS/stillepost-cli doctor`
+
 ## Installation
 
 Requirements: macOS 14+, [Homebrew](https://brew.sh), [Ollama](https://ollama.com).
@@ -92,13 +103,44 @@ ollama pull qwen3.5:9b            # default cleanup model (~6 GB loaded — a se
                                   # compromise, comfortable on 16–32 GB Macs)
 # Want higher quality and have the RAM to spare? gemma4:26b (~18 GB loaded, needs a
 # 32 GB+ Mac) is noticeably stronger; select it via config.json/settings.
-scripts/install-model.sh          # Whisper model large-v3-turbo (~1.6 GB)
 scripts/build-app.sh --install    # builds the app and installs it to /Applications
 open /Applications/StillePost.app
 ```
 
+The Whisper model is **not** in that list on purpose: the app offers to download it
+on first launch if it is missing (`large-v3-turbo`, ~1.6 GB) and shows progress.
+Prefer to do it yourself, or scripting a machine?
+
+```bash
+scripts/install-model.sh                # straight from the repo, needs nothing else
+scripts/install-model.sh large-v3       # the only alternative (~3.1 GB), see below
+
+# or via the CLI (for its path, see "Scriptable without the GUI"):
+stillepost-cli install-model
+```
+
+Both routes resume interrupted downloads and verify completeness — at 1.6 GB you do
+not want to start over.
+
+Being honest about what is left: `brew install whisper-cpp` above is the **one
+remaining manual prerequisite**. Stille Post fetches its own model, but it does not
+install the whisper.cpp server for you — it will not reach into your package manager.
+`stillepost-cli doctor` tells you if it is missing.
+
 On first launch macOS asks for two permissions: **Microphone** (recording) and
 **Accessibility** (pasting at the cursor via simulated ⌘V).
+
+### Which Whisper model?
+
+Two, deliberately — a long model list would only shift the decision onto you:
+
+| Model | Size | When |
+|---|---|---|
+| `large-v3-turbo` | ~1.6 GB | **Default.** Best mix of quality and speed. |
+| `large-v3` | ~3.1 GB | Only if foreign words and jargon have to land better. Slower. |
+
+Smaller models are not offered: worse recognition is not a trade anyone wants, and
+turbo is not that big.
 
 ## Configuration
 

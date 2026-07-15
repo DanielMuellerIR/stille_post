@@ -72,6 +72,7 @@ Die komplette Pipeline ist headless nutzbar, mit gleicher Logik und gleicher Kon
 
 ```bash
 stillepost-cli doctor                  # prüft Abhängigkeiten (Exit-Code 0 = bereit)
+stillepost-cli install-model           # Whisper-Modell laden (setzt Abbrüche fort)
 stillepost-cli transcribe datei.wav    # WAV -> Text (mit Bereinigung) auf stdout
 stillepost-cli transcribe datei.wav --raw
 stillepost-cli cleanup "roher text"    # nur die Textbereinigung ("-" liest stdin)
@@ -84,6 +85,16 @@ Diagnose geht nach stderr, das Ergebnis nach stdout, Fehler geben Exit-Code ≠ 
 Gebaut für Pipes und Automatisierung. Die Umgebungsvariable `STILLEPOST_CONFIG`
 zeigt auf eine alternative Konfigurationsdatei (z. B. für Tests).
 
+Die CLI steckt im App-Bundle und liegt nicht von selbst im PATH. Einmalig verlinken:
+
+```bash
+sudo ln -sf /Applications/StillePost.app/Contents/MacOS/stillepost-cli \
+            /usr/local/bin/stillepost-cli
+```
+
+Ohne Verlinkung geht auch der volle Pfad:
+`/Applications/StillePost.app/Contents/MacOS/stillepost-cli doctor`
+
 ## Installation
 
 Voraussetzungen: macOS 14+, [Homebrew](https://brew.sh), [Ollama](https://ollama.com).
@@ -94,13 +105,44 @@ ollama pull qwen3.5:9b            # Standard-Bereinigungsmodell (~6 GB geladen �
                                   # vernünftiger Kompromiss, läuft gut auf 16–32-GB-Macs)
 # Mehr Qualität und RAM übrig? gemma4:26b (~18 GB geladen, braucht einen
 # 32-GB+-Mac) ist deutlich stärker; per config.json/Einstellungen wählbar.
-scripts/install-model.sh          # Whisper-Modell large-v3-turbo (~1,6 GB)
 scripts/build-app.sh --install    # baut die App und installiert nach /Applications
 open /Applications/StillePost.app
 ```
 
+Das Whisper-Modell fehlt in dieser Liste mit Absicht: Die App bietet beim ersten
+Start an, es zu laden, falls es fehlt (`large-v3-turbo`, ~1,6 GB), und zeigt den
+Fortschritt. Lieber selbst in der Hand oder auf mehreren Rechnern skriptbar?
+
+```bash
+scripts/install-model.sh                # aus dem Repo heraus, braucht nichts weiter
+scripts/install-model.sh large-v3       # die einzige Alternative (~3,1 GB), siehe unten
+
+# oder über die CLI (Pfad siehe „Steuerbar ohne GUI"):
+stillepost-cli install-model
+```
+
+Beide Wege setzen abgebrochene Downloads fort und prüfen die Datei auf
+Vollständigkeit — bei 1,6 GB will man nicht von vorn anfangen.
+
+Ehrlich bleiben, was übrig bleibt: `brew install whisper-cpp` oben ist die **einzige
+verbleibende Handarbeit**. Stille Post holt sein Modell selbst, installiert aber
+nicht den whisper.cpp-Server für dich — die App greift nicht in fremde
+Paketverwaltungen ein. `stillepost-cli doctor` sagt dir, wenn er fehlt.
+
 Beim ersten Start fragt macOS nach zwei Berechtigungen: **Mikrofon** (Aufnahme) und
 **Bedienungshilfen** (fürs Einfügen an der Cursor-Position per simuliertem ⌘V).
+
+### Welches Whisper-Modell?
+
+Bewusst nur zwei — eine lange Modell-Liste schiebt die Entscheidung nur auf dich ab:
+
+| Modell | Größe | Wann |
+|---|---|---|
+| `large-v3-turbo` | ~1,6 GB | **Standard.** Beste Mischung aus Qualität und Tempo. |
+| `large-v3` | ~3,1 GB | Nur, wenn Fremdwörter und Fachbegriffe besser sitzen müssen. Langsamer. |
+
+Kleinere Modelle gibt es nicht: Schlechtere Erkennung will niemand, und so groß ist
+Turbo nicht.
 
 ## Konfiguration
 

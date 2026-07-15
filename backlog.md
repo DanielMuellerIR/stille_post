@@ -48,14 +48,19 @@ Stand nach 0.8.0 — die Beschaffung selbst ist gebaut:
 - `scripts/install-model.sh` bleibt als skriptbarer Weg und kann dasselbe.
 - Der M3 hat seit 2026-07-15 eine eigene Kopie; der OpenWhispr-Cache ist weg.
 
+READMEs sind in beiden Sprachen nachgezogen: Modellbeschaffung, die zwei angebotenen
+Modelle, und `brew install whisper-cpp` klar als einzige verbleibende Handarbeit
+benannt (Daniels Entscheidung 2026-07-15: dokumentieren, nicht abdecken — die App
+greift nicht in fremde Paketverwaltungen ein und bettet nichts ein).
+
 Offen:
 
-- **READMEs (beide Sprachen).** Modellbeschaffung erklären und ehrlich bleiben: Das
-  Modell ist nur die halbe Miete, der `whisper-server` kommt weiterhin aus Homebrew
-  (`brew install whisper-cpp`). Daniels Entscheidung 2026-07-15: nur dokumentieren,
-  nicht abdecken — die App ruft keine fremden Paketmanager auf und bettet nichts ein.
 - Der Modell-Download der App ist noch nicht per GUI-Smoke-Test gesehen worden;
   Kern und CLI sind gegen das echte Hugging Face verifiziert.
+- **Die CLI liegt nicht im PATH** — sie steckt im App-Bundle unter
+  `/Applications/StillePost.app/Contents/MacOS/stillepost-cli`. Die READMEs erklären
+  jetzt den Symlink nach `/usr/local/bin`, aber `build-app.sh --install` könnte das
+  auch selbst anbieten. Offene Entscheidung, weil es sudo braucht.
 
 ## „Vielen Dank"-Artefaktfilter (zurückgestellt 2026-07-15)
 
