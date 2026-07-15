@@ -97,11 +97,9 @@ Beschlossene Eckwerte (Entscheidungen von Daniel, nicht neu verhandeln):
 
 ### Teil A — Stille Post: keep_alive konfigurierbar — ERLEDIGT in 0.7.0
 
-Umgesetzt und gegen ein echtes Ollama verifiziert. Offen bleibt nur eines: Der
-GUI-Smoke-Test des neuen Dropdowns wurde nicht visuell durchgeführt. Das Verhalten
-dahinter ist per Log-Messung belegt; ein Blick auf das Dropdown im Bereinigungs-Tab
-beim nächsten echten App-Start genügt. Siehe „GUI-Tests dieser App" unten — die
-frühere Begründung („nicht im Spotlight-Index") war falsch.
+Umgesetzt und gegen ein echtes Ollama verifiziert. Der ausstehende Blick aufs
+Dropdown im Bereinigungs-Tab ist am 2026-07-16 erfolgt (Daniel, an 0.8.0): ist da
+und lesbar. Teil A ist damit vollständig abgeschlossen.
 
 Bewusste Grenze (gilt weiter): Echte Ollama-*Daemon*-Konfiguration
 (`OLLAMA_HOST=0.0.0.0`, globaler `OLLAMA_KEEP_ALIVE`, `ollama pull`) kann die App für
@@ -164,17 +162,31 @@ war falsch und hat die Suche in die falsche Richtung geschickt:
   Anzeigename „StillePost" noch die Bundle-ID werden gefunden.
 - `LSUIElement` ist kein Fehler, sondern Absicht (Menüleisten-App). Es soll bleiben.
 
-Weg, der funktionieren sollte: Daniel tippt `@StillePost` in den Prompt — das
-adressiert die App direkt und hängt nicht an der Liste. Ungetestet.
+Auch der dokumentierte Ausweg „`@StillePost` in den Prompt tippen" hilft nicht —
+2026-07-16 probiert, die App bleibt unauflösbar. Es gibt damit keinen bekannten Weg,
+diese App per Computersteuerung zu testen.
 
-Offen und darum weiterhin nur am echten Bildschirm prüfbar:
+Was bleibt: Daniel schaut selbst (dauert ~30 s), oder jemand baut einen Test-Hook
+`STILLEPOST_DOCK_ICON=1`, der `setActivationPolicy(.accessory)` überspringt — dann
+wäre die App für die Computersteuerung sichtbar. Passt zum vorhandenen Muster
+(`STILLEPOST_OPEN_SETTINGS`, `STILLEPOST_OVERLAY_PREVIEW`, `STILLEPOST_NO_AX_PROMPT`,
+`STILLEPOST_NO_MODEL_PROMPT`), ist aber bisher nicht gebaut und nicht beschlossen.
 
-- keep_alive-Dropdown im Bereinigungs-Tab (Rest aus Teil A/0.7.0).
-- Login-Item-Schalter im Tab „Allgemein" (dafür fehlt auch noch der echte
-  Ab-/Anmeldezyklus; die Registrierung selbst wäre schon ein Fortschritt).
-- Modell-Dialog beim Start, wenn das Modell fehlt oder nur geliehen ist.
-  Gefahrlos testbar über eine wegwerfbare `STILLEPOST_CONFIG` mit falschem
-  `whisper.modelPath` — die echte Config und das echte Modell bleiben unberührt.
+Erledigt am 2026-07-16 auf diesem Weg (Daniel am Schirm, an 0.8.0):
+
+- keep_alive-Dropdown: da und lesbar.
+- Login-Item-Schalter: da, anklickbar, hält beim Einschalten. Systemseitig belegt
+  über `sfltool dumpbtm` (ohne root lesbar): `io.github.danielmuellerir.stillepost`,
+  URL `/Applications/StillePost.app/`, `Disposition: [enabled, allowed, notified]`.
+
+Weiterhin offen:
+
+- Der echte Ab-/Anmeldezyklus für das Login-Item (Daniels Entscheidung: im Alltag,
+  die Registrierung genügt als Beleg).
+- Modell-Dialog beim Start, wenn das Modell fehlt oder nur geliehen ist. Gefahrlos
+  testbar über eine wegwerfbare `STILLEPOST_CONFIG` mit falschem `whisper.modelPath`
+  — braucht aber einen zweiten Start, und der Einzelinstanz-Schutz lässt keine zwei
+  zu; die laufende App muss also kurz weichen.
 
 ## Weitere offene Arbeit
 
@@ -187,7 +199,8 @@ Offen und darum weiterhin nur am echten Bildschirm prüfbar:
   er auf die meisten Macs passt, und wie man auf ein größeres Bereinigungsmodell wie
   `gemma4:26b` umstellt — samt ehrlicher RAM-Angabe (~18 GB nur für Textbereinigung)
   und dem Hinweis, dass das die Luxusvariante für starke Rechner ist.
-- Login-Item ergänzen und Start-/Deaktivierungsverhalten testen.
+- Login-Item: gebaut und verifiziert in 0.8.1. Offen bleibt nur das Deaktivieren im
+  Alltag und der echte Ab-/Anmeldezyklus.
 - Optional später: Live-Text-Anzeige und Silero-VAD evaluieren.
 
 Erledigte Release-, README-, Lizenz-, GitHub- und Settings-Arbeit gehört in
