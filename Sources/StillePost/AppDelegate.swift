@@ -30,9 +30,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // des App-Bundles; .accessory deckt den `swift run`-Entwicklungsfall ab).
         NSApp.setActivationPolicy(.accessory)
 
-        settingsWindow = SettingsWindowController { [weak self] newConfig in
-            self?.applySettings(newConfig)
-        }
+        settingsWindow = SettingsWindowController(
+            onApply: { [weak self] newConfig in
+                self?.applySettings(newConfig)
+            },
+            onHotkeyRecording: { [weak self] recording in
+                self?.suspendHotkey(recording)
+            }
+        )
 
         setupStatusItem()
         buildComponents()
@@ -75,11 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         historyWindow = HistoryWindowController(engine: engine)
         setupEngineCallbacks()
 
-        // Globaler Hotkey: Aufnahme ein/aus. (Der alte HotkeyManager deregistriert
-        // sich in seinem deinit selbst — einfaches Ersetzen reicht.)
-        hotkey = HotkeyManager(config: config.hotkey) { [weak self] in
-            self?.engine.toggle()
-        }
+        registerHotkey()
 
         // Klick aufs Overlay stoppt ebenfalls.
         overlay.onClickStop = { [weak self] in
@@ -108,6 +109,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard CleanupService.pinsForever(config.cleanup.keepAlive) else { return }
         warmUpTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.engine.keepCleanupModelWarm()
+        }
+    }
+
+    /// Meldet den globalen Hotkey an: Aufnahme ein/aus. (Ein alter HotkeyManager
+    /// deregistriert sich in seinem deinit selbst — einfaches Ersetzen reicht.)
+    private func registerHotkey() {
+        hotkey = HotkeyManager(config: config.hotkey) { [weak self] in
+            self?.engine.toggle()
+        }
+    }
+
+    /// Meldet den globalen Hotkey vorübergehend ab, solange der Einstellungsdialog
+    /// eine neue Kombination aufnimmt. Ohne das würde Carbon den bisherigen Hotkey
+    /// abfangen: Wer ⌘⌥D aufnehmen will, startet sonst ein Diktat, statt die
+    /// Kombination zu setzen. Danach wieder anmelden — mit der GESPEICHERTEN Config,
+    /// denn der Dialog arbeitet auf einer Kopie, die erst „Speichern“ übernimmt.
+    private func suspendHotkey(_ suspended: Bool) {
+        if suspended {
+            hotkey = nil
+        } else {
+            registerHotkey()
         }
     }
 

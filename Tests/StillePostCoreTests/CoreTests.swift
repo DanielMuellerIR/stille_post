@@ -146,6 +146,28 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(chain[0].provider, "ollama")
     }
 
+    // MARK: Hotkey
+
+    func testHotkeyNeedsAStrongModifier() {
+        // Sicherheitsgrenze des Hotkey-Recorders: Ein global registrierter Hotkey
+        // OHNE ⌘/⌥/⌃ würde die Taste systemweit schlucken — dann ließe sich das
+        // Zeichen nirgends mehr tippen.
+        var hotkey = Config.Hotkey()
+        hotkey.modifiers = []
+        XCTAssertFalse(hotkey.isUsableGlobally, "nackte Taste darf nicht durchgehen")
+        hotkey.modifiers = ["shift"]
+        XCTAssertFalse(hotkey.isUsableGlobally, "⇧ allein reicht nicht — ⇧D ist ein Großbuchstabe")
+        hotkey.modifiers = ["cmd"]
+        XCTAssertTrue(hotkey.isUsableGlobally)
+        hotkey.modifiers = ["shift", "ctrl"]
+        XCTAssertTrue(hotkey.isUsableGlobally, "⇧ zusammen mit ⌃ ist in Ordnung")
+    }
+
+    func testHotkeyDefaultIsUsable() {
+        // Der eingebaute Default ⌘⌥D muss die eigene Regel erfüllen.
+        XCTAssertTrue(Config.Hotkey().isUsableGlobally)
+    }
+
     // MARK: keep_alive (wie lange das Modell geladen bleibt)
 
     func testKeepAliveNumericValuesBecomeNumbers() {

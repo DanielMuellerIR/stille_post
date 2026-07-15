@@ -174,6 +174,15 @@ public struct Config: Codable, Equatable {
         /// Default ⌘⌥D — gleiche Belegung wie der frühere Hammerspoon-Prototyp.
         public var modifiers: [String] = ["cmd", "opt"]
 
+        /// Taugt die Kombination als GLOBALER Hotkey? Ohne ⌘, ⌥ oder ⌃ würde die
+        /// Taste systemweit abgefangen — man könnte das Zeichen dann nirgends mehr
+        /// tippen. ⇧ allein reicht deshalb NICHT: ⇧D ist ein Großbuchstabe, den man
+        /// beim Schreiben braucht. Der Hotkey-Recorder lehnt solche Kombinationen ab.
+        public var isUsableGlobally: Bool {
+            let strong = ["cmd", "command", "opt", "option", "alt", "ctrl", "control"]
+            return modifiers.contains { strong.contains($0.lowercased()) }
+        }
+
         public init() {}
     }
 

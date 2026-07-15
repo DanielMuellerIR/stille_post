@@ -79,7 +79,6 @@ wiederkehrt, und die Quelle finden.
 - Cleanup-Qualität und Latenz mit repräsentativen deutschen Diktaten messen und die
   Modellwahl `gemma4:26b` gegen Kandidaten wie `qwen3.5:9b` evidenzbasiert bestätigen
   oder korrigieren.
-- GUI-Hotkey-Recorder fertigstellen und als echtes App-Bundle prüfen.
 - Login-Item ergänzen und Start-/Deaktivierungsverhalten testen.
 - Optional später: Live-Text-Anzeige und Silero-VAD evaluieren.
 

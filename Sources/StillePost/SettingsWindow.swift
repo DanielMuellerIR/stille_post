@@ -11,9 +11,13 @@ final class SettingsWindowController {
     private var window: NSWindow?
     /// Wird beim Speichern mit der neuen Config aufgerufen (App wendet sie an).
     private let onApply: (Config) -> Void
+    /// true = der Hotkey-Recorder nimmt gerade auf, die App muss den globalen
+    /// Hotkey solange abmelden (sonst fängt Carbon die Kombination ab).
+    private let onHotkeyRecording: (Bool) -> Void
 
-    init(onApply: @escaping (Config) -> Void) {
+    init(onApply: @escaping (Config) -> Void, onHotkeyRecording: @escaping (Bool) -> Void) {
         self.onApply = onApply
+        self.onHotkeyRecording = onHotkeyRecording
     }
 
     func show() {
@@ -36,7 +40,8 @@ final class SettingsWindowController {
                 self?.onApply(newConfig)
                 self?.window?.close()
             },
-            onCancel: { [weak self] in self?.window?.close() }
+            onCancel: { [weak self] in self?.window?.close() },
+            onHotkeyRecording: { [weak self] recording in self?.onHotkeyRecording(recording) }
         ))
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -65,9 +70,12 @@ struct SettingsView: View {
     @State private var tab: Tab
     let onApply: (Config) -> Void
     let onCancel: () -> Void
+    let onHotkeyRecording: (Bool) -> Void
 
-    init(config: Config, onApply: @escaping (Config) -> Void, onCancel: @escaping () -> Void) {
+    init(config: Config, onApply: @escaping (Config) -> Void, onCancel: @escaping () -> Void,
+         onHotkeyRecording: @escaping (Bool) -> Void = { _ in }) {
         _config = State(initialValue: config)
+        self.onHotkeyRecording = onHotkeyRecording
         // Automatisierte GUI-Checks können über die Env-Var direkt einen
         // bestimmten Bereich öffnen (Wert = Tab-Name, sonst "Allgemein").
         let requested = ProcessInfo.processInfo.environment["STILLEPOST_OPEN_SETTINGS"] ?? ""
@@ -86,7 +94,7 @@ struct SettingsView: View {
             .padding(12)
 
             switch tab {
-            case .allgemein: GeneralTab(config: $config)
+            case .allgemein: GeneralTab(config: $config, onHotkeyRecording: onHotkeyRecording)
             case .bereinigung: CleanupTab(cleanup: $config.cleanup)
             case .spracherkennung: WhisperTab(whisper: $config.whisper)
             case .aufnahme: VadTab(vad: $config.vad)
@@ -113,29 +121,13 @@ struct SettingsView: View {
 
 private struct GeneralTab: View {
     @Binding var config: Config
+    /// Meldet der App, dass gerade eine Kombination aufgenommen wird (siehe HotkeyRecorder).
+    let onHotkeyRecording: (Bool) -> Void
 
     var body: some View {
         Form {
             Section("Aufnahme-Hotkey") {
-                LabeledContent("Zusatztasten") {
-                    HStack(spacing: 16) {
-                        Toggle("⌘", isOn: modifierBinding("cmd")).toggleStyle(.checkbox)
-                        Toggle("⌥", isOn: modifierBinding("opt")).toggleStyle(.checkbox)
-                        Toggle("⌃", isOn: modifierBinding("ctrl")).toggleStyle(.checkbox)
-                        Toggle("⇧", isOn: modifierBinding("shift")).toggleStyle(.checkbox)
-                    }
-                }
-                LabeledContent("Taste (Keycode)") {
-                    TextField("", value: $config.hotkey.keyCode, format: .number.grouping(.never))
-                        .frame(width: 70)
-                        .multilineTextAlignment(.trailing)
-                }
-                LabeledContent("Ergebnis") {
-                    Text(HotkeyManager.describe(config.hotkey)).bold()
-                }
-                Text("Keycode ist der virtuelle Tastencode (Carbon), z. B. 49 = Leertaste, 2 = D.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                HotkeyRecorder(hotkey: $config.hotkey, onRecordingChanged: onHotkeyRecording)
             }
             Section("Oberfläche") {
                 Picker("Overlay-Position", selection: $config.ui.overlayPosition) {
@@ -147,19 +139,84 @@ private struct GeneralTab: View {
         }
         .formStyle(.grouped)
     }
+}
 
-    /// Binding für einen einzelnen Modifier ("cmd"/"opt"/…) auf die String-Liste.
-    private func modifierBinding(_ name: String) -> Binding<Bool> {
-        Binding(
-            get: { config.hotkey.modifiers.contains(name) },
-            set: { on in
-                if on {
-                    if !config.hotkey.modifiers.contains(name) { config.hotkey.modifiers.append(name) }
-                } else {
-                    config.hotkey.modifiers.removeAll { $0 == name }
+/// Nimmt eine echte Tastenkombination auf, statt sie aus Zahlen zusammensetzen zu
+/// lassen (vorher musste man den Carbon-Keycode kennen — das weiß niemand auswendig).
+///
+/// Während der Aufnahme meldet die View das der App: Die muss den globalen Hotkey
+/// kurz abmelden, sonst fängt Carbon genau die Kombination ab, die aufgenommen
+/// werden soll — ⌘⌥D würde ein Diktat starten statt hier anzukommen.
+private struct HotkeyRecorder: View {
+    @Binding var hotkey: Config.Hotkey
+    let onRecordingChanged: (Bool) -> Void
+
+    @State private var recording = false
+    @State private var monitor: Any?
+    @State private var hint: String?
+
+    var body: some View {
+        LabeledContent("Tastenkombination") {
+            HStack(spacing: 12) {
+                Text(recording ? "Jetzt drücken …" : HotkeyManager.describe(hotkey))
+                    .bold()
+                    .foregroundColor(recording ? .secondary : .primary)
+                    .frame(minWidth: 110, alignment: .leading)
+                Button(recording ? "Abbrechen" : "Hotkey aufnehmen") {
+                    if recording { cancel() } else { start() }
                 }
             }
-        )
+        }
+        Text(hint ?? "„Hotkey aufnehmen“ drücken und die gewünschte Kombination tippen — mindestens ⌘, ⌥ oder ⌃ dabei.")
+            .font(.caption)
+            .foregroundColor(.secondary)
+        // Fenster zu, während die Aufnahme läuft: Monitor abräumen und den globalen
+        // Hotkey wieder anmelden — sonst bliebe die App ohne Hotkey zurück.
+        .onDisappear { if recording { cancel() } }
+    }
+
+    private func start() {
+        recording = true
+        hint = "Kombination drücken. ⎋ bricht ab."
+        onRecordingChanged(true)
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            handle(event)
+            return nil  // Event schlucken — es darf nicht in Felder/Buttons durchsickern
+        }
+    }
+
+    /// Beendet die Aufnahme (Monitor weg, App meldet den globalen Hotkey wieder an).
+    private func stopRecording() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+        recording = false
+        onRecordingChanged(false)
+    }
+
+    private func cancel() {
+        stopRecording()
+        hint = "Abgebrochen — es bleibt bei \(HotkeyManager.describe(hotkey))."
+    }
+
+    private func handle(_ event: NSEvent) {
+        let modifiers = HotkeyManager.modifierNames(from: event.modifierFlags)
+        // ⎋ ohne Zusatztasten = abbrechen. (Mit Zusatztasten darf ⎋ ein Hotkey sein.)
+        if event.keyCode == 53, modifiers.isEmpty {
+            cancel()
+            return
+        }
+        var candidate = Config.Hotkey()
+        candidate.keyCode = Int(event.keyCode)
+        candidate.modifiers = modifiers
+        // Zu schwache Kombination: NICHT übernehmen, aber weiter aufnehmen — der
+        // Nutzer soll einfach noch mal drücken, ohne den Knopf erneut zu suchen.
+        guard candidate.isUsableGlobally else {
+            hint = "\(HotkeyManager.describe(candidate)) reicht nicht: Ohne ⌘, ⌥ oder ⌃ wäre die Taste systemweit blockiert. Bitte noch mal."
+            return
+        }
+        hotkey = candidate
+        stopRecording()
+        hint = "Neu: \(HotkeyManager.describe(candidate)) — mit „Speichern“ übernehmen."
     }
 }
 

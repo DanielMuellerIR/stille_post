@@ -47,6 +47,17 @@ final class HotkeyManager {
         if let eventHandler { RemoveEventHandler(eventHandler) }
     }
 
+    /// Übersetzt die Zusatztasten eines ECHTEN Tastendrucks in unsere Config-Strings.
+    /// Reihenfolge wie im Default (⌘⌥⌃⇧), damit describe() stabil dasselbe zeigt.
+    static func modifierNames(from flags: NSEvent.ModifierFlags) -> [String] {
+        var names: [String] = []
+        if flags.contains(.command) { names.append("cmd") }
+        if flags.contains(.option) { names.append("opt") }
+        if flags.contains(.control) { names.append("ctrl") }
+        if flags.contains(.shift) { names.append("shift") }
+        return names
+    }
+
     /// Menschenlesbare Beschreibung des Hotkeys (für Menü und Doku).
     static func describe(_ config: Config.Hotkey) -> String {
         var parts: [String] = []
@@ -63,16 +74,48 @@ final class HotkeyManager {
         return parts.joined()
     }
 
-    /// Namen der wichtigsten Tasten (nur fürs Anzeigen; die Registrierung nutzt den Keycode).
-    private static func keyName(for keyCode: Int) -> String {
-        let names: [Int: String] = [
-            0: "A", 1: "S", 2: "D", 3: "F", 4: "H", 5: "G", 6: "Z", 7: "X", 8: "C", 9: "V",
-            11: "B", 12: "Q", 13: "W", 14: "E", 15: "R", 16: "Y", 17: "T", 31: "O", 32: "U",
-            34: "I", 35: "P", 37: "L", 38: "J", 40: "K", 45: "N", 46: "M", 49: "Leertaste",
-            36: "↩", 48: "⇥", 53: "⎋", 50: "`",
+    /// Name einer Taste fürs Anzeigen (die Registrierung nutzt weiter den Keycode).
+    ///
+    /// Zwei Stufen, weil Keycodes PHYSISCHE Tastenpositionen sind, keine Zeichen:
+    ///  1. Tasten ohne Zeichen (Leertaste, Pfeile, F-Tasten) stehen in der Tabelle.
+    ///  2. Alles andere wird über das AKTUELLE Tastaturlayout übersetzt. Sonst hieße
+    ///     Keycode 6 immer "Z" — auf einer deutschen Tastatur liegt dort aber "Y".
+    static func keyName(for keyCode: Int) -> String {
+        let special: [Int: String] = [
+            49: "Leertaste", 36: "↩", 48: "⇥", 53: "⎋", 51: "⌫", 117: "⌦",
+            123: "←", 124: "→", 125: "↓", 126: "↑",
+            115: "↖", 119: "↘", 116: "⇞", 121: "⇟",
             122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6", 98: "F7",
             100: "F8", 101: "F9", 109: "F10", 103: "F11", 111: "F12", 105: "F13",
         ]
-        return names[keyCode] ?? "Keycode \(keyCode)"
+        if let name = special[keyCode] { return name }
+        return layoutKeyName(for: keyCode) ?? "Keycode \(keyCode)"
+    }
+
+    /// Fragt das aktuell aktive Tastaturlayout, welches Zeichen auf dieser Taste liegt.
+    /// Liefert nil, wenn das Layout nichts Darstellbares hergibt (z. B. reine
+    /// Sondertasten oder ein Layout ohne Unicode-Daten, etwa bei manchen IMEs).
+    private static func layoutKeyName(for keyCode: Int) -> String? {
+        guard let source = TISCopyCurrentKeyboardLayoutInputSource()?.takeRetainedValue(),
+              let layoutPointer = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
+            return nil
+        }
+        let layoutData = Unmanaged<CFData>.fromOpaque(layoutPointer).takeUnretainedValue() as Data
+        var deadKeyState: UInt32 = 0
+        var characters = [UniChar](repeating: 0, count: 4)
+        var length = 0
+        let status = layoutData.withUnsafeBytes { raw -> OSStatus in
+            guard let layout = raw.bindMemory(to: UCKeyboardLayout.self).baseAddress else { return errSecParam }
+            // kUCKeyActionDisplay + keine Modifier: liefert das Zeichen, das auf der
+            // Taste steht — genau das, was man auf der Tastatur sieht.
+            return UCKeyTranslate(layout, UInt16(keyCode), UInt16(kUCKeyActionDisplay), 0,
+                                  UInt32(LMGetKbdType()), OptionBits(kUCKeyTranslateNoDeadKeysBit),
+                                  &deadKeyState, characters.count, &length, &characters)
+        }
+        guard status == noErr, length > 0 else { return nil }
+        let name = String(utf16CodeUnits: characters, count: length)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        return name.isEmpty ? nil : name
     }
 }
