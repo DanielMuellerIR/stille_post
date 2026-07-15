@@ -13,8 +13,28 @@ diese Entscheidung vorwegnehmen, statt sie dem Nutzer aufzuhalsen.
 Optional als einzige Wahl daneben: **volles `large-v3`**. Daniel will es
 ausprobieren, ob es Fremdwörter und Fachbegriffe besser trifft. Wenn es sich als
 besser erweist, kann es Standard werden — die Repo-Regel verlangt dafür Qualitäts-
-UND Latenzmessung; der Stille-Repro aus dem Abschnitt unten eignet sich zusätzlich
-als Prüfstein für Halluzinationen.
+UND Latenzmessung.
+
+Der Halluzinations-Prüfstein für so eine Messung (billig, kein Mikrofon nötig):
+
+```bash
+python3 - <<'PY'
+import wave, struct
+with wave.open("/tmp/silence.wav","w") as w:
+    w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
+    w.writeframes(struct.pack("<%dh" % (16000*5), *([0]*(16000*5))))
+PY
+curl -s http://127.0.0.1:8181/inference -F file=@/tmp/silence.wav \
+     -F response_format=json -F temperature=0 -F language=de
+# liefert auf large-v3-turbo: {"text":" Vielen Dank."}
+```
+
+Erwartungsdämpfer: Die Stille-Halluzination ist bei allen Whisper-Modellen
+dokumentiert und steckt in den Trainingsdaten (YouTube-Untertitel), nicht in der
+Modellgröße. `large-v3` würde sie höchstens seltener machen, nicht beheben — die
+App fängt sie seit 0.7.2 ohnehin vorher ab (`minSpeechSec`). Eine Konfidenz-Schwelle
+hilft übrigens nicht: Auf reiner Stille meldet Whisper `no_speech_prob: 2.95e-08`
+und `avg_logprob: -0.25`, ist sich also absolut sicher.
 
 Ist-Zustand, damit niemand doppelt sucht:
 
@@ -29,6 +49,10 @@ Ist-Zustand, damit niemand doppelt sucht:
   eigene Kopie liegt.
 - Die App selbst kann nichts laden. Wer nur die `.app` installiert (der normale
   Weg für andere Nutzer), steht ohne Modell da.
+- **Der Modellpfad hängt an OpenWhispr:**
+  `~/Library/Application Support/StillePost/models/ggml-large-v3-turbo.bin` ist auf
+  dem M3 ein Symlink nach `~/.cache/openwhispr/whisper-models/`. Räumt OpenWhispr
+  seinen Cache, verliert Stille Post sein Modell.
 
 Zu bauen:
 
@@ -42,95 +66,21 @@ Zu bauen:
   oder im README klar als einzige verbleibende Voraussetzung nennen.
 - READMEs (beide Sprachen) entsprechend anpassen.
 
-## „Vielen Dank" erscheint in Diktaten (befundet 2026-07-15, noch nicht behoben)
+## „Vielen Dank"-Artefaktfilter (zurückgestellt 2026-07-15)
 
-Betrifft rund jedes dritte Diktat (11 von 29 Verlaufseinträgen). Es sind ZWEI
-unabhängige Fehler, die nur zusammen dieses Bild ergeben.
+Die Ursache der „Vielen Dank"-Halluzinationen ist in 0.7.2 an der Quelle behoben
+(`minSpeechSec`: ein Tastenklick beim Stoppen der Aufnahme setzte das Segment auf
+„hat Sprache", worauf Whisper reine Stille zu sehen bekam und Floskeln erfand).
 
-### Repro (billig und zuverlässig)
+Offen bleibt nur der Artefaktfilter: `WhisperClient.cleanWhisperArtifacts` kennt
+`"vielen dank fürs zuschauen"`, aber nicht das nackte `"vielen dank"` — und
+vergleicht auf exakte Gleichheit der GANZEN Ausgabe. Da die Floskel immer an echtem
+Text klebte, griff er nie.
 
-Fünf Sekunden digitale Stille genügen — kein Mikrofon, kein Raum nötig:
-
-```bash
-python3 - <<'PY'
-import wave, struct
-with wave.open("/tmp/silence.wav","w") as w:
-    w.setnchannels(1); w.setsampwidth(2); w.setframerate(16000)
-    w.writeframes(struct.pack("<%dh" % (16000*5), *([0]*(16000*5))))
-PY
-curl -s http://127.0.0.1:8181/inference -F file=@/tmp/silence.wav \
-     -F response_format=json -F temperature=0 -F language=de
-# liefert: {"text":" Vielen Dank.\n"}
-```
-
-Wichtig für die Lösungssuche: Eine Konfidenz-Schwelle hilft NICHT. Bei genau dieser
-Stille meldet Whisper `no_speech_prob: 2.95e-08` und `avg_logprob: -0.25` — es ist
-sich absolut sicher, Sprache gehört zu haben. `verbose_json` liefert diese Felder,
-aber sie taugen hier nicht als Signal.
-
-### Fehler 1 — Whisper bekommt Stille, die es nie sehen dürfte
-
-`VadSegmenter.closeSegment` kürzt die Stille am Segmentende nur
-`if reason == .pause`. Beim Stopp der Aufnahme (`.flush`) und am 30-s-Limit
-(`.maxLength`) bleibt sie im Segment und geht an Whisper. Dazu passt die
-Positionsverteilung im Verlauf: 7 von 11 Fällen kleben am ENDE des Textes, 2 am
-Anfang, 2 mittendrin, 0 stehen allein.
-
-Belegt: dass Whisper auf Stille halluziniert und dass dieser Trim fehlt.
-Hypothese: dass genau dieser Pfad die beobachteten Fälle erzeugt. Vor dem Fix mit
-einer WAV aus „okay" + 10 s Stille durch beide Pfade nachweisen.
-
-Fix: Stille am Segmentende bei JEDEM Schließgrund auf `paddingSec` kürzen. Dabei
-auch prüfen, ob die Stille am Segment-ANFANG gekürzt gehört (Aufnahmestart bis zum
-ersten Wort ist heute ungekürzt). Testbar in `VadSegmenterTests`.
-
-### Fehler 2 — die Bereinigung löscht echten Text
-
-Der schlimmere Teil. Verlaufseintrag 2026-07-15T19:38:06:
-
-```
-rawText   (Whisper):     "Okay. Vielen Dank."
-cleanText (Bereinigung): "Vielen Dank."
-```
-
-Whisper hatte das gesprochene „Okay." korrekt erfasst; die Bereinigung hat es
-gelöscht und die Halluzination behalten. Die Plausibilitätsprüfung
-(`CleanupService.sanityCheckFailure`) erlaubt bei Rohtexten unter 60 Zeichen
-Schrumpfung bis auf 20 % — 18 → 12 Zeichen rutscht durch.
-
-Fix: Korridor für kurze Texte enger ziehen, ohne den legitimen Fall zu brechen
-(„ähm ja Punkt" → „Ja." ist gewollt und steht als Kommentar im Code). Ein Diktat
-darf nie Inhalt verlieren; im Zweifel Rohtext liefern.
-
-### Fehler 3 — der Artefakt-Filter kann prinzipiell nicht greifen
-
-`WhisperClient.cleanWhisperArtifacts` kennt `"vielen dank fürs zuschauen"`, aber
-nicht das nackte `"vielen dank"` — und vergleicht auf exakte Gleichheit der GANZEN
-Ausgabe. Da die Floskel immer an echtem Text klebt (0 von 11 Fällen standen allein),
-greift der Filter nie.
-
-Fix zuletzt und vorsichtig: die Floskel auch als führenden/schließenden Satz
-entfernen. Heikel, weil „Vielen Dank." am Ende eines Diktats echt gemeint sein kann.
-Am liebsten nur anwenden, wenn Stille im Spiel war — sonst löscht die App echten
-Text, und das ist genau der Fehler, den wir gerade beheben. Erst Fehler 1 lösen und
-messen, ob danach überhaupt noch etwas übrig bleibt.
-
-### Whisper-Modellwechsel — beantwortet, aber schwach
-
-Läuft bereits auf `large-v3-turbo`. Nach oben gäbe es nur das volle `large-v3`
-(~3 GB, nicht lokal vorhanden). Die Stille-Halluzination ist bei allen
-Whisper-Modellen dokumentiert und steckt in den Trainingsdaten (YouTube-Untertitel),
-nicht in der Modellgröße — ein Wechsel würde sie höchstens seltener machen, nicht
-beheben. Fehler 1 zuerst. Falls danach noch gemessen werden soll: Der Repro oben
-eignet sich als Prüfstein, und die Repo-Regel verlangt ohnehin Qualitäts- UND
-Latenzmessung vor einem Wechsel.
-
-### Nebenbefund: Modellpfad hängt an OpenWhispr
-
-`~/Library/Application Support/StillePost/models/ggml-large-v3-turbo.bin` ist auf
-dem M3 ein Symlink nach `~/.cache/openwhispr/whisper-models/`. Räumt OpenWhispr
-seinen Cache, verliert Stille Post sein Modell. Gehört zum Abschnitt
-„Whisper-Modell selbst beschaffen" oben.
+Daniels Entscheidung: **zurückgestellt.** Erst mehrere Tage Realbetrieb; taucht die
+Floskel nicht mehr auf, ersatzlos streichen statt bauen. Der Filter wäre ohnehin
+heikel, weil „Vielen Dank." am Ende eines Diktats echt gemeint sein kann — er würde
+also genau den Fehler einführen, den wir gerade beseitigt haben.
 
 ## Warm-on-Intent statt Dauer-Pin (beschlossen 2026-07-15, noch nicht umgesetzt)
 
@@ -142,7 +92,10 @@ Beschlossene Eckwerte (Entscheidungen von Daniel, nicht neu verhandeln):
 
 - Stille-Post-Default für `keep_alive`: **2h** am Primär-Endpoint, **30m** an den
   Fallbacks (heutiges Fallback-Verhalten).
-- Cleanup-Modell bleibt `gemma4:26b`.
+- Cleanup-Modell: Der **Default bleibt `qwen3.5:9b`** (so steht es im Code, siehe
+  `Config.swift`). Daniel fährt auf seinem Setup `gemma4:26b` — das ist eine
+  Konfigurationsentscheidung, keine Default-Änderung: ~18 GB RAM nur für
+  Textbereinigung ist die Luxusvariante, `qwen3.5:9b` passt auf die meisten Macs.
 - Number One: Chat, eBook und Repo-RAG einheitlich auf `qwen3.6:35b`, Timeout 20 min.
 - Log-Verify (`llm.py`) bleibt auf `gemma4:26b`.
 
@@ -206,9 +159,13 @@ wiederkehrt, und die Quelle finden.
 
 - Mehrtägigen Realbetrieb auf beiden vorgesehenen Macs durchführen und Befunde mit
   Datum, Build und Konfiguration notieren.
-- Cleanup-Qualität und Latenz mit repräsentativen deutschen Diktaten messen und die
-  Modellwahl `gemma4:26b` gegen Kandidaten wie `qwen3.5:9b` evidenzbasiert bestätigen
-  oder korrigieren.
+- Cleanup-Qualität und Latenz mit repräsentativen deutschen Diktaten messen und den
+  Default `qwen3.5:9b` evidenzbasiert bestätigen oder korrigieren. Größere Modelle wie
+  `gemma4:26b` sind dabei die Vergleichskandidaten, nicht die Baseline.
+- READMEs (beide Sprachen): erklären, dass `qwen3.5:9b` der bewusste Default ist, weil
+  er auf die meisten Macs passt, und wie man auf ein größeres Bereinigungsmodell wie
+  `gemma4:26b` umstellt — samt ehrlicher RAM-Angabe (~18 GB nur für Textbereinigung)
+  und dem Hinweis, dass das die Luxusvariante für starke Rechner ist.
 - Login-Item ergänzen und Start-/Deaktivierungsverhalten testen.
 - Optional später: Live-Text-Anzeige und Silero-VAD evaluieren.
 

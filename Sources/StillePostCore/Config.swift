@@ -135,6 +135,15 @@ public struct Config: Codable, Equatable {
         /// Pegel-Schwelle in dBFS, unterhalb derer ein Frame als "still" gilt.
         /// 0 dBFS = Vollaussteuerung; typische Sprechpegel liegen deutlich über -40.
         public var silenceThresholdDb: Double = -45
+        /// So viel Sprache (aufsummiert, nicht am Stück) muss ein Segment mindestens
+        /// enthalten, damit es als "hat Sprache" gilt und überhaupt an Whisper geht.
+        ///
+        /// Ohne diese Schwelle genügte EIN Frame (30 ms) über der Pegelgrenze — ein
+        /// Tastenklick beim Stoppen der Aufnahme reichte also, um ein sonst stilles
+        /// Segment an Whisper zu schicken, das darauf "Vielen Dank." erfindet.
+        /// Gemessen: Klicks liegen bei 0,03–0,06 s, die kürzesten echten Wörter
+        /// ("ja", "doch") bei 0,27 s. 0,15 s liegt sicher dazwischen.
+        public var minSpeechSec: Double = 0.15
         /// So viele Sekunden Stille am Stück beenden ein Sprech-Segment
         /// (dann wird das Segment sofort transkribiert, während die Aufnahme weiterläuft).
         public var splitAfterSilenceSec: Double = 0.7
@@ -316,12 +325,13 @@ extension Config.Cleanup.Remote {
 
 extension Config.Vad {
     private enum CodingKeys: String, CodingKey {
-        case silenceThresholdDb, splitAfterSilenceSec, minSegmentSec, maxSegmentSec, paddingSec, autoStopAfterSilenceSec
+        case silenceThresholdDb, minSpeechSec, splitAfterSilenceSec, minSegmentSec, maxSegmentSec, paddingSec, autoStopAfterSilenceSec
     }
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
         silenceThresholdDb = try c.decodeIfPresent(Double.self, forKey: .silenceThresholdDb) ?? silenceThresholdDb
+        minSpeechSec = try c.decodeIfPresent(Double.self, forKey: .minSpeechSec) ?? minSpeechSec
         splitAfterSilenceSec = try c.decodeIfPresent(Double.self, forKey: .splitAfterSilenceSec) ?? splitAfterSilenceSec
         minSegmentSec = try c.decodeIfPresent(Double.self, forKey: .minSegmentSec) ?? minSegmentSec
         maxSegmentSec = try c.decodeIfPresent(Double.self, forKey: .maxSegmentSec) ?? maxSegmentSec

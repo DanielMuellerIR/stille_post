@@ -109,6 +109,137 @@ final class VadSegmenterTests: XCTestCase {
         XCTAssertTrue(autoStopped, "2,5 s Stille am Stück > 2 s Schwelle")
     }
 
+    /// Dauer eines Segments in Sekunden.
+    private func seconds(_ segment: VadSegmenter.Segment) -> Double {
+        Double(segment.samples.count) / Double(WavCodec.sampleRate)
+    }
+
+    /// Config, die NIE an der Pause schneidet — nur so sind die Schließgründe
+    /// `.flush` und `.maxLength` in einem Test überhaupt erreichbar.
+    private func configWithoutPauseSplit() -> Config.Vad {
+        var config = makeConfig()
+        config.splitAfterSilenceSec = 1000
+        return config
+    }
+
+    /// Stille am Segmentende muss auch beim Aufnahme-Ende gekürzt werden.
+    /// Real reproduziert: "Okay" + 30 s Stille -> Whisper erfindet " Vielen Dank."
+    func testTrimsTrailingSilenceOnFlush() {
+        let segmenter = VadSegmenter(config: configWithoutPauseSplit())
+        var segments: [VadSegmenter.Segment] = []
+        segmenter.onSegment = { segments.append($0) }
+
+        segmenter.process(tone(seconds: 2))
+        segmenter.process(silence(seconds: 3))
+        segmenter.flush()
+
+        XCTAssertEqual(segments.count, 1)
+        XCTAssertEqual(segments[0].reason, .flush)
+        // 2 s Sprache + 0,1 s Polster — die restlichen 2,9 s Stille sind weg.
+        XCTAssertEqual(seconds(segments[0]), 2.1, accuracy: 0.05,
+                       "Stille am Ende muss bei .flush auf paddingSec gekürzt werden")
+    }
+
+    /// Dasselbe am 30-s-Hardlimit: Wer eine Aufnahme laufen lässt, ohne zu reden,
+    /// füllt das Segment mit Stille — die darf Whisper nicht sehen.
+    func testTrimsTrailingSilenceOnMaxLength() {
+        var config = configWithoutPauseSplit()
+        config.maxSegmentSec = 3
+        let segmenter = VadSegmenter(config: config)
+        var segments: [VadSegmenter.Segment] = []
+        segmenter.onSegment = { segments.append($0) }
+
+        segmenter.process(tone(seconds: 1))
+        segmenter.process(silence(seconds: 2))
+
+        XCTAssertEqual(segments.count, 1)
+        XCTAssertEqual(segments[0].reason, .maxLength)
+        XCTAssertEqual(seconds(segments[0]), 1.1, accuracy: 0.05,
+                       "Stille am Ende muss bei .maxLength auf paddingSec gekürzt werden")
+    }
+
+    /// Auch der Vorlauf zählt: zwischen Aufnahmestart und erstem Wort liegt Stille.
+    func testTrimsLeadingSilence() {
+        let segmenter = VadSegmenter(config: configWithoutPauseSplit())
+        var segments: [VadSegmenter.Segment] = []
+        segmenter.onSegment = { segments.append($0) }
+
+        segmenter.process(silence(seconds: 3))
+        segmenter.process(tone(seconds: 2))
+        segmenter.flush()
+
+        XCTAssertEqual(segments.count, 1)
+        // 0,1 s Polster + 2 s Sprache — die restlichen 2,9 s Stille sind weg.
+        XCTAssertEqual(seconds(segments[0]), 2.1, accuracy: 0.05,
+                       "Stille am Anfang muss auf paddingSec gekürzt werden")
+    }
+
+    /// Gegenprobe: Durchgehende Sprache darf der Trim nicht anfassen.
+    func testDoesNotTrimContinuousSpeech() {
+        let segmenter = VadSegmenter(config: configWithoutPauseSplit())
+        var segments: [VadSegmenter.Segment] = []
+        segmenter.onSegment = { segments.append($0) }
+
+        segmenter.process(tone(seconds: 2))
+        segmenter.flush()
+
+        XCTAssertEqual(segments.count, 1)
+        XCTAssertEqual(seconds(segments[0]), 2.0, accuracy: 0.05,
+                       "Ohne Stille darf nichts gekürzt werden")
+    }
+
+    /// Ein kurzer Transient (Tastenklick beim Stoppen der Aufnahme, Türklappen)
+    /// darf ein sonst stilles Segment NICHT zu einem Sprach-Segment machen.
+    /// Genau das war die Ursache der "Vielen Dank"-Halluzinationen: Das Segment ging
+    /// an Whisper, und auf Stille erfindet Whisper Floskeln. Real reproduziert —
+    /// 0,25 s Stille + 25 ms Klick liefert " Vielen Dank.".
+    func testShortTransientIsNotSpeech() {
+        let segmenter = VadSegmenter(config: makeConfig())
+        var segments: [VadSegmenter.Segment] = []
+        segmenter.onSegment = { segments.append($0) }
+
+        segmenter.process(silence(seconds: 2))
+        segmenter.process(tone(seconds: 0.03))   // ein einziger 30-ms-Frame
+        segmenter.process(silence(seconds: 2))
+        segmenter.flush()
+
+        XCTAssertFalse(segments.contains { $0.hadSpeech },
+                       "Ein 30-ms-Klick ist keine Sprache — sonst bekommt Whisper reine Stille")
+    }
+
+    /// Gegenprobe zur Klick-Schwelle: Das kürzeste echte Wort muss durchkommen.
+    /// Gemessen liegen "ja"/"doch" bei rund 0,27 s Sprache, die Schwelle bei 0,15 s.
+    func testShortWordStillCountsAsSpeech() {
+        let segmenter = VadSegmenter(config: makeConfig())
+        var segments: [VadSegmenter.Segment] = []
+        segmenter.onSegment = { segments.append($0) }
+
+        segmenter.process(silence(seconds: 1))
+        segmenter.process(tone(seconds: 0.27))
+        segmenter.process(silence(seconds: 1))
+        segmenter.flush()
+
+        XCTAssertTrue(segments.contains { $0.hadSpeech },
+                      "Ein kurzes Wort wie \"ja\" darf nicht als Klick verworfen werden")
+    }
+
+    /// Sprache wird aufsummiert, nicht am Stück gemessen: Auch stockendes Sprechen
+    /// mit Mini-Pausen muss als Sprache gelten.
+    func testSpeechAccumulatesAcrossGaps() {
+        let segmenter = VadSegmenter(config: makeConfig())
+        var segments: [VadSegmenter.Segment] = []
+        segmenter.onSegment = { segments.append($0) }
+
+        for _ in 0..<4 {
+            segmenter.process(tone(seconds: 0.06))
+            segmenter.process(silence(seconds: 0.1))
+        }
+        segmenter.flush()
+
+        XCTAssertTrue(segments.contains { $0.hadSpeech },
+                      "4 x 0,06 s = 0,24 s Sprache liegen über der Schwelle")
+    }
+
     func testLevelReporting() {
         let segmenter = VadSegmenter(config: makeConfig())
         segmenter.onSegment = { _ in }
