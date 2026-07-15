@@ -14,32 +14,18 @@ Beschlossene Eckwerte (Entscheidungen von Daniel, nicht neu verhandeln):
 - Number One: Chat, eBook und Repo-RAG einheitlich auf `qwen3.6:35b`, Timeout 20 min.
 - Log-Verify (`llm.py`) bleibt auf `gemma4:26b`.
 
-### Teil A — Stille Post: keep_alive konfigurierbar
+### Teil A — Stille Post: keep_alive konfigurierbar — ERLEDIGT in 0.7.0
 
-- Feld `keepAlive: String` in `Config.Cleanup` (Primär) und `Config.Cleanup.Endpoint`
-  (Fallbacks), tolerant dekodiert. Werte in Ollama-Schreibweise: `"-1"`, `"2h"`,
-  `"20m"`, `"0"`. Beim Senden numerische Werte (`-1`, `0`) als Zahl, Dauer-Strings
-  als String — Ollama akzeptiert beides, aber nicht `"-1"` als String.
-- `CleanupService.keepAliveValue(pinForever:)` liest künftig `endpoint.keepAlive`
-  statt der fest verdrahteten Konstante. Warm-up und Chat müssen denselben Wert
-  senden, genau wie schon bei `num_ctx`.
-- Der 60-Sekunden-Re-Pin in `AppDelegate` läuft **nur noch, wenn `keepAlive == "-1"`**.
-  Bei einem endlichen Timeout darf kein periodisches Re-Pinnen stattfinden, sonst
-  läuft das Fenster nie ab (CLAUDE.md: „periodischer Warm-up darf diese Semantik
-  nicht aushebeln").
-- Das Vorwärmen beim Diktat-Start bleibt unverändert — es existiert bereits in
-  `DictationEngine.start()` und ist genau das gewünschte „lädt, während man redet".
-- Settings-UI im Bereinigungs-Tab neben `num_ctx`: Dropdown „dauerhaft / 2 h / 1 h /
-  30 min / 20 min / 5 min / sofort entladen", pro Endpoint.
-- Bewusste Grenze: Echte Ollama-*Daemon*-Konfiguration (`OLLAMA_HOST=0.0.0.0`,
-  globaler `OLLAMA_KEEP_ALIVE`, `ollama pull`) kann die App für einen entfernten Host
-  nicht setzen. Das gehört in die README-Anleitung und in `doctor`-Warnungen
-  (Endpoint erreichbar? Modell vorhanden?), nicht in einen App-Eingriff in fremde
-  Daemons. Pro-Request-Parameter (`keep_alive`, `num_ctx`) macht die App dagegen
-  bereits vollständig selbst.
-- Tests: `keepAlive` kommt aus der Config; Warm-up und Chat teilen `keep_alive` und
-  `num_ctx`; endlicher Wert erzeugt kein Re-Pinnen. Dazu `swift test` und
-  `scripts/e2e-test.sh`, danach VERSION-Bump.
+Umgesetzt und gegen ein echtes Ollama verifiziert. Offen bleibt nur eines: Der
+GUI-Smoke-Test des neuen Dropdowns wurde nicht visuell durchgeführt, weil die App
+als Menüleisten-App nicht im Spotlight-Index steht und der Screenshot-Weg deshalb
+nicht griff. Das Verhalten dahinter ist per Log-Messung belegt; ein Blick auf das
+Dropdown im Bereinigungs-Tab beim nächsten echten App-Start genügt.
+
+Bewusste Grenze (gilt weiter): Echte Ollama-*Daemon*-Konfiguration
+(`OLLAMA_HOST=0.0.0.0`, globaler `OLLAMA_KEEP_ALIVE`, `ollama pull`) kann die App für
+einen entfernten Host nicht setzen. Das gehört in die README-Anleitung (Teil C) und
+in `doctor`-Warnungen, nicht in einen App-Eingriff in fremde Daemons.
 
 ### Teil B — Number One (liegt in theplan, nicht in diesem Repo)
 
@@ -71,6 +57,20 @@ wählen), danach auf weiteren Macs im selben Netz Stille Post installieren und d
 den Endpoint des starken Macs eintragen. Erklären, dass das Vorwärmen beim Diktat-
 Start das entfernte Modell lädt, während man spricht, und dass nur Text das Gerät
 verlässt, nie Audio.
+
+### Beobachtung, die zu Teil B gehört
+
+Am 2026-07-15 gingen vom M3 aus rund 44 Anfragen pro Minute an das Ollama des
+starken Macs, jeweils `POST /api/generate` gefolgt von `GET /api/tags`. `/api/tags`
+ruft ausschließlich `stillepost-cli doctor` auf, die App selbst nie — es waren also
+wiederholte `doctor`-Läufe. Wer sie im Sekundentakt gestartet hat, ist ungeklärt:
+kein launchd-Job, kein Aufruf aus Number One. Der Burst endete von selbst und ist
+seither nicht wiedergekehrt (Normalrate: 1 Request/Minute vom Warmhalte-Timer).
+
+Relevant ist das, weil solche Anfragen ohne `keep_alive` das Modell auf Ollamas
+Default von 5 Minuten zurücksetzen. Solange das passiert, wäre eine eingestellte
+2-Stunden-Frist in der Praxis wirkungslos. Vor Teil B kurz prüfen, ob der Burst
+wiederkehrt, und die Quelle finden.
 
 ## Weitere offene Arbeit
 
