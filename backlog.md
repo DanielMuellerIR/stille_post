@@ -188,25 +188,6 @@ Weiterhin offen:
   — braucht aber einen zweiten Start, und der Einzelinstanz-Schutz lässt keine zwei
   zu; die laufende App muss also kurz weichen.
 
-## Angeboten, aber nicht entschieden (2026-07-16)
-
-Drei Punkte aus der Sitzung vom 2026-07-15/16, die Daniel offen gelassen hat:
-
-- **`CHANGELOG.md` fehlt, wird aber zweimal verlangt.** `AGENTS.md` benennt sie in
-  Zeile 5 als Heimat der Produktgeschichte und in Zeile 140 als progressives Detail
-  — die Datei existiert nicht. Die gesamte Historie steckt in den Commit-Messages.
-  Zwei ehrliche Auswege: Datei anlegen und 0.6.2–0.8.1 aus den Commits
-  rekonstruieren, ODER die zwei Verweise streichen und Commits offiziell zur Heimat
-  erklären. Der jetzige Zustand — Regel zeigt ins Leere — ist der schlechteste.
-- **Kein Cleanup-Pass nach 0.8.0.** Der Agentic-Praxis-Check will einen nach jedem
-  Feature (Skill `code-structure-cleanup` in `$HOME/git/skills/`). 0.8.0 brachte
-  `ModelInstaller` und `ModelDownloadController`; beim Schreiben fiel nichts
-  Doppeltes auf, gezielt gesucht wurde aber nicht.
-- **Installierte App zeigt 0.8.0, enthält 0.8.1.** Gebaut, als `VERSION` noch auf
-  0.8.0 stand; der Login-Item-Code ist drin, nur das Etikett hinkt. Rein kosmetisch,
-  führt aber bei einer Fehlermeldung zur falschen Nummer. Ein Neubau kostet einen
-  kurzen App-Neustart.
-
 ## Weitere offene Arbeit
 
 - Mehrtägigen Realbetrieb auf beiden vorgesehenen Macs durchführen und Befunde mit

@@ -1,6 +1,6 @@
 # Stille Post — dauerhafte Projektregeln
 
-Stand: 2026-07-14. Diese Datei enthält nur Regeln und Fakten, die ein Agent beim
+Stand: 2026-07-16. Diese Datei enthält nur Regeln und Fakten, die ein Agent beim
 Start zuverlässig braucht. Produktgeschichte und erledigte Arbeit gehören in
 `CHANGELOG.md`, Releases oder abgeschlossene Tasks; offene Arbeit in den Backlog.
 
@@ -12,9 +12,9 @@ sprachlichen Bereinigung an konfigurierte LLM-Endpunkte gehen.
 
 - `Sources/StillePostCore/`: testbarer Kern für Aufnahme, VAD, Whisper,
   Bereinigung, Historie und Konfiguration.
-- `Sources/StillePostApp/`: SwiftUI-App, Carbon-Hotkey, Overlay, Verlauf und
+- `Sources/StillePost/`: AppKit/SwiftUI-App, Carbon-Hotkey, Overlay, Verlauf und
   Einstellungen.
-- `Sources/StillePostCLI/`: Diagnose, Transkription, Bereinigung, Historie und
+- `Sources/stillepost-cli/`: Diagnose, Transkription, Bereinigung, Historie und
   Konfigurationsbefehle.
 - `Tests/`: SwiftPM-Tests. Das Verzeichnis muss bestehen bleiben, damit SwiftPM
   den Test-Target korrekt erkennt.
@@ -125,10 +125,10 @@ Build-Prüfungen und einen Start des resultierenden Bundles.
 ## Aktive nächste Arbeit
 
 Die kanonische Liste liegt in [backlog.md](backlog.md). Derzeit relevant:
-mehrtägiger Realbetrieb auf beiden Macs, danach
-evidenzbasierte Modellentscheidung und Qualitäts-/Latenzbenchmark; GUI-Hotkey-
-Recorder und Login-Item; Live-Text und Silero-VAD nur optional. Erledigte Release-,
-README-, Lizenz- und Settings-Arbeit nicht wieder als Startkontext führen.
+mehrtägiger Realbetrieb auf beiden Macs, danach evidenzbasierte
+Modellentscheidung und Qualitäts-/Latenzbenchmark; Live-Text und Silero-VAD nur
+optional. Erledigte Release-, README-, Lizenz-, Settings-, Hotkey-Recorder- und
+Login-Item-Arbeit nicht wieder als Startkontext führen.
 
 ## Progressive Details
 
@@ -149,3 +149,5 @@ Artefakte sind nicht autoritativ und dürfen keine versteckten Projektregeln tra
 - [README.md](README.md) und [README.de.md](README.de.md) — Nutzung, Installation
   und Architektur in beiden Sprachen.
 - [backlog.md](backlog.md) — einzige aktive Projektliste.
+- [CHANGELOG.md](CHANGELOG.md) — Produktgeschichte je Version; ab 0.8.2 mit dem
+  Versions-Bump fortzuschreiben.
