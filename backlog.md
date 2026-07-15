@@ -41,18 +41,16 @@ Ist-Zustand, damit niemand doppelt sucht:
 - `scripts/install-model.sh` lädt bereits `large-v3-turbo` von Hugging Face und
   nimmt einen Modellnamen als Argument. `scripts/install-model.sh large-v3` lädt
   also schon heute das volle Modell — danach muss `whisper.modelPath` in der
-  config.json darauf zeigen.
-- **Bug im Skript:** Zeile 14 prüft `if [ -f "$DEST" ]`. Das ist auch für einen
-  SYMLINK wahr. Auf Daniels M3 zeigt der Modellpfad auf
-  `~/.cache/openwhispr/whisper-models/` — das Skript meldet deshalb „Modell ist
-  schon da" und lädt nie. Vor jeder Messung sicherstellen, dass wirklich eine
-  eigene Kopie liegt.
+  config.json darauf zeigen. Seit 0.7.3 erkennt es Symlinks, setzt abgebrochene
+  Downloads fort und prüft die Vollständigkeit gegen die erwartete Größe.
 - Die App selbst kann nichts laden. Wer nur die `.app` installiert (der normale
   Weg für andere Nutzer), steht ohne Modell da.
-- **Der Modellpfad hängt an OpenWhispr:**
-  `~/Library/Application Support/StillePost/models/ggml-large-v3-turbo.bin` ist auf
-  dem M3 ein Symlink nach `~/.cache/openwhispr/whisper-models/`. Räumt OpenWhispr
-  seinen Cache, verliert Stille Post sein Modell.
+- **Der Modellpfad auf dem M3 hängt noch an OpenWhispr:**
+  `~/Library/Application Support/StillePost/models/ggml-large-v3-turbo.bin` ist dort
+  ein Symlink nach `~/.cache/openwhispr/whisper-models/`. Räumt OpenWhispr seinen
+  Cache, verliert Stille Post sein Modell. `scripts/install-model.sh large-v3-turbo`
+  ersetzt den Verweis inzwischen durch eine eigene Kopie (1,6 GB) — auf dem M3 noch
+  nicht ausgeführt.
 
 Zu bauen:
 
