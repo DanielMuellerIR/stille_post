@@ -51,12 +51,10 @@ oder in einer theplan-Session, nicht als Direktedit aus diesem Repo.
 
 ### Teil C — README (beide Sprachen)
 
-Neue Sektion „Cleanup auf einem starken Mac im LAN": starken Mac einrichten (Modell
-ziehen, Ollama im Netz freigeben, `keep_alive` in den Stille-Post-Einstellungen
-wählen), danach auf weiteren Macs im selben Netz Stille Post installieren und dort
-den Endpoint des starken Macs eintragen. Erklären, dass das Vorwärmen beim Diktat-
-Start das entfernte Modell lädt, während man spricht, und dass nur Text das Gerät
-verlässt, nie Audio.
+ERLEDIGT. Die vorhandene Sektion „Bereinigung auf einem stärkeren Rechner" trägt
+jetzt die Schritt-für-Schritt-Anleitung für beide Seiten, die keep_alive-Erklärung
+und den Hinweis auf die Hotkey-Aufnahme — in beiden Sprachen. Noch nicht auf GitHub
+veröffentlicht (braucht einen ausdrücklichen Auftrag).
 
 ### Beobachtung, die zu Teil B gehört
 
