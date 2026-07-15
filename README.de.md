@@ -123,12 +123,13 @@ Die wichtigsten Schalter:
 
 | Bereich | Feld | Bedeutung |
 |---|---|---|
-| `hotkey` | `keyCode`, `modifiers` | Aufnahme-Hotkey (Default ⌘⌥D) |
+| `hotkey` | `keyCode`, `modifiers` | Aufnahme-Hotkey (Default ⌘⌥D). Im Tab „Allgemein“ nimmt „Hotkey aufnehmen“ die gedrückte Kombination auf — man muss keine Tastencodes nachschlagen |
 | `whisper` | `language` | `"auto"` oder fest z. B. `"de"`. **Empfehlung: Festnageln.** Bei `auto` rät Whisper die Sprache pro Sprech-Segment und übersetzt bei Fehl-Erkennung ungefragt |
 | `cleanup` | `enabled` | Bereinigung an/aus |
 | `cleanup` | `provider` | `"ollama"` (lokal/eigenes Netz) oder `"openai"` (Cloud, nur Text) |
 | `cleanup` | `model` | Ollama-Modellname |
 | `cleanup` | `ollamaURL` | Ollama-Endpoint; darf auch ein anderer Rechner im eigenen Netz sein |
+| `cleanup` | `keepAlive` | wie lange Ollama das Modell nach einem Diktat im Speicher behält: `"2h"` (Default), `"20m"`, `"0"` (sofort entladen) oder `"-1"` (nie entladen). Wird bei jeder Anfrage mitgeschickt — in Ollama ist dafür nichts einzustellen |
 | `cleanup.remote` | `baseURL`, `model` | OpenAI-kompatibler Anbieter |
 | `cleanup` | `fallbacks` | Ausweich-Endpoints, falls der primäre nicht antwortet (s. u.) |
 | `vad` | `autoStopAfterSilenceSec` | Abwesenheits-Stopp (0 = aus) |
@@ -152,15 +153,44 @@ Der API-Key kommt **nicht** in die Datei, sondern in den Schlüsselbund
 
 Auf einem schwächeren Laptop lohnt es sich, die Bereinigung an einen stärkeren
 Rechner im eigenen Netz abzugeben: Dort kann das größere, hochwertigere Modell
-laufen (z. B. gemma4:26b), es bleibt dauerhaft warm, und der Laptop behält die ~6 GB
-RAM für sein leichtes lokales Fallback. `fallbacks` listet Ausweich-Endpoints, die
-der Reihe nach probiert werden, wenn der primäre nicht antwortet (Probe-Timeout 2 s;
-unterwegs ohne Heimnetz übernimmt also fast verzögerungsfrei das lokale Ollama):
+laufen (z. B. gemma4:26b), und der Laptop behält die ~6 GB RAM für sein leichtes
+lokales Fallback.
+
+**Auf dem starken Rechner** (der bedient — er braucht selbst kein Stille Post):
+
+1. Modell ziehen: `ollama pull gemma4:26b`
+2. Ollama auf dem Netz-Interface lauschen lassen statt nur auf localhost:
+   `OLLAMA_HOST=0.0.0.0` setzen, oder in der Ollama-App den Schalter
+   „Expose Ollama to the network".
+3. Von einem anderen Mac aus prüfen:
+   `curl http://<ip-des-starken-macs>:11434/api/version`
+
+Mehr ist dort nicht nötig — Modell, Kontextgröße und keep_alive schickt Stille Post
+bei jeder Anfrage mit.
+
+**Auf jedem Mac, auf dem du diktierst:** Stille Post installieren, dann unter
+Einstellungen → Bereinigung den Endpoint des starken Rechners eintragen
+(`http://<ip>:11434`), dazu Modell und auf Wunsch die Ladedauer.
+`stillepost-cli doctor` prüft die ganze Kette und sagt, ob der Endpoint antwortet
+und das Modell vorhanden ist.
+
+**Wie lange das Modell geladen bleibt**, steuert im selben Tab das Feld
+„Geladen lassen" (keep_alive). Der Default von 2 Stunden ist ein Kompromiss:
+Diktiert man innerhalb dieser Zeit erneut, antwortet das Modell sofort; danach gibt
+Ollama den Speicher von selbst frei. „Dauerhaft geladen" gibt ihn nie her — die
+richtige Wahl, wenn RAM übrig ist. Spürbar ist der Unterschied selten, denn Stille
+Post beginnt das Modell zu laden, sobald du den Hotkey drückst: Es lädt, während du
+noch sprichst.
+
+`fallbacks` listet Ausweich-Endpoints, die der Reihe nach probiert werden, wenn der
+primäre nicht antwortet (Probe-Timeout 2 s; unterwegs ohne Heimnetz übernimmt also
+fast verzögerungsfrei das lokale Ollama):
 
 ```jsonc
 "cleanup": {
   "ollamaURL": "http://192.168.1.50:11434",   // starker Rechner im LAN (primär)
   "model": "gemma4:26b",
+  "keepAlive": "2h",                          // "-1" = dauerhaft geladen halten
   "fallbacks": [
     { "provider": "ollama", "ollamaURL": "http://127.0.0.1:11434", "model": "qwen3.5:9b" },
     { "provider": "openai", "remote": { "baseURL": "https://api.example.com/v1", "model": "modell-name" } }
@@ -168,11 +198,9 @@ unterwegs ohne Heimnetz übernimmt also fast verzögerungsfrei das lokale Ollama
 }
 ```
 
-Voraussetzung auf dem starken Rechner: Ollama muss auf dem Netz-Interface lauschen
-(`OLLAMA_HOST=0.0.0.0`, in der Ollama-App der Schalter „Expose Ollama to the network").
-Es geht dabei nur transkribierter TEXT über das eigene Netz, nie Audio. Welcher
-Endpoint zum Zug kam, zeigt `stillepost-cli cleanup` an; `stillepost-cli doctor`
-prüft die ganze Kette.
+Über das eigene Netz geht dabei nur transkribierter TEXT, nie Audio — die
+Spracherkennung läuft immer auf dem Rechner, auf dem du diktierst. Welcher Endpoint
+zum Zug kam, zeigt `stillepost-cli cleanup` an und das Verlaufsfenster.
 
 ## Entwicklung & Tests
 

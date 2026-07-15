@@ -121,12 +121,13 @@ The most important switches:
 
 | Section | Field | Meaning |
 |---|---|---|
-| `hotkey` | `keyCode`, `modifiers` | recording hotkey (default ⌘⌥D) |
+| `hotkey` | `keyCode`, `modifiers` | recording hotkey (default ⌘⌥D). In the General tab, "Hotkey aufnehmen" records the combination you press — no need to look up key codes |
 | `whisper` | `language` | `"auto"` or fixed, e.g. `"de"`. **Recommendation: Pin it.** With `auto`, Whisper guesses the language per speech segment and silently translates on misdetection |
 | `cleanup` | `enabled` | cleanup on/off |
 | `cleanup` | `provider` | `"ollama"` (local/own network) or `"openai"` (cloud, text only) |
 | `cleanup` | `model` | Ollama model name |
 | `cleanup` | `ollamaURL` | Ollama endpoint; may also be another machine on your own network |
+| `cleanup` | `keepAlive` | how long Ollama keeps the model in memory after a dictation: `"2h"` (default), `"20m"`, `"0"` (unload at once) or `"-1"` (never unload). Sent with every request — nothing to configure in Ollama |
 | `cleanup.remote` | `baseURL`, `model` | OpenAI-compatible provider |
 | `cleanup` | `fallbacks` | backup endpoints tried when the primary does not respond (see below) |
 | `vad` | `autoStopAfterSilenceSec` | absence auto-stop (0 = off) |
@@ -148,16 +149,40 @@ environment variable.
 ### Cleanup on a stronger machine (with fallback)
 
 On a weaker laptop it pays off to hand cleanup to a stronger machine on your own
-network: There you can run the bigger, higher-quality model (e.g. gemma4:26b), it
-stays permanently warm, and the laptop keeps the ~6 GB of RAM for its lightweight
-local fallback. `fallbacks` lists backup endpoints tried in order when the primary
-does not respond (probe timeout 2 s; away from your home network, local Ollama takes
-over almost without delay):
+network: There you can run the bigger, higher-quality model (e.g. gemma4:26b) while
+the laptop keeps the ~6 GB of RAM for its lightweight local fallback.
+
+**On the strong machine** (the one that serves — it does not need Stille Post):
+
+1. Pull the model: `ollama pull gemma4:26b`
+2. Make Ollama listen on the network interface, not just on localhost: set
+   `OLLAMA_HOST=0.0.0.0`, or use "Expose Ollama to the network" in the Ollama app.
+3. Check from another Mac: `curl http://<ip-of-the-strong-mac>:11434/api/version`
+
+That is all — model, context size and keep-alive are sent by Stille Post with every
+request, so there is nothing else to set up in Ollama.
+
+**On every Mac you dictate on:** install Stille Post, then open Settings → Cleanup
+and enter the strong machine's endpoint (`http://<ip>:11434`), the model and, if you
+like, a keep-alive. `stillepost-cli doctor` checks the whole chain and tells you
+whether the endpoint answers and the model is present.
+
+**How long the model stays loaded** is the "keep_alive" dropdown in the same tab.
+The default of 2 hours is a compromise: dictate again within that window and the
+model answers instantly; after that Ollama frees the RAM by itself. "Permanently"
+never lets go — the right choice if you have RAM to spare. The wait rarely shows
+either way, because Stille Post starts warming the model the moment you press the
+hotkey: it loads while you are still speaking.
+
+`fallbacks` lists backup endpoints tried in order when the primary does not respond
+(probe timeout 2 s; away from your home network, local Ollama takes over almost
+without delay):
 
 ```jsonc
 "cleanup": {
   "ollamaURL": "http://192.168.1.50:11434",   // strong machine on the LAN (primary)
   "model": "gemma4:26b",
+  "keepAlive": "2h",                          // "-1" = keep loaded forever
   "fallbacks": [
     { "provider": "ollama", "ollamaURL": "http://127.0.0.1:11434", "model": "qwen3.5:9b" },
     { "provider": "openai", "remote": { "baseURL": "https://api.example.com/v1", "model": "model-name" } }
@@ -165,11 +190,9 @@ over almost without delay):
 }
 ```
 
-Prerequisite on the strong machine: Ollama must listen on the network interface
-(`OLLAMA_HOST=0.0.0.0`, or the "Expose Ollama to the network" switch in the Ollama
-app). Only transcribed TEXT travels over your network, never audio. Which endpoint
-handled a cleanup is shown by `stillepost-cli cleanup`; `stillepost-cli doctor`
-checks the whole chain.
+Only transcribed TEXT travels over your network, never audio — speech recognition
+always runs on the machine you dictate on. Which endpoint handled a cleanup is shown
+by `stillepost-cli cleanup` and in the history window.
 
 ## Development & tests
 
