@@ -129,6 +129,9 @@ private struct GeneralTab: View {
             Section("Aufnahme-Hotkey") {
                 HotkeyRecorder(hotkey: $config.hotkey, onRecordingChanged: onHotkeyRecording)
             }
+            Section("Start") {
+                LoginItemToggle()
+            }
             Section("Oberfläche") {
                 Picker("Overlay-Position", selection: $config.ui.overlayPosition) {
                     Text("An der Mausposition").tag("mouse")
@@ -138,6 +141,43 @@ private struct GeneralTab: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Schalter für „Beim Anmelden starten".
+///
+/// Wirkt sofort statt erst beim Speichern — anders als der Rest des Dialogs, denn
+/// das Login-Item steht im System und nicht in `config.json` (siehe LoginItem).
+/// Der Systemzustand wird EINMAL beim Erscheinen gelesen, nicht im Renderpfad:
+/// `body` muss nebenwirkungsfrei bleiben.
+private struct LoginItemToggle: View {
+    @State private var enabled = false
+    @State private var explanation: String?
+    @State private var failure: String?
+
+    var body: some View {
+        Toggle("Stille Post beim Anmelden starten", isOn: $enabled)
+            .disabled(!LoginItem.isAvailable)
+            .onAppear {
+                enabled = LoginItem.isEnabled
+                explanation = LoginItem.explanation
+            }
+            .onChange(of: enabled) { _, wanted in
+                do {
+                    try LoginItem.setEnabled(wanted)
+                    failure = nil
+                } catch {
+                    // Zurückdrehen, statt einen Schalter zu zeigen, der lügt.
+                    failure = error.localizedDescription
+                    enabled = LoginItem.isEnabled
+                }
+                explanation = LoginItem.explanation
+            }
+        if let hint = failure ?? explanation {
+            Text(hint)
+                .font(.caption)
+                .foregroundColor(failure == nil ? .secondary : .orange)
+        }
     }
 }
 
