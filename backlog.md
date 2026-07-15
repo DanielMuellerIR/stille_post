@@ -98,10 +98,10 @@ Beschlossene Eckwerte (Entscheidungen von Daniel, nicht neu verhandeln):
 ### Teil A — Stille Post: keep_alive konfigurierbar — ERLEDIGT in 0.7.0
 
 Umgesetzt und gegen ein echtes Ollama verifiziert. Offen bleibt nur eines: Der
-GUI-Smoke-Test des neuen Dropdowns wurde nicht visuell durchgeführt, weil die App
-als Menüleisten-App nicht im Spotlight-Index steht und der Screenshot-Weg deshalb
-nicht griff. Das Verhalten dahinter ist per Log-Messung belegt; ein Blick auf das
-Dropdown im Bereinigungs-Tab beim nächsten echten App-Start genügt.
+GUI-Smoke-Test des neuen Dropdowns wurde nicht visuell durchgeführt. Das Verhalten
+dahinter ist per Log-Messung belegt; ein Blick auf das Dropdown im Bereinigungs-Tab
+beim nächsten echten App-Start genügt. Siehe „GUI-Tests dieser App" unten — die
+frühere Begründung („nicht im Spotlight-Index") war falsch.
 
 Bewusste Grenze (gilt weiter): Echte Ollama-*Daemon*-Konfiguration
 (`OLLAMA_HOST=0.0.0.0`, globaler `OLLAMA_KEEP_ALIVE`, `ollama pull`) kann die App für
@@ -150,6 +150,31 @@ Relevant ist das, weil solche Anfragen ohne `keep_alive` das Modell auf Ollamas
 Default von 5 Minuten zurücksetzen. Solange das passiert, wäre eine eingestellte
 2-Stunden-Frist in der Praxis wirkungslos. Vor Teil B kurz prüfen, ob der Burst
 wiederkehrt, und die Quelle finden.
+
+## GUI-Tests dieser App (Befund 2026-07-15)
+
+Warum visuelle Smoke-Tests hier zweimal gescheitert sind — die bisherige Erklärung
+war falsch und hat die Suche in die falsche Richtung geschickt:
+
+- **Nicht** der Spotlight-Index. Der ist aktiv, und `mdfind` findet
+  `/Applications/StillePost.app` sofort.
+- Die Ursache ist `LSUIElement = 1` im Info.plist. Stille Post ist eine
+  Menüleisten-App ohne Dock-Symbol; die Computersteuerung des Assistenten führt
+  solche Apps gar nicht erst in ihrer Liste steuerbarer Anwendungen. Weder der
+  Anzeigename „StillePost" noch die Bundle-ID werden gefunden.
+- `LSUIElement` ist kein Fehler, sondern Absicht (Menüleisten-App). Es soll bleiben.
+
+Weg, der funktionieren sollte: Daniel tippt `@StillePost` in den Prompt — das
+adressiert die App direkt und hängt nicht an der Liste. Ungetestet.
+
+Offen und darum weiterhin nur am echten Bildschirm prüfbar:
+
+- keep_alive-Dropdown im Bereinigungs-Tab (Rest aus Teil A/0.7.0).
+- Login-Item-Schalter im Tab „Allgemein" (dafür fehlt auch noch der echte
+  Ab-/Anmeldezyklus; die Registrierung selbst wäre schon ein Fortschritt).
+- Modell-Dialog beim Start, wenn das Modell fehlt oder nur geliehen ist.
+  Gefahrlos testbar über eine wegwerfbare `STILLEPOST_CONFIG` mit falschem
+  `whisper.modelPath` — die echte Config und das echte Modell bleiben unberührt.
 
 ## Weitere offene Arbeit
 
