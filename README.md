@@ -81,9 +81,10 @@ Requirements: macOS 14+, [Homebrew](https://brew.sh), [Ollama](https://ollama.co
 
 ```bash
 brew install whisper-cpp          # local Whisper server (whisper.cpp)
-ollama pull qwen3.5:9b            # default cleanup model (~6 GB)
-# Alternative if you have more RAM: gemma4:e4b (~10 GB loaded), slightly faster
-# and more faithful in our tests; selectable via config.json/settings.
+ollama pull qwen3.5:9b            # default cleanup model (~6 GB loaded — a sensible
+                                  # compromise, comfortable on 16–32 GB Macs)
+# Want higher quality and have the RAM to spare? gemma4:26b (~18 GB loaded, needs a
+# 32 GB+ Mac) is noticeably stronger; select it via config.json/settings.
 scripts/install-model.sh          # Whisper model large-v3-turbo (~1.6 GB)
 scripts/build-app.sh --install    # builds the app and installs it to /Applications
 open /Applications/StillePost.app
@@ -128,15 +129,16 @@ environment variable.
 ### Cleanup on a stronger machine (with fallback)
 
 On a weaker laptop it pays off to hand cleanup to a stronger machine on your own
-network: The model stays permanently warm there, and the laptop saves the ~8 GB of
-RAM for the local model. `fallbacks` lists backup endpoints tried in order when the
-primary does not respond (probe timeout 2 s; away from your home network, local
-Ollama takes over almost without delay):
+network: There you can run the bigger, higher-quality model (e.g. gemma4:26b), it
+stays permanently warm, and the laptop keeps the ~6 GB of RAM for its lightweight
+local fallback. `fallbacks` lists backup endpoints tried in order when the primary
+does not respond (probe timeout 2 s; away from your home network, local Ollama takes
+over almost without delay):
 
 ```jsonc
 "cleanup": {
   "ollamaURL": "http://192.168.1.50:11434",   // strong machine on the LAN (primary)
-  "model": "qwen3.5:9b",
+  "model": "gemma4:26b",
   "fallbacks": [
     { "provider": "ollama", "ollamaURL": "http://127.0.0.1:11434", "model": "qwen3.5:9b" },
     { "provider": "openai", "remote": { "baseURL": "https://api.example.com/v1", "model": "model-name" } }

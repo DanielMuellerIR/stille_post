@@ -83,9 +83,10 @@ Voraussetzungen: macOS 14+, [Homebrew](https://brew.sh), [Ollama](https://ollama
 
 ```bash
 brew install whisper-cpp          # lokaler Whisper-Server (whisper.cpp)
-ollama pull qwen3.5:9b            # Standard-Bereinigungsmodell (~6 GB)
-# Alternative mit mehr RAM: gemma4:e4b (~10 GB geladen), in eigenen Tests
-# etwas schneller und wortgetreuer; per config.json/Einstellungen wählbar.
+ollama pull qwen3.5:9b            # Standard-Bereinigungsmodell (~6 GB geladen — ein
+                                  # vernünftiger Kompromiss, läuft gut auf 16–32-GB-Macs)
+# Mehr Qualität und RAM übrig? gemma4:26b (~18 GB geladen, braucht einen
+# 32-GB+-Mac) ist deutlich stärker; per config.json/Einstellungen wählbar.
 scripts/install-model.sh          # Whisper-Modell large-v3-turbo (~1,6 GB)
 scripts/build-app.sh --install    # baut die App und installiert nach /Applications
 open /Applications/StillePost.app
@@ -131,15 +132,16 @@ Der API-Key kommt **nicht** in die Datei, sondern in den Schlüsselbund
 ### Bereinigung auf einem stärkeren Rechner (mit Fallback)
 
 Auf einem schwächeren Laptop lohnt es sich, die Bereinigung an einen stärkeren
-Rechner im eigenen Netz abzugeben: Das Modell bleibt dort dauerhaft warm, und der
-Laptop spart die ~8 GB RAM fürs lokale Modell. `fallbacks` listet Ausweich-Endpoints,
-die der Reihe nach probiert werden, wenn der primäre nicht antwortet (Probe-Timeout
-2 s; unterwegs ohne Heimnetz übernimmt also fast verzögerungsfrei das lokale Ollama):
+Rechner im eigenen Netz abzugeben: Dort kann das größere, hochwertigere Modell
+laufen (z. B. gemma4:26b), es bleibt dauerhaft warm, und der Laptop behält die ~6 GB
+RAM für sein leichtes lokales Fallback. `fallbacks` listet Ausweich-Endpoints, die
+der Reihe nach probiert werden, wenn der primäre nicht antwortet (Probe-Timeout 2 s;
+unterwegs ohne Heimnetz übernimmt also fast verzögerungsfrei das lokale Ollama):
 
 ```jsonc
 "cleanup": {
   "ollamaURL": "http://192.168.1.50:11434",   // starker Rechner im LAN (primär)
-  "model": "qwen3.5:9b",
+  "model": "gemma4:26b",
   "fallbacks": [
     { "provider": "ollama", "ollamaURL": "http://127.0.0.1:11434", "model": "qwen3.5:9b" },
     { "provider": "openai", "remote": { "baseURL": "https://api.example.com/v1", "model": "modell-name" } }
