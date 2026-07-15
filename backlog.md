@@ -178,15 +178,31 @@ Erledigt am 2026-07-16 auf diesem Weg (Daniel am Schirm, an 0.8.0):
 - Login-Item-Schalter: da, anklickbar, hält beim Einschalten. Systemseitig belegt
   über `sfltool dumpbtm` (ohne root lesbar): `io.github.danielmuellerir.stillepost`,
   URL `/Applications/StillePost.app/`, `Disposition: [enabled, allowed, notified]`.
+- Modell-Dialog: beide Zustände am Bildschirm geprüft (2026-07-16, Build 0.8.1).
+  Über eine wegwerfbare `STILLEPOST_CONFIG` ausgelöst, ohne das echte Modell
+  anzufassen; „Laden“ wurde bewusst nie geklickt. „Whisper-Modell fehlt“ und
+  „Whisper-Modell ist nur geliehen“ erscheinen mit korrektem Text, Zielpfad und der
+  Wahl Später/Laden. Der geliehene Fall wurde mit einem Verweis auf einen gar nicht
+  mehr existierenden Cache ausgelöst und trotzdem als „geliehen“ erkannt, nicht als
+  „fehlt“ — der `lstat`-Vertrag hält auch am echten Pfad.
 
 Weiterhin offen:
 
 - Der echte Ab-/Anmeldezyklus für das Login-Item (Daniels Entscheidung: im Alltag,
   die Registrierung genügt als Beleg).
-- Modell-Dialog beim Start, wenn das Modell fehlt oder nur geliehen ist. Gefahrlos
-  testbar über eine wegwerfbare `STILLEPOST_CONFIG` mit falschem `whisper.modelPath`
-  — braucht aber einen zweiten Start, und der Einzelinstanz-Schutz lässt keine zwei
-  zu; die laufende App muss also kurz weichen.
+
+## Beim Dialog-Test aufgefallen (2026-07-16, unentschieden)
+
+- **Die App hat kein Icon.** Kein `.icns` im Bundle, kein `CFBundleIconFile` in der
+  Info.plist, keine Quelle im Repo, `build-app.sh` legt keins an — im Modell-Dialog
+  steht deshalb ein generischer Platzhalter. Als Menüleisten-App (LSUIElement, kein
+  Dock-Icon) fällt es meist nicht auf, sichtbar wird es aber im Modell-Dialog, in den
+  Systemeinstellungen unter „Anmeldeobjekte“ und im Finder. Reine Politur, kein Fehler.
+- **Größen stehen in MB, auch jenseits von 1 GB.** Der Dialog sagt „1549 MB“, die
+  Commit-Historie und die READMEs sprechen von „1,6 GB“. Beides ist richtig (1549 MiB
+  = 1,62 GB), aber der Nutzer denkt bei vierstelligen MB in GB. Eine Anzeige, die ab
+  1024 MB auf GB wechselt, wäre freundlicher — wäre aber eine Verhaltensänderung samt
+  Versions-Bump und ist deshalb nicht beiläufig gemacht worden.
 
 ## Weitere offene Arbeit
 
