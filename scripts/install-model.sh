@@ -25,7 +25,7 @@ URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-$MODEL.bin"
 # Ist schon eine eigene Kopie da?
 #
 # Bewusst `-L` VOR `-f` prüfen: `-f` folgt Symlinks und ist deshalb auch dann wahr,
-# wenn hier nur ein Verweis auf einen fremden Cache liegt (auf Daniels M3 zeigt der
+# wenn hier nur ein Verweis auf einen fremden Cache liegt (auf dem Entwicklungsrechner zeigt der
 # Pfad nach ~/.cache/openwhispr/). Genau daran hat das Skript früher immer "Modell
 # ist schon da" gemeldet und nie geladen — und Stille Post verliert sein Modell,
 # sobald der fremde Cache geräumt wird.

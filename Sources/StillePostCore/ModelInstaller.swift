@@ -71,7 +71,7 @@ public final class ModelInstaller {
         case installed(path: String, bytes: Int64)
         /// Nur ein Verweis auf einen fremden Ort. Funktioniert HEUTE, aber das Modell
         /// gehört uns nicht: Räumt das fremde Programm auf, steht Stille Post ohne da.
-        /// Genau diese Lage bestand auf dem M3 (Verweis in den OpenWhispr-Cache).
+        /// Genau diese Lage bestand auf dem Entwicklungsrechner (Verweis in den OpenWhispr-Cache).
         case borrowed(path: String, target: String)
         /// Kein Modell da.
         case missing(path: String)
