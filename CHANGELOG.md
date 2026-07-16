@@ -10,6 +10,13 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.8.3] — 2026-07-16
+
+### Geändert
+- Deployment-Target von macOS 14 auf macOS 13 (Ventura) abgesenkt. Der einzige
+  Sonoma-Blocker war eine `onChange`-Signatur in den Einstellungen; die echte
+  Untergrenze setzen SMAppService (Login-Item) und die Settings-Form-APIs.
+
 ## [0.8.2] — 2026-07-16
 
 ### Hinzugefügt

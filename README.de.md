@@ -97,7 +97,7 @@ Ohne Verlinkung geht auch der volle Pfad:
 
 ## Installation
 
-Voraussetzungen: macOS 14+, [Homebrew](https://brew.sh), [Ollama](https://ollama.com).
+Voraussetzungen: macOS 13+, [Homebrew](https://brew.sh), [Ollama](https://ollama.com).
 
 ```bash
 brew install whisper-cpp          # lokaler Whisper-Server (whisper.cpp)

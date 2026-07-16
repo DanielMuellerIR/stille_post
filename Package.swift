@@ -10,7 +10,9 @@ import PackageDescription
 let package = Package(
     name: "StillePost",
     platforms: [
-        .macOS(.v14)
+        // Untergrenze macOS 13: SMAppService (Login-Item) und die
+        // Settings-Form-APIs (.formStyle/LabeledContent) brauchen Ventura.
+        .macOS(.v13)
     ],
     targets: [
         .target(

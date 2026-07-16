@@ -162,7 +162,9 @@ private struct LoginItemToggle: View {
                 enabled = LoginItem.isEnabled
                 explanation = LoginItem.explanation
             }
-            .onChange(of: enabled) { _, wanted in
+            // Alte Ein-Parameter-Signatur (statt der Sonoma-Zweiparameter-Form),
+            // damit macOS 13 als Deployment-Target reicht.
+            .onChange(of: enabled) { wanted in
                 do {
                     try LoginItem.setEnabled(wanted)
                     failure = nil
