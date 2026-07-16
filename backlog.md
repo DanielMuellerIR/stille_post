@@ -163,14 +163,24 @@ war falsch und hat die Suche in die falsche Richtung geschickt:
 - `LSUIElement` ist kein Fehler, sondern Absicht (Menüleisten-App). Es soll bleiben.
 
 Auch der dokumentierte Ausweg „`@StillePost` in den Prompt tippen" hilft nicht —
-2026-07-16 probiert, die App bleibt unauflösbar. Es gibt damit keinen bekannten Weg,
-diese App per Computersteuerung zu testen.
+2026-07-16 probiert, die App bleibt unauflösbar. Für die *Computersteuerung* gibt es
+damit keinen bekannten Weg.
 
-Was bleibt: Daniel schaut selbst (dauert ~30 s), oder jemand baut einen Test-Hook
-`STILLEPOST_DOCK_ICON=1`, der `setActivationPolicy(.accessory)` überspringt — dann
-wäre die App für die Computersteuerung sichtbar. Passt zum vorhandenen Muster
-(`STILLEPOST_OPEN_SETTINGS`, `STILLEPOST_OVERLAY_PREVIEW`, `STILLEPOST_NO_AX_PROMPT`,
-`STILLEPOST_NO_MODEL_PROMPT`), ist aber bisher nicht gebaut und nicht beschlossen.
+**Ein Agent kann die Oberfläche trotzdem prüfen — ohne Test-Hook** (2026-07-16 am
+Modell-Dialog durchgeführt). Die Computersteuerung ist nicht der einzige Weg:
+
+- Starten mit `open` ist der Umweg; das Binary direkt starten nimmt Umgebungs-
+  variablen an: `STILLEPOST_CONFIG=<wegwerf.json> .../Contents/MacOS/StillePost &`.
+- `screencapture -x <datei.png>` per Bash nimmt den Bildschirm auf — die
+  Bildschirmaufnahme-Freigabe des Terminals genügt, LSUIElement stört dabei nicht.
+  Ein zentrierter Ausschnitt (`sips -c`) zeigt modale Dialoge lesbar, ohne den
+  restlichen Bildschirminhalt auszuwerten.
+- Der Einzelinstanz-Schutz bleibt: Die laufende App muss vorher weichen
+  (`pkill -x StillePost`) und danach wieder gestartet werden.
+
+Damit ist der Test-Hook `STILLEPOST_DOCK_ICON=1` nicht nötig, um Dialoge zu prüfen.
+Er bliebe nur interessant, wenn ein Agent wirklich *klicken* statt nur *sehen* muss;
+gebaut und beschlossen ist er weiterhin nicht.
 
 Erledigt am 2026-07-16 auf diesem Weg (Daniel am Schirm, an 0.8.0):
 
