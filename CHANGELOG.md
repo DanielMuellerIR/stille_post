@@ -10,6 +10,18 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.8.4] — 2026-07-16
+
+### Geändert
+
+- Die Installationsanleitung beginnt jetzt mit einem kurzen Schnellstart:
+  Homebrew, whisper.cpp, Ollama, Bereinigungsmodell und das fertige DMG.
+- Die READMEs unterscheiden klar zwischen Spracherkennungsprogramm,
+  Whisper-Sprachmodell, Ollama und Bereinigungsmodell. Ausführliche Konfiguration,
+  Netzwerkbetrieb, CLI und Selbstbau stehen erst nach dem normalen Installationsweg.
+- Systemgrenzen sind präzisiert: Das fertige App-Paket ist für Apple Silicon ab
+  macOS 13 gebaut; die aktuelle lokale Ollama-Version benötigt macOS 14.
+
 ## [0.8.3] — 2026-07-16
 
 ### Geändert
