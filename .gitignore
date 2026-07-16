@@ -8,3 +8,6 @@ build/
 # Xcode (falls jemand das Package in Xcode öffnet)
 *.xcodeproj
 .swiftpm/
+
+# Lokaler Schutz gegen gleichzeitige Commits mehrerer Sessions
+.commit-lock

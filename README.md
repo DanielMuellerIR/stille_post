@@ -6,57 +6,6 @@ Local dictation app for macOS: Global hotkey, speech-to-text with Whisper, and t
 cleanup with a local language model. The finished text lands right at your cursor.
 Recordings never leave your machine.
 
-Yes, this is probably the millionth Whisper dictation clone. The difference is the
-bar it aims for: **No noticeable wait** after you stop speaking (even for long
-dictations) and a cleanup stage that **cleans instead of rewriting**. Typical
-dictation tools start processing only after you finish talking, and their cleanup
-models paraphrase, shorten, or even "answer" your dictation. Both failure modes are
-designed out here.
-
-## How the wait disappears
-
-Stille Post processes audio **while** you speak: A voice-activity detector cuts the
-recording stream into segments at natural pauses, and each finished segment is
-transcribed immediately, in parallel with the ongoing recording. When you stop,
-speech recognition is essentially done; what remains is the text cleanup, which
-deliberately runs **once over the whole dictation**. Only with full context can the
-model punctuate correctly instead of leaving a spurious period at every pause. The
-cleanup model is also pre-warmed when recording **starts**, so no model cold-start
-ever lands in your wait time.
-
-## How cleanup stays honest
-
-1. A strict, example-backed system prompt: Remove filler words, false starts,
-   stutters and duplications only; never paraphrase, never summarize, never answer
-   questions contained in the dictation.
-2. A **post-model sanity check**: if the cleaned version deviates strongly from the
-   raw transcript in length (a telltale sign of shortening, inventing, or
-   "answering"), the raw transcript is used automatically and the history entry is
-   flagged. Cleanup can never destroy a dictation.
-3. If cleanup fails entirely, the raw transcript is pasted, never nothing.
-4. **Deviations are visible:** The overlay shows when cleanup switches to a backup
-   endpoint or when the raw transcript was pasted; the history records the endpoint
-   used and the cleanup duration for every dictation.
-
-## Features
-
-- **Global hotkey** (default ⌘⌥D, configurable) to start/stop recording.
-- **Unmissable recording indicator:** A large red overlay at the mouse position
-  (still visible when macOS screen zoom is active, since zoom follows the cursor)
-  with a **live microphone level meter**, so you can see that audio is actually
-  arriving. Plus clearly distinct start/stop/error sounds and a red menu bar icon.
-- **Silence detection:** Pure silence is never sent to Whisper (no hallucinations
-  during thinking pauses); after prolonged absence the recording stops automatically.
-- **History window:** View and copy all dictations (including the raw transcript
-  before cleanup), delete everything with one click.
-- **Recordings are deleted immediately after successful transcription.** Only failed
-  transcriptions keep their audio so you can hit "Retranscribe" in the history.
-  Once it succeeds, the audio is deleted as well.
-- **Automatic microphone selection:** Always uses the system default input device.
-- **Privacy:** Speech recognition and cleanup run fully local. Optionally, cleanup
-  can be delegated to any OpenAI-compatible provider. In that case only the
-  transcribed **text** is sent, never audio.
-
 ## Menu bar & history
 
 | | |
@@ -64,71 +13,85 @@ ever lands in your wait time.
 | ![Menu bar menu](assets/menu.jpg) | ![History window](assets/history.jpg) |
 | *Menu bar: start/stop, history, settings, quit* | *History: every dictation (raw + cleaned), copy with one click* |
 
-## Scriptable without the GUI (scripts & AI agents)
+## Ready in five minutes
 
-The entire pipeline is usable headless, with the same logic and configuration:
+The signed app package runs on **Apple Silicon Macs with macOS 13 or later**.
+The current local version of Ollama requires **macOS 14 or later**. Local speech
+recognition still works without Ollama; Stille Post then pastes Whisper's raw text.
 
-```bash
-stillepost-cli doctor                  # check dependencies (exit code 0 = ready)
-stillepost-cli install-model           # fetch the Whisper model (resumable)
-stillepost-cli transcribe file.wav     # WAV -> cleaned text on stdout
-stillepost-cli transcribe file.wav --raw
-stillepost-cli cleanup "raw text"      # cleanup only ("-" reads stdin)
-stillepost-cli history list --json     # machine-readable history
-stillepost-cli history clear
-stillepost-cli set-cleanup-key         # API key for cloud cleanup (reads stdin)
-```
+### 1. Install Homebrew
 
-Diagnostics go to stderr, results to stdout, failures exit non-zero. Built for
-pipes and automation. The `STILLEPOST_CONFIG` environment variable points to an
-alternative config file (e.g. for tests).
+If Homebrew is not installed yet, follow the short instructions at
+[brew.sh](https://brew.sh).
 
-The CLI ships inside the app bundle and is not on your PATH by default. Link it once:
+### 2. Install Whisper
 
 ```bash
-sudo ln -sf /Applications/StillePost.app/Contents/MacOS/stillepost-cli \
-            /usr/local/bin/stillepost-cli
+brew install whisper-cpp
 ```
 
-Without the link, the full path works too:
-`/Applications/StillePost.app/Contents/MacOS/stillepost-cli doctor`
+This installs the local speech-recognition engine. Stille Post downloads its speech
+model separately on first launch.
 
-## Installation
+### 3. Install and start Ollama
 
-Requirements: macOS 13+, [Homebrew](https://brew.sh), [Ollama](https://ollama.com).
+[Download Ollama for macOS](https://ollama.com/download/mac), move it to
+`/Applications`, and open it once. Ollama only cleans up the finished text; audio is
+never sent to it.
+
+### 4. Download the cleanup model
 
 ```bash
-brew install whisper-cpp          # local Whisper server (whisper.cpp)
-ollama pull qwen3.5:9b            # default cleanup model (~6 GB loaded — a sensible
-                                  # compromise, comfortable on 16–32 GB Macs)
-# Want higher quality and have the RAM to spare? gemma4:26b (~18 GB loaded, needs a
-# 32 GB+ Mac) is noticeably stronger; select it via config.json/settings.
-scripts/build-app.sh --install    # builds the app and installs it to /Applications
-open /Applications/StillePost.app
+ollama pull qwen3.5:9b
 ```
 
-The Whisper model is **not** in that list on purpose: the app offers to download it
-on first launch if it is missing (`large-v3-turbo`, ~1.6 GB) and shows progress.
-Prefer to do it yourself, or scripting a machine?
+The default model uses about 6.6 GB of disk space and is suitable for most Macs with
+16–32 GB of memory.
 
-```bash
-scripts/install-model.sh                # straight from the repo, needs nothing else
-scripts/install-model.sh large-v3       # the only alternative (~3.1 GB), see below
+### 5. Install Stille Post
 
-# or via the CLI (for its path, see "Scriptable without the GUI"):
-stillepost-cli install-model
-```
+1. Download the current DMG from
+   [GitHub Releases](https://github.com/DanielMuellerIR/stille_post/releases/latest).
+2. Open the DMG and drag **Stille Post** to **Applications**.
+3. Start Stille Post. Accept the `large-v3-turbo` download (~1.6 GB), then grant
+   **Microphone** and **Accessibility** access when macOS asks.
 
-Both routes resume interrupted downloads and verify completeness — at 1.6 GB you do
-not want to start over.
+Now place the cursor in a text field, press **⌘⌥D**, speak, and press **⌘⌥D**
+again. The text is pasted at the cursor.
 
-Being honest about what is left: `brew install whisper-cpp` above is the **one
-remaining manual prerequisite**. Stille Post fetches its own model, but it does not
-install the whisper.cpp server for you — it will not reach into your package manager.
-`stillepost-cli doctor` tells you if it is missing.
+> **Why are there two model downloads?** `large-v3-turbo` recognizes speech and
+> produces the raw transcript. `qwen3.5:9b` then removes filler words, false starts,
+> and repetitions. Both run locally.
 
-On first launch macOS asks for two permissions: **Microphone** (recording) and
-**Accessibility** (pasting at the cursor via simulated ⌘V).
+## What makes Stille Post different
+
+- **Fast completion:** Whisper transcribes while recording is still in progress.
+- **Cleanup without rewriting:** The language model removes speech artifacts but is
+  instructed not to shorten, paraphrase, or answer the dictation.
+- **Safe fallback:** If the cleaned result looks implausible or the service is
+  unavailable, Stille Post uses Whisper's raw transcript.
+- **Local and transparent:** Audio always stays on the Mac. History shows the raw
+  text, final text, and cleanup endpoint used.
+- **Visible recording state:** An overlay, live microphone meter, menu bar icon, and
+  distinct sounds show what is happening.
+- **No audio buildup:** Successful recordings are deleted immediately; failed ones
+  remain available for retranscription.
+
+## How the short wait works
+
+A voice-activity detector splits the recording at natural pauses. Each completed
+segment is transcribed immediately while recording continues. After stopping, the
+language model cleans up the **complete** transcript exactly once, preserving context
+and sentence boundaries. The cleanup model is warmed when recording begins.
+
+## How cleanup is kept in check
+
+1. The system prompt only permits removal of filler words, false starts, stutters,
+   and repetitions — no paraphrasing, summarizing, or answering.
+2. A sanity check compares the result length with the raw transcript. Large
+   deviations automatically fall back to the raw text.
+3. A failed cleanup also falls back to the raw text.
+4. The overlay and history identify backup endpoints and raw-text fallbacks.
 
 ### Which Whisper model?
 
@@ -236,9 +199,39 @@ Only transcribed TEXT travels over your network, never audio — speech recognit
 always runs on the machine you dictate on. Which endpoint handled a cleanup is shown
 by `stillepost-cli cleanup` and in the history window.
 
+## Scriptable without the GUI
+
+The entire pipeline is available through the CLI with the same logic and configuration:
+
+```bash
+stillepost-cli doctor                  # check dependencies (exit code 0 = ready)
+stillepost-cli install-model           # fetch the Whisper model (resumable)
+stillepost-cli transcribe file.wav     # WAV -> cleaned text on stdout
+stillepost-cli transcribe file.wav --raw
+stillepost-cli cleanup "raw text"      # cleanup only ("-" reads stdin)
+stillepost-cli history list --json
+stillepost-cli history clear
+stillepost-cli set-cleanup-key         # store API key from stdin in the keychain
+```
+
+Diagnostics go to stderr, results to stdout, and failures exit non-zero. The CLI is
+inside the app bundle and is not added to your PATH automatically:
+
+```bash
+sudo ln -sf /Applications/StillePost.app/Contents/MacOS/stillepost-cli \
+            /usr/local/bin/stillepost-cli
+```
+
+Without the link, use
+`/Applications/StillePost.app/Contents/MacOS/stillepost-cli doctor`. Set
+`STILLEPOST_CONFIG` to use an alternative configuration file.
+
 ## Development & tests
 
 ```bash
+git clone https://github.com/DanielMuellerIR/stille_post.git
+cd stille_post
+scripts/build-app.sh --install   # install a release build in /Applications
 swift test            # unit tests (VAD, WAV, sanity check, history …)
 scripts/e2e-test.sh   # end to end: say voice -> Whisper -> cleanup -> assertions
 ```

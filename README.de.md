@@ -6,59 +6,6 @@ Lokale Diktier-App für macOS: Globaler Hotkey, Spracherkennung mit Whisper und
 Textbereinigung mit einem lokalen Sprachmodell. Der fertige Text landet direkt an
 der Cursor-Position. Aufnahmen verlassen den Rechner nicht.
 
-Ja, das ist vermutlich der millionste Whisper-Diktat-Klon. Der Unterschied liegt im
-Anspruch: **Keine spürbare Wartezeit** nach dem Diktieren (auch bei langen Diktaten)
-und eine Textbereinigung, die **putzt statt dichtet**. Gängige Diktat-Tools warten mit
-der Verarbeitung, bis man fertig gesprochen hat, und ihre Bereinigungs-Modelle
-formulieren um, kürzen oder „beantworten" das Diktat. Beides ist hier konstruktiv
-ausgeschlossen.
-
-## Wie die Wartezeit verschwindet
-
-Stille Post verarbeitet das Audio **während** des Sprechens: Eine Stille-Erkennung
-schneidet den Aufnahme-Strom an Sprechpausen in Segmente, jedes fertige Segment wird
-sofort transkribiert, parallel zur weiterlaufenden Aufnahme. Beim Stopp ist die
-Spracherkennung damit praktisch fertig; es folgt nur noch die Textbereinigung, die
-bewusst **einmal über das ganze Diktat** läuft. Nur mit dem Gesamtzusammenhang kann
-das Modell Satzzeichen korrekt setzen, statt an jeder Sprechpause einen falschen
-Punkt zu hinterlassen. Zusätzlich wird das Bereinigungs-Modell schon beim
-Aufnahme-**Start** vorgewärmt, damit kein Modell-Kaltstart in die Wartezeit fällt.
-
-## Wie die Bereinigung ehrlich bleibt
-
-1. Ein strikter, mit Beispielen abgesicherter System-Prompt: Nur Füllwörter,
-   Versprecher, Stottern und Doppelungen entfernen; nie umformulieren, nie
-   zusammenfassen, nie Fragen aus dem Diktat beantworten.
-2. Eine **Plausibilitätsprüfung nach dem Modell**: Weicht die bereinigte Fassung in
-   der Länge stark vom Rohtext ab (Indiz für Kürzen, Dazuerfinden oder „Antworten"),
-   wird automatisch der Rohtext verwendet und das im Verlauf gekennzeichnet.
-   Ein Diktat kann durch die Bereinigung nie zerstört werden.
-3. Schlägt die Bereinigung fehl, wird immer der Rohtext eingefügt, nie nichts.
-4. **Abweichungen sind sichtbar:** Das Overlay zeigt an, wenn die Bereinigung auf
-   einen Ausweich-Endpoint wechselt oder unbereinigter Rohtext eingefügt wurde;
-   der Verlauf speichert zu jedem Diktat den benutzten Endpoint und die Dauer.
-
-## Features
-
-- **Globaler Hotkey** (Standard ⌘⌥D, konfigurierbar): Aufnahme ein/aus.
-- **Unübersehbarer Aufnahme-Indikator:** Großes rotes Overlay an der Mausposition
-  (bei aktiver Bildschirm-Zoom-Funktion trotzdem sichtbar, weil der Zoom dem Cursor
-  folgt) mit **Live-Mikrofonpegel**, an dem man sieht, dass wirklich Ton ankommt. Dazu
-  deutlich unterscheidbare Start-/Stopp-/Fehler-Sounds und ein rotes Menüleisten-Symbol.
-- **Stille-Erkennung:** Reine Stille wird nie an Whisper geschickt (keine
-  Halluzinationen bei Denkpausen); nach längerer Abwesenheit stoppt die Aufnahme
-  automatisch.
-- **Verlauf mit Fenster:** Alle Diktate ansehen und kopieren (auch den Rohtext vor
-  der Bereinigung), alles auf einen Klick löschen.
-- **Aufnahmen werden sofort nach erfolgreicher Transkription gelöscht.** Nur bei
-  einem Fehlschlag bleibt die Aufnahme erhalten und lässt sich im Verlauf per
-  „Erneut transkribieren" nachholen. Klappt es, wird sie danach ebenfalls gelöscht.
-- **Automatische Mikrofon-Wahl:** Es wird immer das im System eingestellte
-  Standard-Mikrofon verwendet.
-- **Datenschutz:** Spracherkennung und Bereinigung laufen komplett lokal. Optional
-  lässt sich die Bereinigung an einen beliebigen OpenAI-kompatiblen Anbieter geben.
-  Dann geht ausschließlich der transkribierte **Text** dorthin, niemals Audio.
-
 ## Menüleiste & Verlauf
 
 | | |
@@ -66,71 +13,87 @@ Aufnahme-**Start** vorgewärmt, damit kein Modell-Kaltstart in die Wartezeit fä
 | ![Menüleisten-Menü](assets/menu.jpg) | ![Verlauf-Fenster](assets/history.jpg) |
 | *Menüleiste: Start/Stopp, Verlauf, Einstellungen, Beenden* | *Verlauf: jedes Diktat (roh + bereinigt), Kopieren per Klick* |
 
-## Steuerbar ohne GUI (Skripte & AI-Agenten)
+## In fünf Minuten startklar
 
-Die komplette Pipeline ist headless nutzbar, mit gleicher Logik und gleicher Konfiguration:
+Das fertige, signierte App-Paket läuft auf **Apple-Silicon-Macs ab macOS 13**.
+Für die aktuelle lokale Ollama-Version ist **macOS 14 oder neuer** erforderlich.
+Ohne Ollama funktioniert die lokale Spracherkennung trotzdem; Stille Post fügt dann
+den unbereinigten Whisper-Text ein.
 
-```bash
-stillepost-cli doctor                  # prüft Abhängigkeiten (Exit-Code 0 = bereit)
-stillepost-cli install-model           # Whisper-Modell laden (setzt Abbrüche fort)
-stillepost-cli transcribe datei.wav    # WAV -> Text (mit Bereinigung) auf stdout
-stillepost-cli transcribe datei.wav --raw
-stillepost-cli cleanup "roher text"    # nur die Textbereinigung ("-" liest stdin)
-stillepost-cli history list --json     # Verlauf maschinenlesbar
-stillepost-cli history clear
-stillepost-cli set-cleanup-key         # API-Key für Cloud-Bereinigung (liest stdin)
-```
+### 1. Homebrew installieren
 
-Diagnose geht nach stderr, das Ergebnis nach stdout, Fehler geben Exit-Code ≠ 0.
-Gebaut für Pipes und Automatisierung. Die Umgebungsvariable `STILLEPOST_CONFIG`
-zeigt auf eine alternative Konfigurationsdatei (z. B. für Tests).
+Falls Homebrew noch fehlt, folge der kurzen Anleitung auf [brew.sh](https://brew.sh).
 
-Die CLI steckt im App-Bundle und liegt nicht von selbst im PATH. Einmalig verlinken:
+### 2. Whisper installieren
 
 ```bash
-sudo ln -sf /Applications/StillePost.app/Contents/MacOS/stillepost-cli \
-            /usr/local/bin/stillepost-cli
+brew install whisper-cpp
 ```
 
-Ohne Verlinkung geht auch der volle Pfad:
-`/Applications/StillePost.app/Contents/MacOS/stillepost-cli doctor`
+Das ist das lokale Spracherkennungsprogramm. Das dazugehörige Sprachmodell lädt
+Stille Post später selbst.
 
-## Installation
+### 3. Ollama installieren und starten
 
-Voraussetzungen: macOS 13+, [Homebrew](https://brew.sh), [Ollama](https://ollama.com).
+[Ollama für macOS herunterladen](https://ollama.com/download/mac), nach
+`/Applications` verschieben und einmal öffnen. Ollama bereinigt später nur den
+fertigen Text; Audio wird nie an Ollama gesendet.
+
+### 4. Bereinigungsmodell herunterladen
 
 ```bash
-brew install whisper-cpp          # lokaler Whisper-Server (whisper.cpp)
-ollama pull qwen3.5:9b            # Standard-Bereinigungsmodell (~6 GB geladen — ein
-                                  # vernünftiger Kompromiss, läuft gut auf 16–32-GB-Macs)
-# Mehr Qualität und RAM übrig? gemma4:26b (~18 GB geladen, braucht einen
-# 32-GB+-Mac) ist deutlich stärker; per config.json/Einstellungen wählbar.
-scripts/build-app.sh --install    # baut die App und installiert nach /Applications
-open /Applications/StillePost.app
+ollama pull qwen3.5:9b
 ```
 
-Das Whisper-Modell fehlt in dieser Liste mit Absicht: Die App bietet beim ersten
-Start an, es zu laden, falls es fehlt (`large-v3-turbo`, ~1,6 GB), und zeigt den
-Fortschritt. Lieber selbst in der Hand oder auf mehreren Rechnern skriptbar?
+Das Standardmodell belegt etwa 6,6 GB auf der Festplatte und passt auf die meisten
+Macs mit 16–32 GB Arbeitsspeicher.
 
-```bash
-scripts/install-model.sh                # aus dem Repo heraus, braucht nichts weiter
-scripts/install-model.sh large-v3       # die einzige Alternative (~3,1 GB), siehe unten
+### 5. Stille Post installieren
 
-# oder über die CLI (Pfad siehe „Steuerbar ohne GUI"):
-stillepost-cli install-model
-```
+1. Das aktuelle DMG unter
+   [GitHub Releases](https://github.com/DanielMuellerIR/stille_post/releases/latest)
+   laden.
+2. DMG öffnen und **Stille Post** in **Programme** ziehen.
+3. Stille Post starten. Beim ersten Start den Download von `large-v3-turbo`
+   bestätigen (~1,6 GB) und **Mikrofon** sowie **Bedienungshilfen** erlauben.
 
-Beide Wege setzen abgebrochene Downloads fort und prüfen die Datei auf
-Vollständigkeit — bei 1,6 GB will man nicht von vorn anfangen.
+Danach: Cursor in ein Textfeld setzen, **⌘⌥D** drücken, sprechen und **⌘⌥D**
+erneut drücken. Der Text wird an der Cursor-Position eingefügt.
 
-Ehrlich bleiben, was übrig bleibt: `brew install whisper-cpp` oben ist die **einzige
-verbleibende Handarbeit**. Stille Post holt sein Modell selbst, installiert aber
-nicht den whisper.cpp-Server für dich — die App greift nicht in fremde
-Paketverwaltungen ein. `stillepost-cli doctor` sagt dir, wenn er fehlt.
+> **Warum werden zwei Modelle geladen?** `large-v3-turbo` versteht die Sprache und
+> erzeugt den Rohtext. `qwen3.5:9b` entfernt danach Füllwörter, Versprecher und
+> Wiederholungen. Beide laufen lokal.
 
-Beim ersten Start fragt macOS nach zwei Berechtigungen: **Mikrofon** (Aufnahme) und
-**Bedienungshilfen** (fürs Einfügen an der Cursor-Position per simuliertem ⌘V).
+## Was Stille Post besonders macht
+
+- **Schnell fertig:** Whisper transkribiert schon während der Aufnahme.
+- **Bereinigt ohne umzuschreiben:** Das Sprachmodell entfernt Versprecher und
+  Füllwörter, soll den Inhalt aber weder kürzen noch beantworten.
+- **Sicherer Rückfall:** Wirkt das bereinigte Ergebnis unplausibel oder ist der
+  Dienst nicht erreichbar, wird der Whisper-Rohtext verwendet.
+- **Lokal und nachvollziehbar:** Audio bleibt immer auf dem Mac. Der Verlauf zeigt
+  Rohtext, Ergebnis und den verwendeten Bereinigungs-Endpunkt.
+- **Sichtbare Aufnahme:** Overlay, Mikrofonpegel, Menüleisten-Symbol und
+  unterschiedliche Klänge zeigen den aktuellen Zustand.
+- **Kein Audio-Müll:** Erfolgreich verarbeitete Aufnahmen werden sofort gelöscht;
+  nach Fehlern bleiben sie für eine erneute Transkription erhalten.
+
+## Wie die kurze Wartezeit entsteht
+
+Eine Stille-Erkennung schneidet die laufende Aufnahme an Sprechpausen in Segmente.
+Jedes fertige Segment wird sofort transkribiert, während die Aufnahme weiterläuft.
+Nach dem Stopp bereinigt das Sprachmodell den **vollständigen** Text genau einmal,
+damit Zusammenhang und Satzgrenzen erhalten bleiben. Das Bereinigungsmodell wird
+bereits beim Start der Aufnahme vorgewärmt.
+
+## Wie die Bereinigung abgesichert ist
+
+1. Der System-Prompt erlaubt nur das Entfernen von Füllwörtern, Versprechern,
+   Stottern und Doppelungen – kein Umformulieren, Zusammenfassen oder Beantworten.
+2. Eine Plausibilitätsprüfung vergleicht die Länge mit dem Rohtext. Bei starken
+   Abweichungen wird automatisch der Rohtext verwendet.
+3. Schlägt die Bereinigung fehl, wird ebenfalls der Rohtext eingefügt.
+4. Overlay und Verlauf kennzeichnen Ausweich-Endpunkte und Rohtext-Rückfälle.
 
 ### Welches Whisper-Modell?
 
@@ -244,9 +207,39 @@ fast verzögerungsfrei das lokale Ollama):
 Spracherkennung läuft immer auf dem Rechner, auf dem du diktierst. Welcher Endpoint
 zum Zug kam, zeigt `stillepost-cli cleanup` an und das Verlaufsfenster.
 
+## Steuerbar ohne GUI
+
+Die komplette Pipeline ist mit derselben Logik und Konfiguration per CLI nutzbar:
+
+```bash
+stillepost-cli doctor                  # prüft Abhängigkeiten (Exit-Code 0 = bereit)
+stillepost-cli install-model           # Whisper-Modell laden (setzt Abbrüche fort)
+stillepost-cli transcribe datei.wav    # WAV -> bereinigter Text auf stdout
+stillepost-cli transcribe datei.wav --raw
+stillepost-cli cleanup "roher text"    # nur Bereinigung ("-" liest stdin)
+stillepost-cli history list --json
+stillepost-cli history clear
+stillepost-cli set-cleanup-key         # API-Key aus stdin in den Schlüsselbund
+```
+
+Diagnosen gehen nach stderr, Ergebnisse nach stdout, Fehler liefern einen Exit-Code
+≠ 0. Die CLI steckt im App-Bundle und liegt nicht automatisch im PATH:
+
+```bash
+sudo ln -sf /Applications/StillePost.app/Contents/MacOS/stillepost-cli \
+            /usr/local/bin/stillepost-cli
+```
+
+Ohne Verlinkung funktioniert auch
+`/Applications/StillePost.app/Contents/MacOS/stillepost-cli doctor`. Mit
+`STILLEPOST_CONFIG` lässt sich eine alternative Konfigurationsdatei angeben.
+
 ## Entwicklung & Tests
 
 ```bash
+git clone https://github.com/DanielMuellerIR/stille_post.git
+cd stille_post
+scripts/build-app.sh --install   # Release-Build nach /Applications installieren
 swift test            # Unit-Tests (VAD, WAV, Plausibilitätsprüfung, Verlauf …)
 scripts/e2e-test.sh   # Ende-zu-Ende: say-Stimme -> Whisper -> Bereinigung -> Prüfung
 ```

@@ -40,8 +40,8 @@ Kontext, Satzgrenzen und konsistente Zeichensetzung verloren gehen.
 - Fallback-Semantik: Netzwerk-/Dienstfehler → nächster Endpunkt. Plausibilitätsfehler
   des bereinigten Textes → unveränderten Rohtext liefern, nicht den nächsten Dienst
   ausprobieren. Die Längenkorridor-Prüfung ist eine Sicherheitsgrenze.
-- Keep-alive: primäres Modell dauerhaft (`-1`), Fallbacks begrenzt (`30m`);
-  periodischer Warm-up darf diese Semantik nicht aushebeln.
+- Keep-alive: primäres Modell standardmäßig `2h`, Fallbacks `30m`. `-1` bleibt
+  optional für dauerhaftes Laden; nur dann darf der periodische Warm-up laufen.
 - Erfolg löscht die temporäre WAV-Datei. Jeder Fehler behält sie zur Diagnose.
 
 ## Datenschutz und Secrets
