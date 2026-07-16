@@ -209,6 +209,21 @@ Weiterhin offen:
   1024 MB auf GB wechselt, wäre freundlicher — wäre aber eine Verhaltensänderung samt
   Versions-Bump und ist deshalb nicht beiläufig gemacht worden.
 
+## Icon-Nachzieharbeit (offen seit 0.8.2, 2026-07-16)
+
+- **Der Modell-Dialog ist mit dem neuen Icon nicht am Bildschirm nachgeprüft.**
+  Geprüft ist die Ebene darunter: LaunchServices liefert für `/Applications/
+  StillePost.app` unser Icon über die volle Größenstaffel aus, was Finder und
+  Anmeldeobjekte bedienen. Der Dialog ist ein `NSAlert` und zieht sein Bild aus
+  demselben Bundle-Icon, sollte also stimmen — beobachtet wurde es aber nicht, und
+  genau dort war der Platzhalter ursprünglich aufgefallen. Der Dialog erscheint nur
+  bei fehlendem Modell; wie er ohne Test-Hook zu provozieren ist, steht oben unter
+  „GUI-Tests dieser App".
+- **`scripts/build-icon.sh` steht in keiner der beiden READMEs.** Dort sind
+  `build-app.sh`, `install-model.sh` und `e2e-test.sh` aufgeführt. Bewusst nicht
+  beiläufig ergänzt, weil die Icon-Änderung sonst in die READMEs ausgefranst wäre.
+  Relevant nur für den, der die Zeichnung ändert — das `.icns` liegt fertig im Repo.
+
 ## Weitere offene Arbeit
 
 - Mehrtägigen Realbetrieb auf beiden vorgesehenen Macs durchführen und Befunde mit
