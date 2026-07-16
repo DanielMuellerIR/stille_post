@@ -1,10 +1,19 @@
 import AppKit
+import Sparkle
 import StillePostCore
 
 /// Verdrahtet alle Bausteine: Menüleisten-Symbol, Hotkey, Overlay, Sounds,
 /// Diktier-Maschine, Verlaufsfenster.
 final class AppDelegate: NSObject, NSApplicationDelegate {
 
+    /// Sparkle verwaltet Suche, Download, Signaturprüfung, Austausch der App und
+    /// Neustart. Als langlebiges Feld bleibt der Controller während der gesamten
+    /// App-Laufzeit erhalten; mehr als eine Instanz darf es nicht geben.
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
     private var config = Config.load()
     private var engine: DictationEngine!
     private var statusItem: NSStatusItem!
@@ -43,6 +52,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         setupStatusItem()
+
+        // Headless-GUI-Testweg für das echte Statusmenü. Erst im nächsten Runloop
+        // öffnen, damit AppKit das Menüleisten-Element vollständig registriert hat.
+        if ProcessInfo.processInfo.environment["STILLEPOST_OPEN_MENU"] != nil {
+            DispatchQueue.main.async { [weak self] in
+                self?.statusItem.button?.performClick(nil)
+            }
+        }
         buildComponents()
 
         // Bedienungshilfen-Berechtigung früh anstoßen (System-Dialog), damit das
@@ -196,6 +213,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let configItem = NSMenuItem(title: "Konfigurationsdatei öffnen", action: #selector(openConfig), keyEquivalent: "")
         configItem.target = self
         menu.addItem(configItem)
+        menu.addItem(.separator())
+        // Sparkle selbst ist Target des Eintrags. Dadurch validiert es den Menüpunkt
+        // auch während einer laufenden Suche oder Installation korrekt.
+        let updateItem = NSMenuItem(
+            title: "Nach Updates suchen …",
+            action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
+            keyEquivalent: ""
+        )
+        updateItem.target = updaterController
+        menu.addItem(updateItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Stille Post beenden", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         return menu

@@ -59,6 +59,10 @@ The default model uses about 6.6 GB of disk space and is suitable for most Macs 
 Now place the cursor in a text field, press **⌘⌥D**, speak, and press **⌘⌥D**
 again. The text is pasted at the cursor.
 
+Stille Post checks for signed updates at most once per day and never installs one
+without permission. Use **“Nach Updates suchen …”** in the menu to check
+immediately; after confirmation, Sparkle handles download, replacement, and relaunch.
+
 > **Why are there two model downloads?** `large-v3-turbo` recognizes speech and
 > produces the raw transcript. `qwen3.5:9b` then removes filler words, false starts,
 > and repetitions. Both run locally.
@@ -235,6 +239,9 @@ scripts/build-app.sh --install   # install a release build in /Applications
 swift test            # unit tests (VAD, WAV, sanity check, history …)
 scripts/e2e-test.sh   # end to end: say voice -> Whisper -> cleanup -> assertions
 ```
+
+The Sparkle feed and release automation are documented in
+[`docs/sparkle-release.md`](docs/sparkle-release.md).
 
 ## Status
 

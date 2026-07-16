@@ -60,6 +60,11 @@ Macs mit 16–32 GB Arbeitsspeicher.
 Danach: Cursor in ein Textfeld setzen, **⌘⌥D** drücken, sprechen und **⌘⌥D**
 erneut drücken. Der Text wird an der Cursor-Position eingefügt.
 
+Stille Post sucht höchstens täglich nach signierten Updates und installiert nichts
+ungefragt. Eine sofortige Prüfung ist jederzeit im Menü unter **„Nach Updates
+suchen …“** möglich; Download, Austausch der App und Neustart übernimmt Sparkle
+erst nach Zustimmung.
+
 > **Warum werden zwei Modelle geladen?** `large-v3-turbo` versteht die Sprache und
 > erzeugt den Rohtext. `qwen3.5:9b` entfernt danach Füllwörter, Versprecher und
 > Wiederholungen. Beide laufen lokal.
@@ -243,6 +248,9 @@ scripts/build-app.sh --install   # Release-Build nach /Applications installieren
 swift test            # Unit-Tests (VAD, WAV, Plausibilitätsprüfung, Verlauf …)
 scripts/e2e-test.sh   # Ende-zu-Ende: say-Stimme -> Whisper -> Bereinigung -> Prüfung
 ```
+
+Der Sparkle-Feed und seine Release-Automation sind in
+[`docs/sparkle-release.md`](docs/sparkle-release.md) beschrieben.
 
 ## Status
 

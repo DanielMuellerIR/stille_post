@@ -40,10 +40,24 @@ swift build -c release
 
 APP="build/StillePost.app"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 
 cp .build/release/StillePost "$APP/Contents/MacOS/StillePost"
 cp .build/release/stillepost-cli "$APP/Contents/MacOS/stillepost-cli"
+
+# SwiftPM linkt Sparkle, verpackt ein manuell gebautes .app aber nicht selbst.
+# `ditto` erhält die für macOS-Frameworks wesentlichen Symlinks und Rechte.
+SPARKLE_SOURCE="$(find .build/artifacts/sparkle -type d -name Sparkle.framework -print -quit 2>/dev/null || true)"
+if [ -z "$SPARKLE_SOURCE" ]; then
+    echo "FEHLER: Sparkle.framework fehlt nach dem SwiftPM-Build." >&2
+    exit 1
+fi
+SPARKLE_FRAMEWORK="$APP/Contents/Frameworks/Sparkle.framework"
+ditto "$SPARKLE_SOURCE" "$SPARKLE_FRAMEWORK"
+
+# Stille Post ist nicht sandboxed. Sparkles XPC-Dienste sind dafür weder nötig
+# noch aktiviert; ohne sie wird das Bundle kleiner und die Signierfläche enger.
+rm -rf "$SPARKLE_FRAMEWORK/Versions/B/XPCServices" "$SPARKLE_FRAMEWORK/XPCServices"
 
 # Eigene Sounds (Start-Blup / Ende-Whoosh) ins Bundle; fehlen sie, nutzt die App
 # automatisch macOS-Systemklänge als Ersatz.
@@ -61,8 +75,15 @@ else
     echo "Hinweis: Resources/AppIcon.icns fehlt — Bundle bekommt kein Icon."
 fi
 
+# Lizenzhinweise der eingebetteten Drittkomponenten gehören auch ins ausgelieferte
+# Binärpaket, nicht nur in den Quelltext des Repositories.
+cp THIRD-PARTY.md "$APP/Contents/Resources/Third-Party-Licenses.md"
+
 # Versionsnummer aus der zentralen VERSION-Datei übernehmen.
 VERSION="$(cat VERSION)"
+# Für einen echten Upgrade-Test kann ein separater HTTPS-Testfeed gesetzt werden.
+# Normale und Release-Builds verwenden immer den öffentlichen GitHub-Pages-Feed.
+SPARKLE_FEED_URL="${SPARKLE_FEED_URL:-https://danielmuellerir.github.io/stille_post/appcast.xml}"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -80,6 +101,17 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundleVersion</key><string>$VERSION</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
+    <!-- Sparkle prüft automatisch, installiert aber erst nach Zustimmung. Archiv
+         und Feed werden mit dem projektspezifischen Ed25519-Schlüssel geprüft. -->
+    <key>SUFeedURL</key><string>$SPARKLE_FEED_URL</string>
+    <key>SUPublicEDKey</key><string>CUzzR3xWfnUcqvexzIaBo5tJ6jI+6FoAXhs7vXP1x+Q=</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUAutomaticallyUpdate</key><false/>
+    <key>SUAllowsAutomaticUpdates</key><false/>
+    <!-- Keine anonymen Hardware-/Systemprofildaten an den Feed anhängen. -->
+    <key>SUEnableSystemProfiling</key><false/>
+    <key>SUVerifyUpdateBeforeExtraction</key><true/>
+    <key>SURequireSignedFeed</key><true/>
     <!-- Menüleisten-App: kein Dock-Symbol, kein App-Switcher-Eintrag. -->
     <key>LSUIElement</key><true/>
     <!-- Begründung für den Mikrofon-Zugriff (zeigt macOS im Berechtigungs-Dialog). -->
@@ -101,6 +133,14 @@ if [ -n "$IDENTITY" ]; then
     echo "Signiere mit: $IDENTITY"
     # Reihenfolge wichtig: INNERE Binaries zuerst, dann das Bundle — sonst lehnt
     # die Notarisierung ab ("binary is not signed with a valid Developer ID").
+    # Sparkles Helfer und Framework müssen dieselbe Team-ID wie die App erhalten;
+    # `--deep` wäre hier falsch, weil verschachtelte Ziele eigene Regeln haben.
+    codesign --force --options runtime --timestamp \
+        --sign "$IDENTITY" "$SPARKLE_FRAMEWORK/Versions/B/Autoupdate"
+    codesign --force --options runtime --timestamp \
+        --sign "$IDENTITY" "$SPARKLE_FRAMEWORK/Versions/B/Updater.app"
+    codesign --force --options runtime --timestamp \
+        --sign "$IDENTITY" "$SPARKLE_FRAMEWORK"
     codesign --force --options runtime --timestamp \
         --sign "$IDENTITY" "$APP/Contents/MacOS/stillepost-cli"
     # Hardened Runtime + Timestamp (Notarisierungs-Voraussetzungen); das
@@ -108,7 +148,7 @@ if [ -n "$IDENTITY" ]; then
     codesign --force --options runtime --timestamp \
         --entitlements Resources/StillePost.entitlements \
         --sign "$IDENTITY" "$APP"
-    codesign --verify --strict "$APP"
+    codesign --verify --deep --strict "$APP"
 else
     echo "Keine Developer-ID-Identität gefunden — signiere ad-hoc."
     echo "(Hinweis: macOS fragt Berechtigungen dann nach jedem Neubau erneut ab.)"

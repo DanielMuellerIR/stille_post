@@ -14,6 +14,11 @@ let package = Package(
         // Settings-Form-APIs (.formStyle/LabeledContent) brauchen Ventura.
         .macOS(.v13)
     ],
+    dependencies: [
+        // Exakt pinnen: Ein Updater läuft mit hohen Rechten im Installationspfad.
+        // Versionssprünge werden deshalb bewusst geprüft statt still übernommen.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4")
+    ],
     targets: [
         .target(
             name: "StillePostCore",
@@ -21,8 +26,17 @@ let package = Package(
         ),
         .executableTarget(
             name: "StillePost",
-            dependencies: ["StillePostCore"],
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            dependencies: [
+                "StillePostCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
+            swiftSettings: [.swiftLanguageMode(.v5)],
+            linkerSettings: [
+                // Das Release-Skript legt Sparkle im üblichen App-Bundle-Ordner ab.
+                // SwiftPM ergänzt für Binär-Targets nur @loader_path (neben dem
+                // Executable); diesen Bundle-rpath müssen wir daher selbst setzen.
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../Frameworks"])
+            ]
         ),
         .executableTarget(
             name: "stillepost-cli",

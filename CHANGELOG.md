@@ -10,6 +10,24 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.8.5] — 2026-07-16
+
+### Hinzugefügt
+
+- Sparkle 2 prüft automatisch auf signierte Updates. Der neue Menüpunkt „Nach
+  Updates suchen …“ startet eine sofortige Prüfung; Installation und Neustart
+  erfolgen nur nach ausdrücklicher Zustimmung.
+- Update-DMG und Appcast werden mit einem projektspezifischen Ed25519-Schlüssel
+  geprüft. Der Feed selbst ist ebenfalls signiert, bevor Sparkle Release Notes
+  oder Download-Links vertraut.
+- Ein GitHub-Actions-Workflow erzeugt den Appcast aus dem notarisierten DMG eines
+  veröffentlichten Releases und stellt ihn über GitHub Pages bereit.
+
+### Datenschutz
+
+- Sparkles anonymes Systemprofiling ist explizit deaktiviert. Update-Prüfungen
+  übertragen keine Hardware- oder Speicherangaben.
+
 ## [0.8.4] — 2026-07-16
 
 ### Geändert
