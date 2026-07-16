@@ -10,6 +10,22 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.8.2] — 2026-07-16
+
+### Hinzugefügt
+
+- Stille Post hat ein eigenes App-Icon: eine Sprechblase mit Schallwelle. Sichtbar
+  wird es überall dort, wo bisher der graue Platzhalter stand — im Modell-Dialog, in
+  den Systemeinstellungen unter „Anmeldeobjekte“ und im Finder. Als Menüleisten-App
+  ohne Dock-Symbol bleibt es sonst unauffällig.
+- Kleine Größen haben eine eigene, gröbere Zeichnung (`Resources/icon/`): die fünf
+  feinen Wellenbalken der Vollversion verschmelzen bei 16 und 32 px zu einem Fleck,
+  drei dickere Balken mit breiteren Lücken bleiben getrennt. Ab 64 px ist die volle
+  Zeichnung sichtbar besser; die Grenze ist ausgemessen, nicht geschätzt.
+- `scripts/build-icon.sh` erzeugt aus den SVG-Quellen das `Resources/AppIcon.icns`.
+  Das Ergebnis liegt im Repo, damit `scripts/build-app.sh` weiterhin ohne
+  `rsvg-convert` auskommt — das Skript braucht nur, wer die Zeichnung ändert.
+
 ## [0.8.1] — 2026-07-16
 
 ### Geändert

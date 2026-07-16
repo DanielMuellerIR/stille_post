@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  App-Icon "Stille Post" — Vollversion für 64 px und größer.
+
+  Motiv: Sprechblase mit Schallwelle. Die Sprechblase steht für das Diktat, die
+  Welle für die Aufnahme. Die Silhouette der Blase trägt die Erkennbarkeit; die
+  Balken sind Detail, das ab 64 px wirkt. Für 16 und 32 px gibt es die reduzierte
+  Schwestervariante "AppIcon-small.svg".
+
+  Geometrie: Apple erwartet auf 1024er Leinwand eine 824er Fläche mit ~185 px
+  Eckradius, damit das Icon neben den Systemicons richtig sitzt. Der abgerundete
+  Rechteck-Radius ist eine sehr nahe Näherung an Apples echte Squircle-Kurve
+  (stetige Krümmung); der Unterschied liegt im Bereich weniger Pixel.
+
+  Rendern nicht von Hand — "scripts/build-icon.sh" erzeugt daraus das .icns.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <!-- Hintergrundverlauf: oben heller, unten dunkler — gibt dem Plättchen Tiefe. -->
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#818cf8"/>
+      <stop offset="1" stop-color="#4338ca"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Grundplättchen im macOS-Raster. -->
+  <rect x="100" y="100" width="824" height="824" rx="185.4" fill="url(#bg)"/>
+
+  <!-- Zipfel zuerst, damit die Blase die Naht überdeckt. -->
+  <path d="M 320 660 L 296 812 L 452 660 Z" fill="#ffffff"/>
+  <rect x="180" y="280" width="664" height="412" rx="100" fill="#ffffff"/>
+
+  <!-- Schallwelle: fünf Balken, symmetrisch zur Blasenmitte (y = 486). -->
+  <g fill="#4338ca">
+    <rect x="342" y="442" width="44" height="88"  rx="22"/>
+    <rect x="416" y="401" width="44" height="170" rx="22"/>
+    <rect x="490" y="361" width="44" height="250" rx="22"/>
+    <rect x="564" y="401" width="44" height="170" rx="22"/>
+    <rect x="638" y="442" width="44" height="88"  rx="22"/>
+  </g>
+</svg>

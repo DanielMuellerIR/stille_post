@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  App-Icon "Stille Post" — reduzierte Variante für 16 und 32 px.
+
+  Warum eine zweite Datei: Die fünf feinen Balken der Vollversion liegen bei 16 px
+  unter einem Pixel Breite und verschmieren zu einem grauen Fleck. Diese Variante
+  zeigt dieselbe Idee mit drei dickeren, weiter auseinander gesetzten Balken und
+  einer etwas größeren Blase mit kräftigerem Zipfel. Genau so macht es Apple auch:
+  kleine Größen bekommen eigene, gröbere Zeichnung statt einer Verkleinerung.
+
+  Ab 64 px übernimmt wieder "AppIcon.svg" — dort ist die volle Zeichnung sichtbar
+  besser. Welche Datei welche Größe bedient, steht in "scripts/build-icon.sh".
+
+  Farben, Verlauf und Grundplättchen bleiben identisch zu "AppIcon.svg" — sonst
+  würde das Icon beim Größenwechsel sichtbar springen.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#818cf8"/>
+      <stop offset="1" stop-color="#4338ca"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="100" y="100" width="824" height="824" rx="185.4" fill="url(#bg)"/>
+
+  <!-- Kräftigerer Zipfel: bei 16 px ist er das Merkmal, das die Blase von einem
+       schlichten weißen Rechteck unterscheidet. -->
+  <path d="M 330 640 L 280 830 L 500 655 Z" fill="#ffffff"/>
+  <rect x="170" y="250" width="684" height="420" rx="110" fill="#ffffff"/>
+
+  <!-- Drei Balken, symmetrisch zur Blasenmitte (y = 460). Die Lücken sind bewusst
+       breiter als die Balken: bei 16 px ist ein Balken gut ein Pixel breit, und nur
+       wenn die Lücke daneben mindestens ebenso breit ist, bleiben die drei Marken
+       getrennt statt zu einem Fleck zu verschmelzen. Die flachen Außenbalken geben
+       dem Ganzen zusätzlich eine erkennbare Silhouette. -->
+  <g fill="#4338ca">
+    <rect x="330" y="410" width="64" height="100" rx="32"/>
+    <rect x="480" y="340" width="64" height="240" rx="32"/>
+    <rect x="630" y="410" width="64" height="100" rx="32"/>
+  </g>
+</svg>

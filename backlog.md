@@ -203,11 +203,6 @@ Weiterhin offen:
 
 ## Beim Dialog-Test aufgefallen (2026-07-16, unentschieden)
 
-- **Die App hat kein Icon.** Kein `.icns` im Bundle, kein `CFBundleIconFile` in der
-  Info.plist, keine Quelle im Repo, `build-app.sh` legt keins an — im Modell-Dialog
-  steht deshalb ein generischer Platzhalter. Als Menüleisten-App (LSUIElement, kein
-  Dock-Icon) fällt es meist nicht auf, sichtbar wird es aber im Modell-Dialog, in den
-  Systemeinstellungen unter „Anmeldeobjekte“ und im Finder. Reine Politur, kein Fehler.
 - **Größen stehen in MB, auch jenseits von 1 GB.** Der Dialog sagt „1549 MB“, die
   Commit-Historie und die READMEs sprechen von „1,6 GB“. Beides ist richtig (1549 MiB
   = 1,62 GB), aber der Nutzer denkt bei vierstelligen MB in GB. Eine Anzeige, die ab

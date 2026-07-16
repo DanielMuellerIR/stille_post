@@ -52,6 +52,15 @@ if [ -d Resources/sounds ]; then
     cp Resources/sounds/*.wav "$APP/Contents/Resources/sounds/"
 fi
 
+# App-Icon ins Bundle. Das fertige .icns liegt im Repo (erzeugt von
+# scripts/build-icon.sh), damit dieser Build kein Zusatzwerkzeug braucht.
+# Fehlt es, wird ohne Icon gebaut — macOS zeigt dann den generischen Platzhalter.
+if [ -f Resources/AppIcon.icns ]; then
+    cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+else
+    echo "Hinweis: Resources/AppIcon.icns fehlt — Bundle bekommt kein Icon."
+fi
+
 # Versionsnummer aus der zentralen VERSION-Datei übernehmen.
 VERSION="$(cat VERSION)"
 
@@ -64,6 +73,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key><string>Stille Post</string>
     <key>CFBundleIdentifier</key><string>io.github.danielmuellerir.stillepost</string>
     <key>CFBundleExecutable</key><string>StillePost</string>
+    <!-- Verweist auf Contents/Resources/AppIcon.icns (ohne Endung, so will es macOS).
+         Fehlt die Datei, fällt macOS still auf den generischen Platzhalter zurück. -->
+    <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundleVersion</key><string>$VERSION</string>
