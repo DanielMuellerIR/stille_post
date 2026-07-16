@@ -22,6 +22,9 @@ Datei mit dem Versions-Bump fortgeschrieben.
   oder Download-Links vertraut.
 - Ein GitHub-Actions-Workflow erzeugt den Appcast aus dem notarisierten DMG eines
   veröffentlichten Releases und stellt ihn über GitHub Pages bereit.
+- Einmaliger Bootstrap-Hinweis: 0.8.4 enthält noch keinen Updater. Deshalb muss
+  0.8.5 wie bisher manuell per DMG installiert werden; automatische Updates greifen
+  erst für spätere Versionen aus einer bereits Sparkle-fähigen App heraus.
 
 ### Datenschutz
 

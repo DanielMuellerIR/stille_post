@@ -211,9 +211,11 @@ Weiterhin offen:
 
 - Sparkle-Erstveröffentlichung für 0.8.5 vorbereiten: GitHub Pages auf „GitHub
   Actions“ stellen, `SPARKLE_PRIVATE_KEY` über stdin als Actions-Secret hinterlegen,
-  den privaten Schlüssel verschlüsselt sichern und anschließend den echten
-  Updatepfad von einer notarisiert installierten älteren Version bis zum Neustart
-  prüfen. Diese externen Schritte wurden bei der Code-Integration bewusst nicht auf
+  den privaten Schlüssel verschlüsselt sichern, 0.8.5 als einmalig manuell zu
+  installierenden Bootstrap kennzeichnen und anschließend den echten Updatepfad von
+  einer älteren, aber bereits Sparkle-fähigen notarisierten Testversion bis zum
+  Neustart prüfen. Die echte 0.8.4 kann das nicht, weil sie noch keinen Updater
+  enthält. Diese externen Schritte wurden bei der Code-Integration bewusst nicht auf
   GitHub ausgeführt.
 - Mehrtägigen Realbetrieb auf beiden vorgesehenen Macs durchführen und Befunde mit
   Datum, Build und Konfiguration notieren.
