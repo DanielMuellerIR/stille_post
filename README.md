@@ -15,7 +15,7 @@ well.
 
 | | |
 |:---:|:---:|
-| ![Menu bar menu](assets/en/menu.jpg) | ![History window](assets/en/history.jpg) |
+| ![Menu bar menu](assets/en/menu.png) | ![History window](assets/en/history.png) |
 | *Menu bar: start/stop, history, settings, quit* | *History: every dictation (raw + cleaned), copy with one click* |
 
 ## Ready in five minutes
@@ -126,9 +126,9 @@ JSON (the cleanup model shown is the default):
 
 | | |
 |:---:|:---:|
-| ![General tab](assets/en/settings-general.jpg) | ![Cleanup tab](assets/en/settings-cleanup.jpg) |
+| ![General tab](assets/en/settings-general.png) | ![Cleanup tab](assets/en/settings-cleanup.png) |
 | *General — recording hotkey & overlay* | *Cleanup — provider, model, context, fallbacks* |
-| ![Speech recognition tab](assets/en/settings-speech.jpg) | ![Recording tab](assets/en/settings-recording.jpg) |
+| ![Speech recognition tab](assets/en/settings-speech.png) | ![Recording tab](assets/en/settings-recording.png) |
 | *Speech recognition — language & Whisper server* | *Recording — silence detection & auto-stop* |
 
 The most important switches:

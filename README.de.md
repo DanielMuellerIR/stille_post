@@ -15,7 +15,7 @@ Spracheinstellungen. Auch die CLI-Diagnosen sind lokalisiert.
 
 | | |
 |:---:|:---:|
-| ![Menüleisten-Menü](assets/menu.jpg) | ![Verlauf-Fenster](assets/history.jpg) |
+| ![Menüleisten-Menü](assets/menu.png) | ![Verlauf-Fenster](assets/history.png) |
 | *Menüleiste: Start/Stopp, Verlauf, Einstellungen, Beenden* | *Verlauf: jedes Diktat (roh + bereinigt), Kopieren per Klick* |
 
 ## In fünf Minuten startklar
@@ -129,9 +129,9 @@ Der Dialog ist in vier Tabs gegliedert, die üblichen Fälle brauchen also kein 
 
 | | |
 |:---:|:---:|
-| ![Tab Allgemein](assets/settings-general.jpg) | ![Tab Bereinigung](assets/settings-cleanup.jpg) |
+| ![Tab Allgemein](assets/settings-general.png) | ![Tab Bereinigung](assets/settings-cleanup.png) |
 | *Allgemein — Aufnahme-Hotkey & Overlay* | *Bereinigung — Anbieter, Modell, Kontext, Fallbacks* |
-| ![Tab Spracherkennung](assets/settings-speech.jpg) | ![Tab Aufnahme](assets/settings-recording.jpg) |
+| ![Tab Spracherkennung](assets/settings-speech.png) | ![Tab Aufnahme](assets/settings-recording.png) |
 | *Spracherkennung — Sprache & Whisper-Server* | *Aufnahme — Stille-Erkennung & Auto-Stopp* |
 
 Die wichtigsten Schalter:
