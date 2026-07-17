@@ -32,7 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Einzelinstanz-Schutz: Läuft schon eine Stille Post, beendet sich die neue
         // sofort. Zwei Instanzen würden sonst beide aufnehmen und beide einfügen —
         // der Text stünde doppelt im Ziel.
-        if let bundleID = Bundle.main.bundleIdentifier,
+        if ProcessInfo.processInfo.environment["STILLEPOST_ALLOW_MULTIPLE"] == nil,
+           let bundleID = Bundle.main.bundleIdentifier,
            NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).count > 1 {
             NSApp.terminate(nil)
             return
@@ -83,13 +84,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if ProcessInfo.processInfo.environment["STILLEPOST_OPEN_SETTINGS"] != nil {
             settingsWindow.show()
         }
+        // Isolierter Screenshot-/GUI-Testweg fürs Verlaufsfenster. Zusammen mit
+        // STILLEPOST_APP_SUPPORT liest er ausschließlich künstliche Testeinträge.
+        if ProcessInfo.processInfo.environment["STILLEPOST_OPEN_HISTORY"] != nil {
+            historyWindow.show()
+        }
         // Ebenfalls für GUI-Checks: Overlay in einem bestimmten Zustand zeigen
         // (das Overlay erscheint sonst nur mitten in einem echten Diktat).
         switch ProcessInfo.processInfo.environment["STILLEPOST_OVERLAY_PREVIEW"] {
         case "processing-fallback":
-            overlay.show(.processing(detail: "⚠️ Ausweichweg: qwen3.5:9b @ http://127.0.0.1:11434"))
+            overlay.show(.processing(detail: L10n.format(
+                "app.cleanup_fallback",
+                "qwen3.5:9b @ http://127.0.0.1:11434"
+            )))
         case "success-raw":
-            overlay.show(.success(note: "⚠️ Unbereinigter Rohtext (Bereinigung fehlgeschlagen/verworfen)"))
+            overlay.show(.success(note: L10n.text("app.raw_fallback_note")))
         case .some, .none:
             break
         }
@@ -172,7 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try newConfig.save()
         } catch {
             NSSound(named: "Basso")?.play()
-            overlay.show(.failure("Einstellungen konnten nicht gespeichert werden: \(error.localizedDescription)"))
+            overlay.show(.failure(L10n.format("app.settings_save_failed", error.localizedDescription)))
             return
         }
         overlay.hide()
@@ -196,35 +205,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// damit die Hotkey-Anzeige aktuell bleibt).
     private func buildMenu() -> NSMenu {
         let menu = NSMenu()
-        let toggleItem = NSMenuItem(title: "Diktat starten/stoppen (\(HotkeyManager.describe(config.hotkey)))",
+        let toggleItem = NSMenuItem(title: L10n.format(
+                                        "menu.toggle_dictation",
+                                        HotkeyManager.describe(config.hotkey)
+                                    ),
                                     action: #selector(toggleDictation), keyEquivalent: "")
         toggleItem.target = self
         menu.addItem(toggleItem)
-        let cancelItem = NSMenuItem(title: "Aufnahme abbrechen", action: #selector(cancelDictation), keyEquivalent: "")
+        let cancelItem = NSMenuItem(title: L10n.text("menu.cancel_recording"),
+                                    action: #selector(cancelDictation), keyEquivalent: "")
         cancelItem.target = self
         menu.addItem(cancelItem)
         menu.addItem(.separator())
-        let historyItem = NSMenuItem(title: "Verlauf …", action: #selector(showHistory), keyEquivalent: "")
+        let historyItem = NSMenuItem(title: L10n.text("menu.history"),
+                                     action: #selector(showHistory), keyEquivalent: "")
         historyItem.target = self
         menu.addItem(historyItem)
-        let settingsItem = NSMenuItem(title: "Einstellungen …", action: #selector(showSettings), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: L10n.text("menu.settings"),
+                                      action: #selector(showSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
-        let configItem = NSMenuItem(title: "Konfigurationsdatei öffnen", action: #selector(openConfig), keyEquivalent: "")
+        let configItem = NSMenuItem(title: L10n.text("menu.open_config"),
+                                    action: #selector(openConfig), keyEquivalent: "")
         configItem.target = self
         menu.addItem(configItem)
         menu.addItem(.separator())
         // Sparkle selbst ist Target des Eintrags. Dadurch validiert es den Menüpunkt
         // auch während einer laufenden Suche oder Installation korrekt.
         let updateItem = NSMenuItem(
-            title: "Nach Updates suchen …",
+            title: L10n.text("menu.check_updates"),
             action: #selector(SPUStandardUpdaterController.checkForUpdates(_:)),
             keyEquivalent: ""
         )
         updateItem.target = updaterController
         menu.addItem(updateItem)
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: "Stille Post beenden", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: L10n.text("menu.quit"),
+                                action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         return menu
     }
 
@@ -232,11 +249,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
         let (symbol, description): (String, String)
         switch state {
-        case .idle: (symbol, description) = ("mic", "Stille Post — bereit")
-        case .starting: (symbol, description) = ("mic.badge.plus", "Stille Post — startet")
-        case .recording: (symbol, description) = ("record.circle.fill", "Stille Post — AUFNAHME LÄUFT")
-        case .processing: (symbol, description) = ("waveform", "Stille Post — transkribiert")
-        case .error: (symbol, description) = ("exclamationmark.triangle.fill", "Stille Post — Fehler")
+        case .idle: (symbol, description) = ("mic", L10n.text("status.ready"))
+        case .starting: (symbol, description) = ("mic.badge.plus", L10n.text("status.starting"))
+        case .recording: (symbol, description) = ("record.circle.fill", L10n.text("status.recording"))
+        case .processing: (symbol, description) = ("waveform", L10n.text("status.transcribing"))
+        case .error: (symbol, description) = ("exclamationmark.triangle.fill", L10n.text("status.error"))
         }
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)
         // Aufnahme-Zustand zusätzlich einfärben (rot), damit auch die Menüleiste
@@ -282,7 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Transparenz: Wurde die LLM-Bereinigung verworfen (Rohtext benutzt),
                 // soll man das SOFORT sehen — nicht erst später im Verlauf rätseln.
                 let note = entry.cleanupFellBack == true
-                    ? "⚠️ Unbereinigter Rohtext (Bereinigung fehlgeschlagen/verworfen)" : nil
+                    ? L10n.text("app.raw_fallback_note") : nil
                 switch outcome {
                 case .pasted:
                     self.overlay.show(.success(note: note))
@@ -290,10 +307,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // Bildschirmfreigabe: Wir tippen bewusst nicht (käme drüben als
                     // nacktes "v" an) — der Sync trägt den Text rüber, der Nutzer
                     // fügt am entfernten Mac selbst ein.
-                    self.overlay.show(.success(note: "⚠️ Bildschirmfreigabe: dort jetzt ⌘V drücken (Text ist in der Zwischenablage)"))
+                    self.overlay.show(.success(note: L10n.text("app.screen_sharing_note")))
                 case .noPermission:
                     // Ohne Bedienungshilfen-Recht liegt der Text in der Zwischenablage.
-                    self.overlay.show(.failure("Kein Einfüge-Recht — Text liegt in der Zwischenablage (⌘V)"))
+                    self.overlay.show(.failure(L10n.text("app.paste_permission_missing")))
                 }
             } else if result.entry == nil, result.text.isEmpty {
                 // Nur Stille aufgenommen.
@@ -305,12 +322,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Bereinigung weicht gerade auf einen Fallback-Endpoint aus: im Overlay
         // anzeigen, damit eine evtl. längere Wartezeit erklärbar ist.
         engine.onCleanupFallback = { [weak self] label in
-            self?.overlay.show(.processing(detail: "⚠️ Ausweichweg: \(label)"))
+            self?.overlay.show(.processing(detail: L10n.format("app.cleanup_fallback", label)))
         }
         // Direktanfrage an den primären Endpoint ist gescheitert — es läuft sofort
         // ein zweiter Versuch über eine frische Verbindung.
         engine.onCleanupPrimaryRetry = { [weak self] in
-            self?.overlay.show(.processing(detail: "⚠️ Verbindungsproblem — zweiter Versuch …"))
+            self?.overlay.show(.processing(detail: L10n.text("app.cleanup_primary_retry")))
         }
     }
 

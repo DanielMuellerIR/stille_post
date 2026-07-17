@@ -209,7 +209,14 @@ public struct Config: Codable, Equatable {
 
     /// Basis-Ordner der App für Config, Verlauf, Modelle und (temporäre) Aufnahmen.
     public static var appSupportDir: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        // Headless-GUI-Tests und Screenshots brauchen einen vollständig isolierten
+        // Verlauf. So wird niemals die persönliche history.json geöffnet oder
+        // verändert. Im Normalbetrieb ist die Variable nicht gesetzt.
+        if let override = ProcessInfo.processInfo.environment["STILLEPOST_APP_SUPPORT"],
+           !override.isEmpty {
+            return URL(fileURLWithPath: expandPath(override))
+        }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("StillePost")
     }
 
@@ -234,7 +241,8 @@ public struct Config: Codable, Equatable {
         do {
             return try JSONDecoder().decode(Config.self, from: data)
         } catch {
-            FileHandle.standardError.write(Data("StillePost: config.json unlesbar (\(error)) — nutze Defaults\n".utf8))
+            let message = L10n.format("core.config.unreadable", String(describing: error))
+            FileHandle.standardError.write(Data(message.utf8))
             return Config()
         }
     }

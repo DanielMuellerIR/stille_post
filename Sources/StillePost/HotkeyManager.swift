@@ -82,7 +82,7 @@ final class HotkeyManager {
     ///     Keycode 6 immer "Z" — auf einer deutschen Tastatur liegt dort aber "Y".
     static func keyName(for keyCode: Int) -> String {
         let special: [Int: String] = [
-            49: "Leertaste", 36: "↩", 48: "⇥", 53: "⎋", 51: "⌫", 117: "⌦",
+            49: L10n.text("hotkey.space"), 36: "↩", 48: "⇥", 53: "⎋", 51: "⌫", 117: "⌦",
             123: "←", 124: "→", 125: "↓", 126: "↑",
             115: "↖", 119: "↘", 116: "⇞", 121: "⇟",
             122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6", 98: "F7",

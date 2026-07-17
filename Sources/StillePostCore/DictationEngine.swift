@@ -108,7 +108,7 @@ public final class DictationEngine {
         Task { @MainActor in
             // 1. Mikrofon-Berechtigung sicherstellen (System fragt beim ersten Mal).
             guard await AudioRecorder.requestMicrophoneAccess() else {
-                self.setState(.error("Kein Mikrofon-Zugriff — bitte in Systemeinstellungen → Datenschutz erlauben"))
+                self.setState(.error(L10n.text("core.dictation.microphone_permission")))
                 return
             }
             // 2. whisper-server sicherstellen (läuft er schon, kostet das nur einen Ping).
@@ -171,7 +171,7 @@ public final class DictationEngine {
         } catch {
             wavWriter = nil
             try? FileManager.default.removeItem(at: wavURL)
-            setState(.error("Aufnahme-Start fehlgeschlagen: \(error.localizedDescription)"))
+            setState(.error(L10n.format("core.dictation.recording_start_failed", error.localizedDescription)))
             return
         }
 
@@ -218,12 +218,12 @@ public final class DictationEngine {
                 let entry = HistoryStore.Entry(
                     rawText: rawJoined, cleanText: rawJoined,
                     status: "failed",
-                    errorMessage: "Transkription fehlgeschlagen (\(failures) Segment(e)) — Aufnahme wurde behalten",
+                    errorMessage: L10n.format("core.dictation.segments_failed", failures),
                     audioFileName: wavURL?.lastPathComponent,
                     durationSec: duration
                 )
                 self.history.append(entry)
-                self.setState(.error("Transkription fehlgeschlagen — über den Verlauf erneut versuchen"))
+                self.setState(.error(L10n.text("core.dictation.transcription_failed")))
                 self.onResult?(DictationResult(text: "", entry: entry))
                 return
             }
@@ -279,7 +279,7 @@ public final class DictationEngine {
         guard let audioURL = history.audioURL(for: entry),
               FileManager.default.fileExists(atPath: audioURL.path) else {
             var updated = entry
-            updated.errorMessage = "Aufnahme-Datei nicht mehr vorhanden"
+            updated.errorMessage = L10n.text("core.dictation.audio_missing")
             history.update(updated)
             return updated
         }
@@ -303,7 +303,7 @@ public final class DictationEngine {
             return updated
         } catch {
             var updated = entry
-            updated.errorMessage = "Erneuter Versuch fehlgeschlagen: \(error.localizedDescription)"
+            updated.errorMessage = L10n.format("core.dictation.retry_failed", error.localizedDescription)
             history.update(updated)
             return updated
         }

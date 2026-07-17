@@ -75,7 +75,11 @@ Kontext, Satzgrenzen und konsistente Zeichensetzung verloren gehen.
   Argumente schreiben.
 - Headless UI-Einstiege für Tests erhalten:
   `STILLEPOST_OPEN_SETTINGS=<tab>` und
-  `STILLEPOST_OVERLAY_PREVIEW=<state>`.
+  `STILLEPOST_OPEN_HISTORY=1` sowie `STILLEPOST_OVERLAY_PREVIEW=<state>`.
+  Lokalisierte Screenshots isolieren Sprache und Nutzerdaten mit
+  `STILLEPOST_LANGUAGE=<de|en>` und `STILLEPOST_APP_SUPPORT=<wegwerf-ordner>`;
+  `STILLEPOST_ALLOW_MULTIPLE=1` hält dabei eine installierte Alltagsinstanz
+  unangetastet.
 
 ## Bauen und testen
 

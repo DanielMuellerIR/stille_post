@@ -210,7 +210,7 @@ struct OverlayView: View {
                         .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: pulse)
                         .onAppear { pulse = true }
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("AUFNAHME")
+                        Text(L10n.text("overlay.recording"))
                             .font(.system(size: 21, weight: .heavy))
                             .foregroundColor(.white)
                         Text(timeString)
@@ -225,7 +225,7 @@ struct OverlayView: View {
                 VStack(spacing: 5) {
                     HStack(spacing: 12) {
                         ProgressView().controlSize(.large).tint(.white)
-                        Text("Transkribiere …")
+                        Text(L10n.text("overlay.transcribing"))
                             .font(.system(size: 19, weight: .bold))
                             .foregroundColor(.white)
                     }
@@ -242,7 +242,7 @@ struct OverlayView: View {
                 }
             case .success(let note):
                 VStack(spacing: 5) {
-                    Label("Eingefügt", systemImage: "checkmark.circle.fill")
+                    Label(L10n.text("overlay.inserted"), systemImage: "checkmark.circle.fill")
                         .font(.system(size: 20, weight: .bold))
                         .foregroundColor(.white)
                     if let note {
@@ -255,12 +255,12 @@ struct OverlayView: View {
                     }
                 }
             case .silence:
-                Label("Nur Stille erkannt", systemImage: "waveform.slash")
+                Label(L10n.text("overlay.silence"), systemImage: "waveform.slash")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundColor(.white)
             case .failure(let message):
                 VStack(spacing: 6) {
-                    Label("Fehlgeschlagen", systemImage: "exclamationmark.triangle.fill")
+                    Label(L10n.text("overlay.failed"), systemImage: "exclamationmark.triangle.fill")
                         .font(.system(size: 17, weight: .bold))
                         .foregroundColor(.white)
                     Text(message)

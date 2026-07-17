@@ -22,7 +22,7 @@ final class HistoryWindowController {
                 styleMask: [.titled, .closable, .resizable, .miniaturizable],
                 backing: .buffered, defer: false
             )
-            window.title = "Stille Post — Verlauf"
+            window.title = L10n.text("window.history.title")
             window.center()
             window.isReleasedWhenClosed = false
             window.contentView = NSHostingView(rootView: HistoryView(model: model))
@@ -86,7 +86,7 @@ struct HistoryView: View {
         VStack(spacing: 0) {
             if model.entries.isEmpty {
                 Spacer()
-                Text("Noch keine Diktate.")
+                Text(L10n.text("history.empty"))
                     .foregroundColor(.secondary)
                 Spacer()
             } else {
@@ -99,22 +99,25 @@ struct HistoryView: View {
 
             Divider()
             HStack {
-                Text("\(model.entries.count) Einträge")
+                Text(L10n.format(
+                    model.entries.count == 1 ? "history.entry_count.one" : "history.entry_count.other",
+                    model.entries.count
+                ))
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
                 Button(role: .destructive) {
                     confirmDeleteAll = true
                 } label: {
-                    Label("Alle löschen", systemImage: "trash")
+                    Label(L10n.text("history.delete_all"), systemImage: "trash")
                 }
                 .disabled(model.entries.isEmpty)
-                .confirmationDialog("Wirklich den kompletten Verlauf löschen?",
+                .confirmationDialog(L10n.text("history.delete_all.confirm"),
                                     isPresented: $confirmDeleteAll) {
-                    Button("Alle löschen", role: .destructive) { model.deleteAll() }
-                    Button("Abbrechen", role: .cancel) {}
+                    Button(L10n.text("history.delete_all"), role: .destructive) { model.deleteAll() }
+                    Button(L10n.text("common.cancel"), role: .cancel) {}
                 } message: {
-                    Text("Alle Transkripte und zurückbehaltenen Aufnahmen werden entfernt.")
+                    Text(L10n.text("history.delete_all.message"))
                 }
             }
             .padding(10)
@@ -138,13 +141,13 @@ struct EntryRow: View {
                 Text(Self.dateFormatter.string(from: entry.date))
                     .font(.caption)
                     .foregroundColor(.secondary)
-                Text(String(format: "%.0f s", entry.durationSec))
+                Text(L10n.format("history.duration", entry.durationSec))
                     .font(.caption)
                     .foregroundColor(.secondary)
                 if entry.cleanupFellBack == true {
                     // Kennzeichnung: Die LLM-Bereinigung wurde verworfen (Plausibilitäts-
                     // prüfung) — es wurde der rohe Whisper-Text verwendet.
-                    Text("Rohtext (Bereinigung verworfen)")
+                    Text(L10n.text("history.raw_fallback"))
                         .font(.caption2)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Color.orange.opacity(0.2))
@@ -156,14 +159,14 @@ struct EntryRow: View {
                     if model.retrying.contains(entry.id) {
                         ProgressView().controlSize(.small)
                     } else {
-                        Button("Erneut transkribieren") { model.retry(entry) }
+                        Button(L10n.text("history.retry")) { model.retry(entry) }
                             .font(.caption)
                     }
                 } else {
                     Button {
                         model.copyToClipboard(showRaw ? entry.rawText : entry.cleanText)
                     } label: {
-                        Label("Kopieren", systemImage: "doc.on.doc")
+                        Label(L10n.text("history.copy"), systemImage: "doc.on.doc")
                     }
                     .font(.caption)
                 }
@@ -172,7 +175,7 @@ struct EntryRow: View {
             // Diagnose-Zeile: welcher Bereinigungs-Endpoint, wie lange? Beantwortet
             // "warum war dieses Diktat lahm?" direkt im Verlauf (Fallback sichtbar).
             if let endpoint = entry.cleanupEndpoint, let sec = entry.cleanupSec {
-                Text(String(format: "Bereinigt in %.1f s via %@", sec, endpoint))
+                Text(L10n.format("history.cleaned_via", sec, endpoint))
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
@@ -180,7 +183,7 @@ struct EntryRow: View {
             }
 
             if entry.isFailed {
-                Text(entry.errorMessage ?? "Transkription fehlgeschlagen")
+                Text(entry.errorMessage ?? L10n.text("history.transcription_failed"))
                     .font(.callout)
                     .foregroundColor(.red)
             } else {
@@ -189,7 +192,7 @@ struct EntryRow: View {
                     .textSelection(.enabled)  // Text direkt markier- und kopierbar
                     .fixedSize(horizontal: false, vertical: true)
                 if !entry.rawText.isEmpty, entry.rawText != entry.cleanText {
-                    Toggle("Rohtext zeigen", isOn: $showRaw)
+                    Toggle(L10n.text("history.show_raw"), isOn: $showRaw)
                         .font(.caption2)
                         .toggleStyle(.checkbox)
                 }

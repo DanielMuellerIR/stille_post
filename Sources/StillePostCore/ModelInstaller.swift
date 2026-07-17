@@ -46,12 +46,12 @@ public enum ModelCatalog {
     public static let turbo = WhisperModel(
         name: "large-v3-turbo",
         approximateBytes: 1_624_555_275,
-        summary: "Standard — beste Mischung aus Qualität und Tempo"
+        summary: L10n.text("model.summary.turbo")
     )
     public static let largeV3 = WhisperModel(
         name: "large-v3",
         approximateBytes: 3_095_033_483,
-        summary: "Größer und langsamer — nur wenn Fremdwörter besser sitzen müssen"
+        summary: L10n.text("model.summary.large_v3")
     )
 
     /// Was die App zur Auswahl anbietet. Reihenfolge = Empfehlung.
@@ -345,10 +345,9 @@ public final class ModelInstaller {
         public var errorDescription: String? {
             switch self {
             case .unavailable(let name):
-                return "Modell \"\(name)\" ist bei Hugging Face nicht abrufbar — Netzverbindung prüfen"
+                return L10n.format("core.model.unavailable", name)
             case .incomplete(let got, let expected, let partialPath):
-                return "Download unvollständig (\(got) von \(expected) Bytes). "
-                     + "Die Teildatei bleibt liegen, ein erneuter Versuch setzt dort fort: \(partialPath)"
+                return L10n.format("core.model.incomplete", got, expected, partialPath)
             }
         }
     }

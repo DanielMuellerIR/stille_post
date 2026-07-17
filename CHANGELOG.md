@@ -10,6 +10,26 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.8.6] — 2026-07-17
+
+### Hinzugefügt
+
+- Die vollständige Anwendung ist jetzt auf Deutsch und Englisch lokalisiert:
+  Menü, Einstellungen, Verlauf, Overlay, Modell-Download, nutzernahe Core-Fehler
+  und CLI-Diagnosen folgen der von macOS gewählten Sprache.
+- Auch der macOS-Mikrofon-Berechtigungsdialog hat eine deutsche und englische
+  Beschreibung. Das manuell gebaute App-Bundle verpackt beide Sprachen für GUI
+  und eingebettete CLI.
+- Das englische README zeigt erstmals durchgehend englische Screenshots. Die Bilder
+  stammen aus isolierten Testdaten; der deutsche Verlaufsscreenshot enthält
+  ebenfalls keine private Netzwerkadresse mehr.
+
+### Geändert
+
+- Lange englische Hilfetexte und Modellpfade bleiben innerhalb der
+  Einstellungsfensterbreite. Zahlenfelder verwenden die zur App-Sprache passende
+  Dezimalschreibweise.
+
 ## [0.8.5] — 2026-07-16
 
 ### Hinzugefügt

@@ -1,5 +1,6 @@
 import Foundation
 import ServiceManagement
+import StillePostCore
 
 /// „Beim Anmelden starten" — meldet die App als Login-Item an oder ab.
 ///
@@ -37,14 +38,19 @@ enum LoginItem {
     /// Erklärt den aktuellen Zustand in einem Satz — auch die Fälle, die man sonst
     /// nur als kryptischen Fehler sieht.
     static var explanation: String? {
+        // Screenshot-Test aus einem nicht installierten Build: Den künstlichen
+        // `.notFound`-Hinweis ausblenden, ohne den echten Systemzustand zu ändern.
+        if ProcessInfo.processInfo.environment["STILLEPOST_LOGIN_ITEM_PREVIEW"] != nil {
+            return nil
+        }
         guard isAvailable else {
-            return "Nur im installierten App-Bundle verfügbar (beim Entwickeln über swift run nicht)."
+            return L10n.text("settings.login_item.unavailable")
         }
         switch SMAppService.mainApp.status {
         case .requiresApproval:
-            return "In den Systemeinstellungen unter „Allgemein → Anmeldeobjekte“ freigeben."
+            return L10n.text("settings.login_item.approval")
         case .notFound:
-            return "Das System kennt die App nicht als Anmeldeobjekt — nach /Applications installieren."
+            return L10n.text("settings.login_item.not_found")
         default:
             return nil
         }
@@ -53,7 +59,7 @@ enum LoginItem {
     enum LoginItemError: LocalizedError {
         case noBundle
         var errorDescription: String? {
-            "„Beim Anmelden starten“ funktioniert nur im installierten App-Bundle."
+            L10n.text("settings.login_item.error_no_bundle")
         }
     }
 }

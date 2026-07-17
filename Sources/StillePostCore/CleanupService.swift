@@ -169,7 +169,7 @@ public final class CleanupService {
             }
         }
         return Result(text: trimmed, usedFallback: true,
-                      fallbackReason: "Bereinigung fehlgeschlagen — " + failures.joined(separator: " · "),
+                      fallbackReason: L10n.format("core.cleanup.failed", failures.joined(separator: " · ")),
                       endpoint: nil)
     }
 
@@ -280,13 +280,16 @@ public final class CleanupService {
     /// die Länge schrumpft also höchstens moderat und wächst kaum. Alles außerhalb
     /// des Korridors ist verdächtig (Modell hat gekürzt, geantwortet oder gedichtet).
     static func sanityCheckFailure(raw: String, cleaned: String) -> String? {
-        if cleaned.isEmpty { return "Bereinigung lieferte leeren Text" }
+        if cleaned.isEmpty { return L10n.text("core.cleanup.empty") }
         // Struktur-Prüfung: Gesprochene Sprache enthält keine Markdown-Syntax.
         // Tauchen Code-Zäune, Überschriften oder Tabellen NEU in der Ausgabe auf,
         // hat das Modell "geantwortet" (Doku/Beispiele generiert) statt geputzt.
         for marker in ["```", "\n#", "|---", "| ---"] {
             if cleaned.contains(marker), !raw.contains(marker) {
-                return "Bereinigte Fassung enthält Markdown-Strukturen (\(marker.trimmingCharacters(in: .whitespacesAndNewlines))) — Modell hat vermutlich geantwortet statt bereinigt"
+                return L10n.format(
+                    "core.cleanup.markdown",
+                    marker.trimmingCharacters(in: .whitespacesAndNewlines)
+                )
             }
         }
         let rawCount = Double(raw.count)
@@ -297,10 +300,10 @@ public final class CleanupService {
         let upperBound = rawCount < 60 ? 3.0 : 1.5
         let ratio = cleanedCount / rawCount
         if ratio < lowerBound {
-            return String(format: "Bereinigte Fassung verdächtig kurz (%.0f %% des Rohtexts)", ratio * 100)
+            return L10n.format("core.cleanup.too_short", ratio * 100)
         }
         if ratio > upperBound {
-            return String(format: "Bereinigte Fassung verdächtig lang (%.0f %% des Rohtexts) — Modell hat vermutlich geantwortet statt bereinigt", ratio * 100)
+            return L10n.format("core.cleanup.too_long", ratio * 100)
         }
         return nil
     }
@@ -316,7 +319,7 @@ public final class CleanupService {
     private func cleanViaOllama(_ text: String, endpoint: Config.Cleanup.Endpoint,
                                 streamingOn: URLSession?) async throws -> String {
         guard let url = URL(string: "\(endpoint.ollamaURL)/api/chat") else {
-            throw CleanupError.badConfig("Ungültige Ollama-URL: \(endpoint.ollamaURL)")
+            throw CleanupError.badConfig(L10n.format("core.cleanup.invalid_ollama_url", endpoint.ollamaURL))
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -392,10 +395,13 @@ public final class CleanupService {
     private func cleanViaOpenAICompatible(_ text: String, endpoint: Config.Cleanup.Endpoint) async throws -> String {
         guard !endpoint.remote.baseURL.isEmpty, !endpoint.remote.model.isEmpty,
               let url = URL(string: "\(endpoint.remote.baseURL)/chat/completions") else {
-            throw CleanupError.badConfig("remote.baseURL/model in config.json nicht gesetzt")
+            throw CleanupError.badConfig(L10n.text("core.cleanup.remote_config_missing"))
         }
         guard let apiKey = Self.remoteAPIKey(envVar: endpoint.remote.apiKeyEnvVar) else {
-            throw CleanupError.badConfig("Kein API-Key gefunden (Env \(endpoint.remote.apiKeyEnvVar) oder Schlüsselbund; setzen mit: stillepost-cli set-cleanup-key)")
+            throw CleanupError.badConfig(L10n.format(
+                "core.cleanup.api_key_missing",
+                endpoint.remote.apiKeyEnvVar
+            ))
         }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -459,7 +465,7 @@ public final class CleanupService {
         addQuery[kSecValueData as String] = Data(key.utf8)
         let status = SecItemAdd(addQuery as CFDictionary, nil)
         guard status == errSecSuccess else {
-            throw CleanupError.badConfig("Schlüsselbund-Fehler (OSStatus \(status))")
+            throw CleanupError.badConfig(L10n.format("core.cleanup.keychain_error", status))
         }
     }
 
@@ -485,9 +491,12 @@ public final class CleanupService {
         public var errorDescription: String? {
             switch self {
             case .badConfig(let detail): return detail
-            case .serverError(let body): return "LLM-Server-Fehler: \(String(body.prefix(300)))"
-            case .badResponse: return "Unerwartetes Antwortformat vom LLM"
-            case .unreachable(let url): return "nicht erreichbar (\(url))"
+            case .serverError(let body):
+                return L10n.format("core.cleanup.server_error", String(body.prefix(300)))
+            case .badResponse:
+                return L10n.text("core.cleanup.bad_response")
+            case .unreachable(let url):
+                return L10n.format("core.cleanup.unreachable", url)
             }
         }
     }

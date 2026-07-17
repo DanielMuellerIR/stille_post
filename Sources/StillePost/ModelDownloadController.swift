@@ -40,28 +40,17 @@ final class ModelDownloadController {
             return  // alles gut, nichts zu tun
 
         case .missing:
-            alert.messageText = "Whisper-Modell fehlt"
-            alert.informativeText = """
-                Stille Post erkennt Sprache lokal auf diesem Mac und braucht dafür \
-                einmalig ein Modell (\(megabytes) MB).
-
-                Soll es jetzt geladen werden? Ohne Modell kann nicht diktiert werden.
-                """
+            alert.messageText = L10n.text("model.alert.missing.title")
+            alert.informativeText = L10n.format("model.alert.missing.message", megabytes)
 
         case .borrowed(_, let target):
-            alert.messageText = "Whisper-Modell ist nur geliehen"
-            alert.informativeText = """
-                Das Modell liegt nicht bei Stille Post, sondern verweist auf:
-                \(target)
-
-                Räumt das andere Programm dort auf, verliert Stille Post sein Modell. \
-                Eine eigene Kopie laden (\(megabytes) MB)?
-                """
+            alert.messageText = L10n.text("model.alert.borrowed.title")
+            alert.informativeText = L10n.format("model.alert.borrowed.message", target, megabytes)
         }
 
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "Laden")
-        alert.addButton(withTitle: "Später")
+        alert.addButton(withTitle: L10n.text("model.alert.download"))
+        alert.addButton(withTitle: L10n.text("model.alert.later"))
         // Menüleisten-App: ohne das läge der Dialog hinter anderen Fenstern.
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
@@ -91,10 +80,10 @@ final class ModelDownloadController {
     private func showProgressWindow(model: WhisperModel) {
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 380, height: 90),
                               styleMask: [.titled], backing: .buffered, defer: false)
-        window.title = "Whisper-Modell wird geladen"
+        window.title = L10n.text("model.progress.title")
         window.center()
 
-        let label = NSTextField(labelWithString: "Lade \(model.name) …")
+        let label = NSTextField(labelWithString: L10n.format("model.progress.loading", model.name))
         label.frame = NSRect(x: 20, y: 50, width: 340, height: 18)
 
         let bar = NSProgressIndicator(frame: NSRect(x: 20, y: 24, width: 340, height: 20))
@@ -115,15 +104,19 @@ final class ModelDownloadController {
     private func update(progress: ModelInstaller.Progress) {
         guard let fraction = progress.fraction, let percent = progress.percent else { return }
         progressBar?.doubleValue = fraction
-        statusLabel?.stringValue = "\(percent) % — "
-            + "\(progress.receivedMegabytes) von \(progress.totalMegabytes) MB"
+        statusLabel?.stringValue = L10n.format(
+            "model.progress.status",
+            percent,
+            progress.receivedMegabytes,
+            progress.totalMegabytes
+        )
     }
 
     private func finish(onFinished: () -> Void) {
         closeProgressWindow()
         onFinished()
-        report(title: "Modell geladen",
-               text: "Stille Post ist bereit. Der Hotkey startet ein Diktat.",
+        report(title: L10n.text("model.success.title"),
+               text: L10n.text("model.success.message"),
                style: .informational)
     }
 
@@ -131,7 +124,7 @@ final class ModelDownloadController {
         closeProgressWindow()
         // Ehrlich bleiben: Die Teildatei bleibt liegen, ein neuer Versuch setzt dort
         // fort — das steht so in der Fehlermeldung des Installers.
-        report(title: "Modell konnte nicht geladen werden",
+        report(title: L10n.text("model.failure.title"),
                text: error.localizedDescription,
                style: .warning)
     }
@@ -148,7 +141,7 @@ final class ModelDownloadController {
         alert.messageText = title
         alert.informativeText = text
         alert.alertStyle = style
-        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: L10n.text("common.ok"))
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
     }

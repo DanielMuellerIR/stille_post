@@ -29,7 +29,7 @@ public final class WhisperClient {
 
     private func transcribe(wavData: Data) async throws -> String {
         guard let url = URL(string: "\(config.serverURL)/inference") else {
-            throw WhisperError.badConfig("Ungültige whisper-server-URL: \(config.serverURL)")
+            throw WhisperError.badConfig(L10n.format("core.whisper.invalid_url", config.serverURL))
         }
 
         // Multipart-Request von Hand bauen (kein externes Paket nötig):
@@ -114,8 +114,10 @@ public final class WhisperClient {
         public var errorDescription: String? {
             switch self {
             case .badConfig(let detail): return detail
-            case .serverError(let body): return "whisper-server-Fehler: \(String(body.prefix(300)))"
-            case .badResponse: return "Unerwartetes Antwortformat vom whisper-server"
+            case .serverError(let body):
+                return L10n.format("core.whisper.server_error", String(body.prefix(300)))
+            case .badResponse:
+                return L10n.text("core.whisper.bad_response")
             }
         }
     }

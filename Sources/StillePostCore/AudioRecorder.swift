@@ -96,7 +96,7 @@ public final class AudioRecorder {
         case formatSetupFailed
         public var errorDescription: String? {
             switch self {
-            case .formatSetupFailed: return "Audio-Format konnte nicht eingerichtet werden (kein Eingabegerät?)"
+            case .formatSetupFailed: return L10n.text("core.audio.format_setup_failed")
             }
         }
     }

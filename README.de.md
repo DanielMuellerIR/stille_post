@@ -6,6 +6,11 @@ Lokale Diktier-App für macOS: Globaler Hotkey, Spracherkennung mit Whisper und
 Textbereinigung mit einem lokalen Sprachmodell. Der fertige Text landet direkt an
 der Cursor-Position. Aufnahmen verlassen den Rechner nicht.
 
+Die vollständige Oberfläche — Menü, Einstellungen, Verlauf, Overlays,
+Modell-Download und nutzernahe Fehler — ist auf Deutsch und Englisch verfügbar.
+macOS wählt die Sprache aus den systemweiten oder app-spezifischen
+Spracheinstellungen. Auch die CLI-Diagnosen sind lokalisiert.
+
 ## Menüleiste & Verlauf
 
 | | |
@@ -120,7 +125,7 @@ Dialog. Darunter liegt `~/Library/Application Support/StillePost/config.json`
 bleibt von Hand editierbar.
 
 Der Dialog ist in vier Tabs gegliedert, die üblichen Fälle brauchen also kein JSON
-(das gezeigte Bereinigungsmodell ist nur ein Beispiel, keine Empfehlung):
+(das gezeigte Bereinigungsmodell ist der Standard):
 
 | | |
 |:---:|:---:|

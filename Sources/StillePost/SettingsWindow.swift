@@ -27,7 +27,7 @@ final class SettingsWindowController {
                 styleMask: [.titled, .closable, .resizable],
                 backing: .buffered, defer: false
             )
-            window.title = "Stille Post — Einstellungen"
+            window.title = L10n.text("window.settings.title")
             window.center()
             window.isReleasedWhenClosed = false
             self.window = window
@@ -57,10 +57,10 @@ struct SettingsView: View {
         case allgemein, bereinigung, spracherkennung, aufnahme
         var title: String {
             switch self {
-            case .allgemein: return "Allgemein"
-            case .bereinigung: return "Bereinigung"
-            case .spracherkennung: return "Spracherkennung"
-            case .aufnahme: return "Aufnahme"
+            case .allgemein: return L10n.text("settings.tab.general")
+            case .bereinigung: return L10n.text("settings.tab.cleanup")
+            case .spracherkennung: return L10n.text("settings.tab.speech")
+            case .aufnahme: return L10n.text("settings.tab.recording")
             }
         }
     }
@@ -102,18 +102,19 @@ struct SettingsView: View {
 
             Divider()
             HStack {
-                Text("Einstellungen liegen in config.json — Handbearbeitung bleibt möglich.")
+                Text(L10n.text("settings.config_hint"))
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
-                Button("Abbrechen") { onCancel() }
+                Button(L10n.text("common.cancel")) { onCancel() }
                     .keyboardShortcut(.cancelAction)
-                Button("Speichern") { onApply(config) }
+                Button(L10n.text("common.save")) { onApply(config) }
                     .keyboardShortcut(.defaultAction)
             }
             .padding(12)
         }
         .frame(minWidth: 600, minHeight: 520)
+        .environment(\.locale, Locale(identifier: L10n.languageCode))
     }
 }
 
@@ -126,18 +127,18 @@ private struct GeneralTab: View {
 
     var body: some View {
         Form {
-            Section("Aufnahme-Hotkey") {
+            Section(L10n.text("settings.hotkey.section")) {
                 HotkeyRecorder(hotkey: $config.hotkey, onRecordingChanged: onHotkeyRecording)
             }
-            Section("Start") {
+            Section(L10n.text("settings.start.section")) {
                 LoginItemToggle()
             }
-            Section("Oberfläche") {
-                Picker("Overlay-Position", selection: $config.ui.overlayPosition) {
-                    Text("An der Mausposition").tag("mouse")
-                    Text("Unten mittig").tag("bottomCenter")
+            Section(L10n.text("settings.interface.section")) {
+                Picker(L10n.text("settings.overlay_position"), selection: $config.ui.overlayPosition) {
+                    Text(L10n.text("settings.overlay_position.mouse")).tag("mouse")
+                    Text(L10n.text("settings.overlay_position.bottom_center")).tag("bottomCenter")
                 }
-                Toggle("Start-/Stopp-/Fehler-Sounds abspielen", isOn: $config.ui.sounds)
+                Toggle(L10n.text("settings.sounds"), isOn: $config.ui.sounds)
             }
         }
         .formStyle(.grouped)
@@ -156,7 +157,7 @@ private struct LoginItemToggle: View {
     @State private var failure: String?
 
     var body: some View {
-        Toggle("Stille Post beim Anmelden starten", isOn: $enabled)
+        Toggle(L10n.text("settings.login_item"), isOn: $enabled)
             .disabled(!LoginItem.isAvailable)
             .onAppear {
                 enabled = LoginItem.isEnabled
@@ -198,18 +199,18 @@ private struct HotkeyRecorder: View {
     @State private var hint: String?
 
     var body: some View {
-        LabeledContent("Tastenkombination") {
+        LabeledContent(L10n.text("settings.hotkey.combination")) {
             HStack(spacing: 12) {
-                Text(recording ? "Jetzt drücken …" : HotkeyManager.describe(hotkey))
+                Text(recording ? L10n.text("settings.hotkey.press_now") : HotkeyManager.describe(hotkey))
                     .bold()
                     .foregroundColor(recording ? .secondary : .primary)
                     .frame(minWidth: 110, alignment: .leading)
-                Button(recording ? "Abbrechen" : "Hotkey aufnehmen") {
+                Button(recording ? L10n.text("common.cancel") : L10n.text("settings.hotkey.record")) {
                     if recording { cancel() } else { start() }
                 }
             }
         }
-        Text(hint ?? "„Hotkey aufnehmen“ drücken und die gewünschte Kombination tippen — mindestens ⌘, ⌥ oder ⌃ dabei.")
+        Text(hint ?? L10n.text("settings.hotkey.instructions"))
             .font(.caption)
             .foregroundColor(.secondary)
         // Fenster zu, während die Aufnahme läuft: Monitor abräumen und den globalen
@@ -219,7 +220,7 @@ private struct HotkeyRecorder: View {
 
     private func start() {
         recording = true
-        hint = "Kombination drücken. ⎋ bricht ab."
+        hint = L10n.text("settings.hotkey.capture_hint")
         onRecordingChanged(true)
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             handle(event)
@@ -237,7 +238,7 @@ private struct HotkeyRecorder: View {
 
     private func cancel() {
         stopRecording()
-        hint = "Abgebrochen — es bleibt bei \(HotkeyManager.describe(hotkey))."
+        hint = L10n.format("settings.hotkey.cancelled", HotkeyManager.describe(hotkey))
     }
 
     private func handle(_ event: NSEvent) {
@@ -253,12 +254,12 @@ private struct HotkeyRecorder: View {
         // Zu schwache Kombination: NICHT übernehmen, aber weiter aufnehmen — der
         // Nutzer soll einfach noch mal drücken, ohne den Knopf erneut zu suchen.
         guard candidate.isUsableGlobally else {
-            hint = "\(HotkeyManager.describe(candidate)) reicht nicht: Ohne ⌘, ⌥ oder ⌃ wäre die Taste systemweit blockiert. Bitte noch mal."
+            hint = L10n.format("settings.hotkey.too_weak", HotkeyManager.describe(candidate))
             return
         }
         hotkey = candidate
         stopRecording()
-        hint = "Neu: \(HotkeyManager.describe(candidate)) — mit „Speichern“ übernehmen."
+        hint = L10n.format("settings.hotkey.new", HotkeyManager.describe(candidate))
     }
 }
 
@@ -270,13 +271,15 @@ private struct CleanupTab: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Textbereinigung aktivieren", isOn: $cleanup.enabled)
-                Text("Entfernt Füllwörter/Versprecher und repariert Satzzeichen. Aus = roher Whisper-Text.")
+                Toggle(L10n.text("settings.cleanup.enabled"), isOn: $cleanup.enabled)
+                Text(L10n.text("settings.cleanup.description"))
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .frame(maxWidth: 500, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            Section("Primärer Endpoint") {
+            Section(L10n.text("settings.cleanup.primary")) {
                 EndpointEditor(endpoint: primaryBinding)
             }
 
@@ -284,7 +287,7 @@ private struct CleanupTab: View {
                 ForEach(cleanup.fallbacks.indices, id: \.self) { index in
                     VStack(alignment: .leading) {
                         HStack {
-                            Text("Fallback \(index + 1)").font(.headline)
+                            Text(L10n.format("settings.cleanup.fallback_number", index + 1)).font(.headline)
                             Spacer()
                             Button(role: .destructive) {
                                 cleanup.fallbacks.remove(at: index)
@@ -299,17 +302,19 @@ private struct CleanupTab: View {
                 Button {
                     cleanup.fallbacks.append(Config.Cleanup.Endpoint())
                 } label: {
-                    Label("Fallback hinzufügen", systemImage: "plus")
+                    Label(L10n.text("settings.cleanup.add_fallback"), systemImage: "plus")
                 }
             } header: {
-                Text("Fallbacks")
+                Text(L10n.text("settings.cleanup.fallbacks"))
             } footer: {
-                Text("Wird der Reihe nach probiert, wenn der primäre Endpoint nicht antwortet (Probe-Timeout 2 s) — z. B. starker Rechner im Netz → lokales Ollama → Cloud.")
+                Text(L10n.text("settings.cleanup.fallback_help"))
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .frame(maxWidth: 500, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            Section("API-Key für OpenAI-kompatible Endpoints") {
+            Section(L10n.text("settings.cleanup.api_key_section")) {
                 APIKeyRow(envVar: cleanup.remote.apiKeyEnvVar)
             }
         }
@@ -347,18 +352,21 @@ private struct EndpointEditor: View {
     @Binding var endpoint: Config.Cleanup.Endpoint
 
     var body: some View {
-        Picker("Anbieter", selection: $endpoint.provider) {
-            Text("Ollama (lokal oder eigenes Netz)").tag("ollama")
-            Text("OpenAI-kompatibel (Cloud, nur Text)").tag("openai")
+        Picker(L10n.text("settings.cleanup.provider"), selection: $endpoint.provider) {
+            Text(L10n.text("settings.cleanup.provider.ollama")).tag("ollama")
+            Text(L10n.text("settings.cleanup.provider.openai")).tag("openai")
         }
         if endpoint.provider == "openai" {
-            TextField("Base-URL (inkl. /v1)", text: $endpoint.remote.baseURL, prompt: Text("https://api.example.com/v1"))
-            TextField("Modell", text: $endpoint.remote.model)
+            TextField(L10n.text("settings.cleanup.base_url"), text: $endpoint.remote.baseURL,
+                      prompt: Text("https://api.example.com/v1"))
+            TextField(L10n.text("settings.cleanup.model"), text: $endpoint.remote.model)
         } else {
-            TextField("Ollama-URL", text: $endpoint.ollamaURL)
-            TextField("Modell", text: $endpoint.model)
-            TextField("Kontextfenster (num_ctx)", value: $endpoint.numCtx, format: .number.grouping(.never))
-            Picker("Geladen lassen (keep_alive)", selection: $endpoint.keepAlive) {
+            TextField(L10n.text("settings.cleanup.ollama_url"), text: $endpoint.ollamaURL)
+            TextField(L10n.text("settings.cleanup.model"), text: $endpoint.model)
+            TextField(L10n.text("settings.cleanup.context"), value: $endpoint.numCtx,
+                      format: .number.grouping(.never)
+                        .locale(Locale(identifier: L10n.languageCode)))
+            Picker(L10n.text("settings.cleanup.keep_alive"), selection: $endpoint.keepAlive) {
                 ForEach(Self.keepAliveChoices, id: \.value) { choice in
                     Text(choice.label).tag(choice.value)
                 }
@@ -369,21 +377,23 @@ private struct EndpointEditor: View {
                     Text(endpoint.keepAlive).tag(endpoint.keepAlive)
                 }
             }
-            Text("Wie lange Ollama das Modell nach dem Diktat im Speicher behält. Die App stellt das bei jeder Anfrage selbst ein — in Ollama ist dafür nichts zu konfigurieren. „Dauerhaft“ vermeidet jeden Kaltstart, belegt den Speicher aber durchgehend.")
+            Text(L10n.text("settings.cleanup.keep_alive_help"))
                 .font(.caption)
                 .foregroundColor(.secondary)
+                .frame(maxWidth: 500, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     /// Auswahl fürs keep_alive-Menü. Schreibweise wie bei Ollama (siehe Config).
     private static let keepAliveChoices: [(label: String, value: String)] = [
-        ("dauerhaft geladen", "-1"),
-        ("2 Stunden", "2h"),
-        ("1 Stunde", "1h"),
-        ("30 Minuten", "30m"),
-        ("20 Minuten", "20m"),
-        ("5 Minuten", "5m"),
-        ("sofort entladen", "0"),
+        (L10n.text("settings.cleanup.keep_alive.forever"), "-1"),
+        (L10n.text("settings.cleanup.keep_alive.two_hours"), "2h"),
+        (L10n.text("settings.cleanup.keep_alive.one_hour"), "1h"),
+        (L10n.text("settings.cleanup.keep_alive.thirty_minutes"), "30m"),
+        (L10n.text("settings.cleanup.keep_alive.twenty_minutes"), "20m"),
+        (L10n.text("settings.cleanup.keep_alive.five_minutes"), "5m"),
+        (L10n.text("settings.cleanup.keep_alive.unload"), "0"),
     ]
 }
 
@@ -399,33 +409,35 @@ private struct APIKeyRow: View {
 
     var body: some View {
         HStack {
-            SecureField("Neuen API-Key eintragen", text: $newKey)
-            Button("Im Schlüsselbund speichern") {
+            SecureField(L10n.text("settings.cleanup.api_key_new"), text: $newKey)
+            Button(L10n.text("settings.cleanup.api_key_store")) {
                 do {
                     try CleanupService.storeRemoteAPIKey(newKey)
                     newKey = ""
-                    status = "Gespeichert."
+                    status = L10n.text("settings.cleanup.api_key_saved")
                 } catch {
-                    status = "Fehler: \(error.localizedDescription)"
+                    status = L10n.format("settings.cleanup.api_key_error", error.localizedDescription)
                 }
             }
             .disabled(newKey.isEmpty)
         }
         HStack {
-            Button("Status prüfen") {
-                status = "Prüfe …"
+            Button(L10n.text("settings.cleanup.api_key_check")) {
+                status = L10n.text("settings.cleanup.api_key_checking")
                 Task.detached {
                     let found = CleanupService.remoteAPIKey(envVar: envVar) != nil
                     await MainActor.run {
                         status = found
-                            ? "Ein Key ist hinterlegt (Schlüsselbund oder Umgebungsvariable \(envVar))."
-                            : "Noch kein Key hinterlegt."
+                            ? L10n.format("settings.cleanup.api_key_found", envVar)
+                            : L10n.text("settings.cleanup.api_key_missing")
                     }
                 }
             }
-            Text(status ?? "Der Key wird nie angezeigt und nie in der Config-Datei gespeichert.")
+            Text(status ?? L10n.text("settings.cleanup.api_key_privacy"))
                 .font(.caption)
                 .foregroundColor(.secondary)
+                .frame(maxWidth: 500, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -438,17 +450,23 @@ private struct WhisperTab: View {
     var body: some View {
         Form {
             Section {
-                TextField("Sprache", text: $whisper.language)
-                Text("Empfehlung: festnageln (z. B. \"de\"). Bei \"auto\" rät Whisper pro Sprech-Segment und übersetzt bei Fehl-Erkennung ungefragt.")
+                TextField(L10n.text("settings.whisper.language"), text: $whisper.language)
+                Text(L10n.text("settings.whisper.language_help"))
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .frame(maxWidth: 500, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Section("Erweitert") {
-                Toggle("whisper-server automatisch starten", isOn: $whisper.autostart)
-                TextField("Server-URL", text: $whisper.serverURL)
-                TextField("Server-Binary", text: $whisper.binaryPath)
-                TextField("Modell-Datei", text: $whisper.modelPath)
-                TextField("CPU-Threads", value: $whisper.threads, format: .number)
+            Section(L10n.text("settings.whisper.advanced")) {
+                Toggle(L10n.text("settings.whisper.autostart"), isOn: $whisper.autostart)
+                TextField(L10n.text("settings.whisper.server_url"), text: $whisper.serverURL)
+                    .frame(maxWidth: 360)
+                TextField(L10n.text("settings.whisper.binary"), text: $whisper.binaryPath)
+                    .frame(maxWidth: 360)
+                TextField(L10n.text("settings.whisper.model_file"), text: $whisper.modelPath)
+                    .frame(maxWidth: 360)
+                TextField(L10n.text("settings.whisper.cpu_threads"), value: $whisper.threads,
+                          format: .number.locale(Locale(identifier: L10n.languageCode)))
             }
         }
         .formStyle(.grouped)
@@ -462,17 +480,25 @@ private struct VadTab: View {
 
     var body: some View {
         Form {
-            Section("Stille-Erkennung") {
-                TextField("Stille-Schwelle (dBFS)", value: $vad.silenceThresholdDb, format: .number)
-                Text("Pegel unterhalb dieser Schwelle gilt als Stille (0 = Vollaussteuerung, Sprache liegt deutlich über −40).")
+            Section(L10n.text("settings.vad.section")) {
+                TextField(L10n.text("settings.vad.threshold"), value: $vad.silenceThresholdDb,
+                          format: .number.locale(Locale(identifier: L10n.languageCode)))
+                Text(L10n.text("settings.vad.threshold_help"))
                     .font(.caption).foregroundColor(.secondary)
-                TextField("Segment schneiden nach Stille (s)", value: $vad.splitAfterSilenceSec, format: .number)
-                TextField("Mindest-Segmentlänge (s)", value: $vad.minSegmentSec, format: .number)
-                TextField("Maximale Segmentlänge (s)", value: $vad.maxSegmentSec, format: .number)
-                TextField("Vor-/Nachlauf um Sprache (s)", value: $vad.paddingSec, format: .number)
+                    .frame(maxWidth: 500, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                TextField(L10n.text("settings.vad.split_after_silence"), value: $vad.splitAfterSilenceSec,
+                          format: .number.locale(Locale(identifier: L10n.languageCode)))
+                TextField(L10n.text("settings.vad.min_segment"), value: $vad.minSegmentSec,
+                          format: .number.locale(Locale(identifier: L10n.languageCode)))
+                TextField(L10n.text("settings.vad.max_segment"), value: $vad.maxSegmentSec,
+                          format: .number.locale(Locale(identifier: L10n.languageCode)))
+                TextField(L10n.text("settings.vad.padding"), value: $vad.paddingSec,
+                          format: .number.locale(Locale(identifier: L10n.languageCode)))
             }
-            Section("Abwesenheit") {
-                TextField("Auto-Stopp nach Stille (s, 0 = aus)", value: $vad.autoStopAfterSilenceSec, format: .number)
+            Section(L10n.text("settings.vad.absence")) {
+                TextField(L10n.text("settings.vad.auto_stop"), value: $vad.autoStopAfterSilenceSec,
+                          format: .number.locale(Locale(identifier: L10n.languageCode)))
             }
         }
         .formStyle(.grouped)

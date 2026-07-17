@@ -45,6 +45,24 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Framewor
 cp .build/release/StillePost "$APP/Contents/MacOS/StillePost"
 cp .build/release/stillepost-cli "$APP/Contents/MacOS/stillepost-cli"
 
+# SwiftPM verpackt die gemeinsame App-/CLI-Lokalisierung in ein Ressourcen-Bundle.
+# Das manuell gebaute .app muss es selbst übernehmen; Bundle.module findet es dann
+# unter Contents/Resources sowohl aus der GUI als auch aus der eingebetteten CLI.
+CORE_RESOURCES="$(find .build -path '*/release/StillePost_StillePostCore.bundle' -type d -print -quit)"
+if [ -z "$CORE_RESOURCES" ]; then
+    echo "FEHLER: Lokalisierungs-Bundle fehlt nach dem SwiftPM-Build." >&2
+    exit 1
+fi
+ditto "$CORE_RESOURCES" "$APP/Contents/Resources/StillePost_StillePostCore.bundle"
+
+# Den macOS-Mikrofon-Dialog lokalisiert AppKit aus dem Haupt-Bundle, nicht aus dem
+# SwiftPM-Unterbundle. Deshalb die beiden InfoPlist.strings zusätzlich hier ablegen.
+for LANGUAGE in de en; do
+    mkdir -p "$APP/Contents/Resources/$LANGUAGE.lproj"
+    cp "Sources/StillePostCore/Resources/$LANGUAGE.lproj/InfoPlist.strings" \
+       "$APP/Contents/Resources/$LANGUAGE.lproj/InfoPlist.strings"
+done
+
 # SwiftPM linkt Sparkle, verpackt ein manuell gebautes .app aber nicht selbst.
 # `ditto` erhält die für macOS-Frameworks wesentlichen Symlinks und Rechte.
 SPARKLE_SOURCE="$(find .build/artifacts/sparkle -type d -name Sparkle.framework -print -quit 2>/dev/null || true)"
@@ -94,6 +112,12 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>CFBundleDisplayName</key><string>Stille Post</string>
     <key>CFBundleIdentifier</key><string>io.github.danielmuellerir.stillepost</string>
     <key>CFBundleExecutable</key><string>StillePost</string>
+    <key>CFBundleDevelopmentRegion</key><string>de</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>de</string>
+        <string>en</string>
+    </array>
     <!-- Verweist auf Contents/Resources/AppIcon.icns (ohne Endung, so will es macOS).
          Fehlt die Datei, fällt macOS still auf den generischen Platzhalter zurück. -->
     <key>CFBundleIconFile</key><string>AppIcon</string>

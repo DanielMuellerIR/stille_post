@@ -6,11 +6,16 @@ Local dictation app for macOS: Global hotkey, speech-to-text with Whisper, and t
 cleanup with a local language model. The finished text lands right at your cursor.
 Recordings never leave your machine.
 
+The complete interface — menu, settings, history, overlays, model download, and
+user-facing errors — is available in English and German. macOS chooses the language
+from the system or per-app language preferences. CLI diagnostics are localized as
+well.
+
 ## Menu bar & history
 
 | | |
 |:---:|:---:|
-| ![Menu bar menu](assets/menu.jpg) | ![History window](assets/history.jpg) |
+| ![Menu bar menu](assets/en/menu.jpg) | ![History window](assets/en/history.jpg) |
 | *Menu bar: start/stop, history, settings, quit* | *History: every dictation (raw + cleaned), copy with one click* |
 
 ## Ready in five minutes
@@ -60,8 +65,8 @@ Now place the cursor in a text field, press **⌘⌥D**, speak, and press **⌘�
 again. The text is pasted at the cursor.
 
 Stille Post checks for signed updates at most once per day and never installs one
-without permission. Use **“Nach Updates suchen …”** in the menu to check
-immediately; after confirmation, Sparkle handles download, replacement, and relaunch.
+without permission. Use **“Check for Updates …”** in the menu to check immediately;
+after confirmation, Sparkle handles download, replacement, and relaunch.
 
 > **Why are there two model downloads?** `large-v3-turbo` recognizes speech and
 > produces the raw transcript. `qwen3.5:9b` then removes filler words, false starts,
@@ -111,27 +116,27 @@ turbo is not that big.
 
 ## Configuration
 
-All settings are available as a dialog in the menu bar menu under **"Einstellungen …"**
-(Settings). Underneath lives `~/Library/Application Support/StillePost/config.json`
-(created on first launch, menu item "Konfigurationsdatei öffnen"). The file stays
+All settings are available as a dialog in the menu bar menu under **“Settings …”**.
+Underneath lives `~/Library/Application Support/StillePost/config.json`
+(created on first launch, menu item “Open configuration file”). The file stays
 hand-editable.
 
 The dialog is organized into four tabs, so the common cases never require editing
-JSON (the cleanup model shown is just an example, not a recommendation):
+JSON (the cleanup model shown is the default):
 
 | | |
 |:---:|:---:|
-| ![General tab](assets/settings-general.jpg) | ![Cleanup tab](assets/settings-cleanup.jpg) |
+| ![General tab](assets/en/settings-general.jpg) | ![Cleanup tab](assets/en/settings-cleanup.jpg) |
 | *General — recording hotkey & overlay* | *Cleanup — provider, model, context, fallbacks* |
-| ![Speech recognition tab](assets/settings-speech.jpg) | ![Recording tab](assets/settings-recording.jpg) |
+| ![Speech recognition tab](assets/en/settings-speech.jpg) | ![Recording tab](assets/en/settings-recording.jpg) |
 | *Speech recognition — language & Whisper server* | *Recording — silence detection & auto-stop* |
 
 The most important switches:
 
 | Section | Field | Meaning |
 |---|---|---|
-| `hotkey` | `keyCode`, `modifiers` | recording hotkey (default ⌘⌥D). In the General tab, "Hotkey aufnehmen" records the combination you press — no need to look up key codes |
-| `whisper` | `language` | `"auto"` or fixed, e.g. `"de"`. **Recommendation: Pin it.** With `auto`, Whisper guesses the language per speech segment and silently translates on misdetection |
+| `hotkey` | `keyCode`, `modifiers` | recording hotkey (default ⌘⌥D). In the General tab, “Record hotkey” records the combination you press — no need to look up key codes |
+| `whisper` | `language` | `"auto"` or fixed, e.g. `"en"`. **Recommendation: Pin it.** With `auto`, Whisper guesses the language per speech segment and silently translates on misdetection |
 | `cleanup` | `enabled` | cleanup on/off |
 | `cleanup` | `provider` | `"ollama"` (local/own network) or `"openai"` (cloud, text only) |
 | `cleanup` | `model` | Ollama model name |
@@ -176,7 +181,8 @@ and enter the strong machine's endpoint (`http://<ip>:11434`), the model and, if
 like, a keep-alive. `stillepost-cli doctor` checks the whole chain and tells you
 whether the endpoint answers and the model is present.
 
-**How long the model stays loaded** is the "keep_alive" dropdown in the same tab.
+**How long the model stays loaded** is the “Keep loaded” (`keep_alive`) dropdown in
+the same tab.
 The default of 2 hours is a compromise: dictate again within that window and the
 model answers instantly; after that Ollama frees the RAM by itself. "Permanently"
 never lets go — the right choice if you have RAM to spare. The wait rarely shows

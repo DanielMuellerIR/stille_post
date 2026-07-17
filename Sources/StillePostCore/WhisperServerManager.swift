@@ -78,15 +78,15 @@ public final class WhisperServerManager {
         public var errorDescription: String? {
             switch self {
             case .notReachable(let url):
-                return "whisper-server nicht erreichbar unter \(url) (Autostart ist ausgeschaltet)"
+                return L10n.format("core.server.not_reachable", url)
             case .binaryMissing(let path):
-                return "whisper-server-Binary fehlt: \(path) — installieren mit: brew install whisper-cpp"
+                return L10n.format("core.server.binary_missing", path)
             case .modelMissing(let path):
-                return "Whisper-Modell fehlt: \(path) — herunterladen mit: scripts/install-model.sh"
+                return L10n.format("core.server.model_missing", path)
             case .startFailed(let path):
-                return "whisper-server (\(path)) hat sich sofort beendet — Modellpfad prüfen"
+                return L10n.format("core.server.start_failed", path)
             case .startTimeout:
-                return "whisper-server antwortet nicht (Timeout beim Start)"
+                return L10n.text("core.server.start_timeout")
             }
         }
     }
