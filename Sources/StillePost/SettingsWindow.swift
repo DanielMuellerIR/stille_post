@@ -97,7 +97,7 @@ struct SettingsView: View {
             case .allgemein: GeneralTab(config: $config, onHotkeyRecording: onHotkeyRecording)
             case .bereinigung: CleanupTab(cleanup: $config.cleanup)
             case .spracherkennung: WhisperTab(whisper: $config.whisper)
-            case .aufnahme: VadTab(vad: $config.vad)
+            case .aufnahme: RecordingTab(audio: $config.audio, vad: $config.vad)
             }
 
             Divider()
@@ -473,13 +473,17 @@ private struct WhisperTab: View {
     }
 }
 
-// MARK: - Tab: Aufnahme (Stille-Erkennung)
+// MARK: - Tab: Aufnahme (Mikrofon + Stille-Erkennung)
 
-private struct VadTab: View {
+private struct RecordingTab: View {
+    @Binding var audio: Config.Audio
     @Binding var vad: Config.Vad
 
     var body: some View {
         Form {
+            Section(L10n.text("settings.audio.section")) {
+                AudioInputPicker(audio: $audio)
+            }
             Section(L10n.text("settings.vad.section")) {
                 TextField(L10n.text("settings.vad.threshold"), value: $vad.silenceThresholdDb,
                           format: .number.locale(Locale(identifier: L10n.languageCode)))
@@ -502,5 +506,76 @@ private struct VadTab: View {
             }
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Zeigt die gerade von CoreAudio gemeldeten Eingabegeräte. Das Aktualisieren ist
+/// absichtlich sichtbar: Ein iPhone taucht oft erst auf, nachdem es gesperrt und
+/// bereitgelegt wurde, während das Einstellungsfenster schon offen ist.
+private struct AudioInputPicker: View {
+    @Binding var audio: Config.Audio
+    @State private var devices: [AudioInputDevice] = []
+    @State private var defaultDeviceName: String?
+
+    var body: some View {
+        LabeledContent(L10n.text("settings.audio.input_device")) {
+            HStack {
+                Picker("", selection: $audio.inputDeviceUID) {
+                    Text(systemDefaultLabel).tag("")
+                    ForEach(devices) { device in
+                        Text(device.name).tag(device.uid)
+                    }
+                    if selectedDeviceIsMissing {
+                        Text(L10n.format("settings.audio.unavailable", selectedDeviceName))
+                            .tag(audio.inputDeviceUID)
+                    }
+                }
+                .labelsHidden()
+                .frame(minWidth: 280)
+
+                Button(action: refresh) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .help(L10n.text("settings.audio.refresh"))
+            }
+        }
+        Text(L10n.text("settings.audio.help"))
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .frame(maxWidth: 500, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+        .onAppear(perform: refresh)
+        .onChange(of: audio.inputDeviceUID) { uid in
+            if uid.isEmpty {
+                audio.inputDeviceName = ""
+            } else if let device = devices.first(where: { $0.uid == uid }) {
+                audio.inputDeviceName = device.name
+            }
+        }
+    }
+
+    private var systemDefaultLabel: String {
+        guard let defaultDeviceName else {
+            return L10n.text("settings.audio.system_default")
+        }
+        return L10n.format("settings.audio.system_default_named", defaultDeviceName)
+    }
+
+    private var selectedDeviceIsMissing: Bool {
+        !audio.inputDeviceUID.isEmpty
+            && !devices.contains(where: { $0.uid == audio.inputDeviceUID })
+    }
+
+    private var selectedDeviceName: String {
+        audio.inputDeviceName.isEmpty ? audio.inputDeviceUID : audio.inputDeviceName
+    }
+
+    private func refresh() {
+        devices = AudioInputDeviceCatalog.availableDevices()
+        defaultDeviceName = AudioInputDeviceCatalog.defaultDevice()?.name
+        if let selected = devices.first(where: { $0.uid == audio.inputDeviceUID }) {
+            audio.inputDeviceName = selected.name
+        }
     }
 }

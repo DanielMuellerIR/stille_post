@@ -11,7 +11,7 @@ final class HotkeyManager {
     private var eventHandler: EventHandlerRef?
     private let onPress: () -> Void
 
-    init(config: Config.Hotkey, onPress: @escaping () -> Void) {
+    init(config: Config.Hotkey, onPress: @escaping () -> Void) throws {
         self.onPress = onPress
 
         // Modifier-Strings aus der Config in Carbon-Bitmaske übersetzen.
@@ -30,16 +30,39 @@ final class HotkeyManager {
         // `self` als rohen Zeiger durchgereicht (übliches Carbon-Muster).
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let selfPointer = Unmanaged.passUnretained(self).toOpaque()
-        InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
+        let handlerStatus = InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
             guard let userData else { return noErr }
             let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
             DispatchQueue.main.async { manager.onPress() }
             return noErr
         }, 1, &eventType, selfPointer, &eventHandler)
+        guard handlerStatus == noErr else {
+            throw RegistrationError.eventHandler(handlerStatus)
+        }
 
         let hotKeyID = EventHotKeyID(signature: OSType(0x5350_4F53) /* "SPOS" */, id: 1)
-        RegisterEventHotKey(UInt32(config.keyCode), modifiers, hotKeyID,
-                            GetApplicationEventTarget(), 0, &hotKeyRef)
+        let registrationStatus = RegisterEventHotKey(
+            UInt32(config.keyCode), modifiers, hotKeyID,
+            GetApplicationEventTarget(), 0, &hotKeyRef
+        )
+        guard registrationStatus == noErr else {
+            // Ein fehlgeschlagener Initializer ruft deinit nicht zuverlässig für
+            // teilweise aufgebaute Ressourcen auf. Den Handler deshalb hier lösen.
+            if let eventHandler { RemoveEventHandler(eventHandler) }
+            self.eventHandler = nil
+            throw RegistrationError.hotKey(registrationStatus)
+        }
+    }
+
+    enum RegistrationError: Error {
+        case eventHandler(OSStatus)
+        case hotKey(OSStatus)
+
+        var status: OSStatus {
+            switch self {
+            case .eventHandler(let status), .hotKey(let status): return status
+            }
+        }
     }
 
     deinit {

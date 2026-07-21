@@ -1,12 +1,12 @@
 import Foundation
 import AVFoundation
 
-/// Nimmt Audio vom System-Standard-Mikrofon auf und liefert 16-kHz-mono-Float-Samples.
+/// Nimmt Audio vom konfigurierten Mikrofon auf und liefert 16-kHz-mono-Float-Samples.
 ///
 /// Wichtig (gelernt aus dem Hammerspoon-Prototyp): KEIN fest verdrahteter Mikrofon-
-/// Index! `AVAudioEngine.inputNode` nutzt automatisch das im System eingestellte
-/// Standard-Eingabegerät — wechselt man das Mikro in den Systemeinstellungen,
-/// nimmt die nächste Aufnahme automatisch das richtige Gerät.
+/// Index! Ohne konkrete Auswahl nutzt `AVAudioEngine.inputNode` automatisch das im
+/// System eingestellte Standard-Eingabegerät. Eine ausdrückliche Auswahl wird über
+/// die stabile CoreAudio-UID verbunden, nie über eine flüchtige Gerätenummer.
 ///
 /// Das Roh-Audio des Geräts (z. B. 48 kHz) wird live per AVAudioConverter auf
 /// 16 kHz mono heruntergerechnet — das Format, das Whisper erwartet.
@@ -17,8 +17,11 @@ public final class AudioRecorder {
 
     private var engine: AVAudioEngine?
     private var converter: AVAudioConverter?
+    private let config: Config.Audio
 
-    public init() {}
+    public init(config: Config.Audio = Config.Audio()) {
+        self.config = config
+    }
 
     /// Fragt die Mikrofon-Berechtigung ab (macOS zeigt beim ersten Mal den System-Dialog).
     public static func requestMicrophoneAccess() async -> Bool {
@@ -37,6 +40,13 @@ public final class AudioRecorder {
     public func start() throws {
         let engine = AVAudioEngine()
         let input = engine.inputNode
+        do {
+            try AudioInputDeviceCatalog.apply(uid: config.inputDeviceUID, to: input)
+        } catch AudioInputDeviceCatalog.SelectionError.unavailable {
+            throw RecorderError.inputDeviceUnavailable(selectedDeviceName)
+        } catch AudioInputDeviceCatalog.SelectionError.cannotConfigure(let status) {
+            throw RecorderError.inputDeviceConfigurationFailed(selectedDeviceName, status)
+        }
         let inputFormat = input.outputFormat(forBus: 0)
 
         // Ziel-Format der Pipeline: 16 kHz, 1 Kanal, Float32.
@@ -94,10 +104,20 @@ public final class AudioRecorder {
 
     public enum RecorderError: Error, LocalizedError {
         case formatSetupFailed
+        case inputDeviceUnavailable(String)
+        case inputDeviceConfigurationFailed(String, OSStatus)
         public var errorDescription: String? {
             switch self {
             case .formatSetupFailed: return L10n.text("core.audio.format_setup_failed")
+            case .inputDeviceUnavailable(let name):
+                return L10n.format("core.audio.device_unavailable", name)
+            case .inputDeviceConfigurationFailed(let name, let status):
+                return L10n.format("core.audio.device_configuration_failed", name, status)
             }
         }
+    }
+
+    private var selectedDeviceName: String {
+        config.inputDeviceName.isEmpty ? config.inputDeviceUID : config.inputDeviceName
     }
 }

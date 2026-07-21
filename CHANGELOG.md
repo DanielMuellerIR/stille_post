@@ -10,6 +10,38 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.8.9] — 2026-07-21
+
+### Behoben
+
+- Start- und Stoppton liegen jetzt vollständig außerhalb der Mikrofonaufnahme.
+  Zuvor überschritten beide eigenen Töne die Spracherkennungsschwelle und konnten
+  besonders über ein iPhone-Mikrofon als scheinbare Sprache an Whisper gelangen
+  und die eigentliche Transkription mit Untertitel-Floskeln verfälschen.
+- Die Bereinigung darf keine Wörter mehr ergänzen, ersetzen oder umstellen. Eine
+  neue Worttreue-Prüfung verwirft solche Modellausgaben zugunsten des Rohtexts;
+  der Prompt erlaubt keine vermeintlichen Rechtschreib- oder Verhörerkorrekturen
+  mehr.
+
+## [0.8.8] — 2026-07-21
+
+### Behoben
+
+- Nach dem Speichern beliebiger Einstellungen blieb der globale Aufnahme-Hotkey
+  nicht mehr unregistriert. Der alte Carbon-Hotkey wird jetzt ausdrücklich vor dem
+  neuen freigegeben; ein echter Registrierungskonflikt wird sichtbar gemeldet.
+
+## [0.8.7] — 2026-07-21
+
+### Hinzugefügt
+
+- Im Aufnahme-Tab lässt sich das Mikrofon direkt auswählen. Neben eingebauten und
+  USB-Geräten stehen auch per Integrationskamera verbundene iPhones zur Verfügung;
+  die Liste kann bei geöffneten Einstellungen aktualisiert werden.
+- „Systemstandard“ bleibt der rückwärtskompatible Default und folgt weiterhin der
+  macOS-Auswahl. Ein verschwundenes ausdrücklich gewähltes Gerät erzeugt eine klare
+  Fehlermeldung, statt unbemerkt von einem anderen Mikrofon aufzunehmen.
+
 ## [0.8.6] — 2026-07-17
 
 ### Hinzugefügt

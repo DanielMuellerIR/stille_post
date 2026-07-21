@@ -62,22 +62,6 @@ Offen:
   jetzt den Symlink nach `/usr/local/bin`, aber `build-app.sh --install` könnte das
   auch selbst anbieten. Offene Entscheidung, weil es sudo braucht.
 
-## „Vielen Dank"-Artefaktfilter (zurückgestellt 2026-07-15)
-
-Die Ursache der „Vielen Dank"-Halluzinationen ist in 0.7.2 an der Quelle behoben
-(`minSpeechSec`: ein Tastenklick beim Stoppen der Aufnahme setzte das Segment auf
-„hat Sprache", worauf Whisper reine Stille zu sehen bekam und Floskeln erfand).
-
-Offen bleibt nur der Artefaktfilter: `WhisperClient.cleanWhisperArtifacts` kennt
-`"vielen dank fürs zuschauen"`, aber nicht das nackte `"vielen dank"` — und
-vergleicht auf exakte Gleichheit der GANZEN Ausgabe. Da die Floskel immer an echtem
-Text klebte, griff er nie.
-
-Entscheidung: **zurückgestellt.** Erst mehrere Tage Realbetrieb; taucht die
-Floskel nicht mehr auf, ersatzlos streichen statt bauen. Der Filter wäre ohnehin
-heikel, weil „Vielen Dank." am Ende eines Diktats echt gemeint sein kann — er würde
-also genau den Fehler einführen, den wir gerade beseitigt haben.
-
 ## Warm-on-Intent statt Dauer-Pin (beschlossen 2026-07-15, noch nicht umgesetzt)
 
 Ziel: Das Bereinigungsmodell soll nicht mehr dauerhaft im Speicher hängen, sondern

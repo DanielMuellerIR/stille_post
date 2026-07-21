@@ -1,4 +1,5 @@
 import XCTest
+import AVFoundation
 @testable import StillePostCore
 
 /// Tests für WAV-Verarbeitung, Plausibilitätsprüfung, Artefakt-Filter,
@@ -67,6 +68,31 @@ final class CoreTests: XCTestCase {
         XCTAssertNil(CleanupService.sanityCheckFailure(raw: "ähm ja punkt", cleaned: "Ja."))
     }
 
+    func testSanityCheckRejectsWordReplacement() {
+        // Gleiche Länge reichte der alten Prüfung: Eine vermeintliche
+        // Rechtschreibkorrektur darf den Inhalt trotzdem nicht verändern.
+        XCTAssertNotNil(CleanupService.sanityCheckFailure(
+            raw: "Bitte verbinden wir die beiden Geräte morgen",
+            cleaned: "Bitte verwenden wir die beiden Geräte morgen."
+        ))
+    }
+
+    func testSanityCheckRejectsWordReordering() {
+        // Auch wenn exakt dieselben Wörter vorkommen, bleibt ihre Reihenfolge Teil
+        // des Diktats und darf nicht vom Bereinigungsmodell geglättet werden.
+        XCTAssertNotNil(CleanupService.sanityCheckFailure(
+            raw: "Heute möchte ich den langen Bericht in Ruhe fertig schreiben",
+            cleaned: "Den langen Bericht möchte ich heute in Ruhe fertig schreiben."
+        ))
+    }
+
+    func testSanityCheckAllowsOrderedWordDeletion() {
+        XCTAssertNil(CleanupService.sanityCheckFailure(
+            raw: "Also ich ich wollte ähm heute den Bericht schreiben",
+            cleaned: "Ich wollte heute den Bericht schreiben."
+        ))
+    }
+
     func testSanityCheckRejectsEmpty() {
         XCTAssertNotNil(CleanupService.sanityCheckFailure(raw: "hallo welt", cleaned: ""))
     }
@@ -122,15 +148,40 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(config.cleanup.model, "anderes-modell")
         XCTAssertEqual(config.cleanup.provider, "ollama", "fehlendes Feld muss Default bekommen")
         XCTAssertEqual(config.whisper.threads, 4, "fehlende Sektion muss komplette Defaults bekommen")
+        XCTAssertEqual(config.audio.inputDeviceUID, "", "alte Configs müssen beim Systemstandard bleiben")
     }
 
     func testConfigRoundTrip() throws {
         var config = Config()
         config.cleanup.provider = "openai"
         config.cleanup.remote.baseURL = "https://api.example.com/v1"
+        config.audio.inputDeviceUID = "test-device-uid"
+        config.audio.inputDeviceName = "Test-Mikrofon"
         let data = try JSONEncoder().encode(config)
         let restored = try JSONDecoder().decode(Config.self, from: data)
         XCTAssertEqual(restored, config)
+    }
+
+    func testAudioDeviceCatalogContainsTheSystemDefaultWhenAvailable() throws {
+        // Hardware-Integration ohne Aufnahme: Auf einem Rechner ohne Mikrofon wird
+        // sauber übersprungen; sonst muss der macOS-Default auch in der Liste stehen.
+        guard let defaultDevice = AudioInputDeviceCatalog.defaultDevice() else {
+            throw XCTSkip("Kein Standard-Eingabegerät auf diesem Testrechner")
+        }
+        XCTAssertTrue(AudioInputDeviceCatalog.availableDevices().contains(defaultDevice))
+    }
+
+    func testSystemDefaultCanBeSelectedExplicitlyOnAudioEngine() throws {
+        guard let defaultDevice = AudioInputDeviceCatalog.defaultDevice() else {
+            throw XCTSkip("Kein Standard-Eingabegerät auf diesem Testrechner")
+        }
+        // Der Engine-Start würde eine echte Aufnahme und TCC-Berechtigung brauchen.
+        // Das Setzen am echten AVAudioInputNode prüft bereits die CoreAudio-Brücke.
+        let engine = AVAudioEngine()
+        XCTAssertNoThrow(try AudioInputDeviceCatalog.apply(
+            uid: defaultDevice.uid,
+            to: engine.inputNode
+        ))
     }
 
     // MARK: Bereinigungs-Kette (primär + Fallbacks)

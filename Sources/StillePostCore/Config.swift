@@ -163,6 +163,17 @@ public struct Config: Codable, Equatable {
         public init() {}
     }
 
+    /// Auswahl des Aufnahmegeräts. Eine leere UID bedeutet „Systemstandard“.
+    public struct Audio: Codable, Equatable {
+        /// Stabile CoreAudio-UID des ausgewählten Eingabegeräts.
+        public var inputDeviceUID: String = ""
+        /// Letzter bekannter Anzeigename für eine verständliche Fehlermeldung, falls
+        /// das Gerät beim nächsten Diktat nicht mehr verbunden ist.
+        public var inputDeviceName: String = ""
+
+        public init() {}
+    }
+
     /// Einstellungen für die Bedienoberfläche.
     public struct UI: Codable, Equatable {
         /// Wo das Aufnahme-Overlay erscheint: "mouse" (an der Mausposition — auch bei
@@ -200,6 +211,7 @@ public struct Config: Codable, Equatable {
     public var whisper: Whisper = Whisper()
     public var cleanup: Cleanup = Cleanup()
     public var vad: Vad = Vad()
+    public var audio: Audio = Audio()
     public var ui: UI = UI()
     public var hotkey: Hotkey = Hotkey()
 
@@ -262,13 +274,14 @@ public struct Config: Codable, Equatable {
 
     // MARK: - Tolerantes Dekodieren (fehlende Felder -> Defaults)
 
-    private enum CodingKeys: String, CodingKey { case whisper, cleanup, vad, ui, hotkey }
+    private enum CodingKeys: String, CodingKey { case whisper, cleanup, vad, audio, ui, hotkey }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         whisper = (try? c.decode(Whisper.self, forKey: .whisper)) ?? Whisper()
         cleanup = (try? c.decode(Cleanup.self, forKey: .cleanup)) ?? Cleanup()
         vad = (try? c.decode(Vad.self, forKey: .vad)) ?? Vad()
+        audio = (try? c.decode(Audio.self, forKey: .audio)) ?? Audio()
         ui = (try? c.decode(UI.self, forKey: .ui)) ?? UI()
         hotkey = (try? c.decode(Hotkey.self, forKey: .hotkey)) ?? Hotkey()
     }
@@ -345,6 +358,16 @@ extension Config.Vad {
         maxSegmentSec = try c.decodeIfPresent(Double.self, forKey: .maxSegmentSec) ?? maxSegmentSec
         paddingSec = try c.decodeIfPresent(Double.self, forKey: .paddingSec) ?? paddingSec
         autoStopAfterSilenceSec = try c.decodeIfPresent(Double.self, forKey: .autoStopAfterSilenceSec) ?? autoStopAfterSilenceSec
+    }
+}
+
+extension Config.Audio {
+    private enum CodingKeys: String, CodingKey { case inputDeviceUID, inputDeviceName }
+    public init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        inputDeviceUID = try c.decodeIfPresent(String.self, forKey: .inputDeviceUID) ?? inputDeviceUID
+        inputDeviceName = try c.decodeIfPresent(String.self, forKey: .inputDeviceName) ?? inputDeviceName
     }
 }
 

@@ -100,8 +100,9 @@ bereits beim Start der Aufnahme vorgewärmt.
 
 1. Der System-Prompt erlaubt nur das Entfernen von Füllwörtern, Versprechern,
    Stottern und Doppelungen – kein Umformulieren, Zusammenfassen oder Beantworten.
-2. Eine Plausibilitätsprüfung vergleicht die Länge mit dem Rohtext. Bei starken
-   Abweichungen wird automatisch der Rohtext verwendet.
+2. Eine Worttreue-Prüfung verwirft jede Ausgabe, die Wörter ergänzt, ersetzt oder
+   umstellt. Erlaubt sind nur Löschungen sowie Satzzeichen und Groß-/Kleinschreibung;
+   zusätzlich bleibt die Längenprüfung aktiv.
 3. Schlägt die Bereinigung fehl, wird ebenfalls der Rohtext eingefügt.
 4. Overlay und Verlauf kennzeichnen Ausweich-Endpunkte und Rohtext-Rückfälle.
 
@@ -132,13 +133,14 @@ Der Dialog ist in vier Tabs gegliedert, die üblichen Fälle brauchen also kein 
 | ![Tab Allgemein](assets/settings-general.png) | ![Tab Bereinigung](assets/settings-cleanup.png) |
 | *Allgemein — Aufnahme-Hotkey & Overlay* | *Bereinigung — Anbieter, Modell, Kontext, Fallbacks* |
 | ![Tab Spracherkennung](assets/settings-speech.png) | ![Tab Aufnahme](assets/settings-recording.png) |
-| *Spracherkennung — Sprache & Whisper-Server* | *Aufnahme — Stille-Erkennung & Auto-Stopp* |
+| *Spracherkennung — Sprache & Whisper-Server* | *Aufnahme — Mikrofon, Stille-Erkennung & Auto-Stopp* |
 
 Die wichtigsten Schalter:
 
 | Bereich | Feld | Bedeutung |
 |---|---|---|
 | `hotkey` | `keyCode`, `modifiers` | Aufnahme-Hotkey (Default ⌘⌥D). Im Tab „Allgemein“ nimmt „Hotkey aufnehmen“ die gedrückte Kombination auf — man muss keine Tastencodes nachschlagen |
+| `audio` | `inputDeviceUID`, `inputDeviceName` | ausgewähltes Mikrofon; leere UID folgt dem macOS-Systemstandard. Die UI speichert die stabile CoreAudio-UID, der Name dient nur der verständlichen Anzeige |
 | `whisper` | `language` | `"auto"` oder fest z. B. `"de"`. **Empfehlung: Festnageln.** Bei `auto` rät Whisper die Sprache pro Sprech-Segment und übersetzt bei Fehl-Erkennung ungefragt |
 | `cleanup` | `enabled` | Bereinigung an/aus |
 | `cleanup` | `provider` | `"ollama"` (lokal/eigenes Netz) oder `"openai"` (Cloud, nur Text) |
@@ -149,6 +151,19 @@ Die wichtigsten Schalter:
 | `cleanup` | `fallbacks` | Ausweich-Endpoints, falls der primäre nicht antwortet (s. u.) |
 | `vad` | `autoStopAfterSilenceSec` | Abwesenheits-Stopp (0 = aus) |
 | `ui` | `overlayPosition` | `"mouse"` oder `"bottomCenter"` |
+
+### iPhone oder anderes Mikrofon verwenden
+
+Im Tab **„Aufnahme“** lässt sich jedes von macOS gemeldete Eingabegerät direkt
+auswählen. **„Systemstandard“** folgt weiterhin der Auswahl unter
+„Systemeinstellungen → Ton → Eingabe“. Verschwindet ein ausdrücklich ausgewähltes
+Gerät, verwendet Stille Post nicht unbemerkt ein anderes Mikrofon, sondern meldet
+den Fehler beim Aufnahmebeginn.
+
+Ein iPhone erscheint über Apples Integrationskamera als normales Eingabegerät:
+iPhone sperren und in der Nähe stabil ablegen, dann die Geräteliste in Stille Post
+aktualisieren. Für lange Diktate ist eine USB-Verbindung zuverlässiger als die
+kabellose Verbindung.
 
 Cloud-Bereinigung einrichten (Beispiel, funktioniert mit jedem OpenAI-kompatiblen
 Anbieter):

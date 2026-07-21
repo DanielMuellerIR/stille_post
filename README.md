@@ -97,8 +97,9 @@ and sentence boundaries. The cleanup model is warmed when recording begins.
 
 1. The system prompt only permits removal of filler words, false starts, stutters,
    and repetitions — no paraphrasing, summarizing, or answering.
-2. A sanity check compares the result length with the raw transcript. Large
-   deviations automatically fall back to the raw text.
+2. A word-fidelity check rejects any result that adds, replaces, or reorders words.
+   Only deletions, punctuation, and capitalization are allowed; the length check
+   remains active as an additional safeguard.
 3. A failed cleanup also falls back to the raw text.
 4. The overlay and history identify backup endpoints and raw-text fallbacks.
 
@@ -129,13 +130,14 @@ JSON (the cleanup model shown is the default):
 | ![General tab](assets/en/settings-general.png) | ![Cleanup tab](assets/en/settings-cleanup.png) |
 | *General — recording hotkey & overlay* | *Cleanup — provider, model, context, fallbacks* |
 | ![Speech recognition tab](assets/en/settings-speech.png) | ![Recording tab](assets/en/settings-recording.png) |
-| *Speech recognition — language & Whisper server* | *Recording — silence detection & auto-stop* |
+| *Speech recognition — language & Whisper server* | *Recording — microphone, silence detection & auto-stop* |
 
 The most important switches:
 
 | Section | Field | Meaning |
 |---|---|---|
 | `hotkey` | `keyCode`, `modifiers` | recording hotkey (default ⌘⌥D). In the General tab, “Record hotkey” records the combination you press — no need to look up key codes |
+| `audio` | `inputDeviceUID`, `inputDeviceName` | selected microphone; an empty UID follows the macOS system default. The UI stores the stable CoreAudio UID; the name is only used for a readable display |
 | `whisper` | `language` | `"auto"` or fixed, e.g. `"en"`. **Recommendation: Pin it.** With `auto`, Whisper guesses the language per speech segment and silently translates on misdetection |
 | `cleanup` | `enabled` | cleanup on/off |
 | `cleanup` | `provider` | `"ollama"` (local/own network) or `"openai"` (cloud, text only) |
@@ -146,6 +148,17 @@ The most important switches:
 | `cleanup` | `fallbacks` | backup endpoints tried when the primary does not respond (see below) |
 | `vad` | `autoStopAfterSilenceSec` | absence auto-stop (0 = off) |
 | `ui` | `overlayPosition` | `"mouse"` or `"bottomCenter"` |
+
+### Using an iPhone or another microphone
+
+The **Recording** tab can select any input device reported by macOS directly.
+**System Default** continues to follow System Settings → Sound → Input. If an
+explicitly selected device disappears, Stille Post does not silently record from a
+different microphone; it reports the problem when recording starts.
+
+An iPhone appears as a regular input device through Apple’s Continuity Camera:
+lock the iPhone and place it stably near the Mac, then refresh the device list in
+Stille Post. A USB connection is more reliable than wireless for long dictations.
 
 Setting up cloud cleanup (example; works with any OpenAI-compatible provider):
 

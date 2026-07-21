@@ -22,6 +22,7 @@
 
 /* App results and overlay */
 "app.settings_save_failed" = "Settings could not be saved: %@";
+"app.hotkey_registration_failed" = "The global hotkey %@ could not be registered (error %d). Another app may already be using it.";
 "app.raw_fallback_note" = "⚠️ Uncleaned raw text (cleanup failed/rejected)";
 "app.screen_sharing_note" = "⚠️ Screen Sharing: press ⌘V there now (the text is on the clipboard)";
 "app.paste_permission_missing" = "No permission to paste — the text is on the clipboard (⌘V)";
@@ -96,6 +97,13 @@
 "settings.cleanup.api_key_privacy" = "The key is never displayed or saved in the configuration file.";
 
 /* Settings: Speech Recognition and Recording */
+"settings.audio.section" = "Microphone";
+"settings.audio.input_device" = "Input device";
+"settings.audio.system_default" = "System Default";
+"settings.audio.system_default_named" = "System Default (%@)";
+"settings.audio.unavailable" = "Unavailable: %@";
+"settings.audio.refresh" = "Refresh device list";
+"settings.audio.help" = "“System Default” follows the macOS setting. For an iPhone: lock and position it, then refresh the list if needed; USB is more reliable for long dictations.";
 "settings.whisper.language" = "Language";
 "settings.whisper.language_help" = "Recommendation: pin it (for example, \"en\"). With \"auto\", Whisper guesses each speech segment’s language and may translate after a misdetection.";
 "settings.whisper.advanced" = "Advanced";
@@ -148,6 +156,8 @@
 /* Core errors */
 "core.config.unreadable" = "StillePost: config.json could not be read (%@) — using defaults\n";
 "core.audio.format_setup_failed" = "The audio format could not be configured (no input device?)";
+"core.audio.device_unavailable" = "The selected microphone “%@” is unavailable. Connect it or choose another one in Settings.";
+"core.audio.device_configuration_failed" = "The microphone “%@” could not be opened (audio error %d).";
 "core.server.not_reachable" = "whisper-server is not reachable at %@ (automatic startup is disabled)";
 "core.server.binary_missing" = "whisper-server binary missing: %@ — install it with: brew install whisper-cpp";
 "core.server.model_missing" = "Whisper model missing: %@ — download it with: stillepost-cli install-model";
@@ -161,6 +171,7 @@
 "core.cleanup.failed" = "Cleanup failed — %@";
 "core.cleanup.empty" = "Cleanup returned empty text";
 "core.cleanup.markdown" = "The cleaned version contains Markdown structures (%@) — the model probably answered instead of cleaning";
+"core.cleanup.words_changed" = "The cleaned version added, replaced, or reordered words";
 "core.cleanup.too_short" = "Cleaned version is suspiciously short (%.0f%% of the raw text)";
 "core.cleanup.too_long" = "Cleaned version is suspiciously long (%.0f%% of the raw text) — the model probably answered instead of cleaning";
 "core.cleanup.invalid_ollama_url" = "Invalid Ollama URL: %@";

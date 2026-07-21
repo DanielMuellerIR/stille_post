@@ -36,6 +36,10 @@ public final class DictationEngine {
 
     /// Zustands-Änderungen (App aktualisiert Menüleiste/Overlay). Auf Main-Thread.
     public var onStateChange: ((DictationState) -> Void)?
+    /// Akustisches Startsignal unmittelbar vor dem Öffnen des Mikrofons. Die App
+    /// wartet auf das Ende des Signals, damit der eigene Lautsprecherklang niemals
+    /// im Diktat landet und von Whisper als Sprache fehlinterpretiert wird.
+    public var onBeforeRecordingStart: (() async -> Void)?
     /// Fertiges Diktat (App fügt den Text ein). Auf Main-Thread.
     public var onResult: ((DictationResult) -> Void)?
     /// Die Bereinigung wechselt gerade auf einen Ausweich-Endpoint (Label als Text).
@@ -118,16 +122,27 @@ public final class DictationEngine {
                 self.setState(.error(error.localizedDescription))
                 return
             }
+            // shutdown()/Einstellungswechsel kann während des Server-Starts den
+            // Zustand zurücksetzen. Dann weder Modell noch Startton der alten Engine
+            // unnötig auslösen.
+            guard self.state == .starting else { return }
             // 3. Bereinigungs-Modell VORWÄRMEN — lädt parallel, während man spricht.
             self.cleanup.warmUp()
-            // 4. Aufnahme wirklich starten.
+            // 4. Startsignal vollständig VOR der Aufnahme abspielen. Unsere kurzen
+            //    Sounds liegen deutlich über der VAD-Schwelle; in der Aufnahme
+            //    würden sie deshalb als Sprache an Whisper geschickt.
+            await self.onBeforeRecordingStart?()
+            // Wurde die Engine während des asynchronen Startsignals beendet oder
+            // neu aufgebaut, darf der alte Startvorgang kein Mikrofon mehr öffnen.
+            guard self.state == .starting else { return }
+            // 5. Aufnahme wirklich starten.
             self.beginRecording()
         }
     }
 
     private func beginRecording() {
         let segmenter = VadSegmenter(config: config.vad)
-        let recorder = AudioRecorder()
+        let recorder = AudioRecorder(config: config.audio)
         let collector = SegmentCollector()
         segmentResults = collector
 
@@ -186,10 +201,13 @@ public final class DictationEngine {
     public func stop() {
         guard state == .recording, let recorder, let segmenter else { return }
         let duration = recordingDuration
-        setState(.processing)
 
+        // Mikrofon zuerst schließen, erst danach den Verarbeitungszustand melden:
+        // Die App spielt bei `.processing` den Stoppton. In umgekehrter Reihenfolge
+        // wurde dieser Ton noch aufgenommen und als vermeintliche Sprache erkannt.
         recorder.stop()
         self.recorder = nil
+        setState(.processing)
         segmenter.flush()  // letztes angefangenes Segment noch ausliefern
         self.segmenter = nil
 

@@ -22,6 +22,7 @@
 
 /* App-Ergebnisse und Overlay */
 "app.settings_save_failed" = "Einstellungen konnten nicht gespeichert werden: %@";
+"app.hotkey_registration_failed" = "Der globale Hotkey %@ konnte nicht registriert werden (Fehler %d). Möglicherweise verwendet ihn bereits eine andere App.";
 "app.raw_fallback_note" = "⚠️ Unbereinigter Rohtext (Bereinigung fehlgeschlagen/verworfen)";
 "app.screen_sharing_note" = "⚠️ Bildschirmfreigabe: dort jetzt ⌘V drücken (Text ist in der Zwischenablage)";
 "app.paste_permission_missing" = "Kein Einfüge-Recht — Text liegt in der Zwischenablage (⌘V)";
@@ -96,6 +97,13 @@
 "settings.cleanup.api_key_privacy" = "Der Key wird nie angezeigt und nie in der Config-Datei gespeichert.";
 
 /* Einstellungen: Spracherkennung und Aufnahme */
+"settings.audio.section" = "Mikrofon";
+"settings.audio.input_device" = "Eingabegerät";
+"settings.audio.system_default" = "Systemstandard";
+"settings.audio.system_default_named" = "Systemstandard (%@)";
+"settings.audio.unavailable" = "Nicht verfügbar: %@";
+"settings.audio.refresh" = "Geräteliste aktualisieren";
+"settings.audio.help" = "„Systemstandard“ folgt der Auswahl in macOS. Für ein iPhone: sperren und bereitstellen, bei Bedarf die Liste aktualisieren; USB ist bei langen Diktaten zuverlässiger.";
 "settings.whisper.language" = "Sprache";
 "settings.whisper.language_help" = "Empfehlung: festnageln (z. B. \"de\"). Bei \"auto\" rät Whisper pro Sprech-Segment und übersetzt bei Fehl-Erkennung ungefragt.";
 "settings.whisper.advanced" = "Erweitert";
@@ -148,6 +156,8 @@
 /* Core-Fehler */
 "core.config.unreadable" = "StillePost: config.json unlesbar (%@) — nutze Defaults\n";
 "core.audio.format_setup_failed" = "Audio-Format konnte nicht eingerichtet werden (kein Eingabegerät?)";
+"core.audio.device_unavailable" = "Das ausgewählte Mikrofon „%@“ ist nicht verfügbar. Bitte verbinden oder in den Einstellungen ein anderes wählen.";
+"core.audio.device_configuration_failed" = "Das Mikrofon „%@“ konnte nicht geöffnet werden (Audio-Fehler %d).";
 "core.server.not_reachable" = "whisper-server nicht erreichbar unter %@ (Autostart ist ausgeschaltet)";
 "core.server.binary_missing" = "whisper-server-Binary fehlt: %@ — installieren mit: brew install whisper-cpp";
 "core.server.model_missing" = "Whisper-Modell fehlt: %@ — herunterladen mit: stillepost-cli install-model";
@@ -161,6 +171,7 @@
 "core.cleanup.failed" = "Bereinigung fehlgeschlagen — %@";
 "core.cleanup.empty" = "Bereinigung lieferte leeren Text";
 "core.cleanup.markdown" = "Bereinigte Fassung enthält Markdown-Strukturen (%@) — Modell hat vermutlich geantwortet statt bereinigt";
+"core.cleanup.words_changed" = "Bereinigte Fassung hat Wörter ergänzt, ersetzt oder umgestellt";
 "core.cleanup.too_short" = "Bereinigte Fassung verdächtig kurz (%.0f %% des Rohtexts)";
 "core.cleanup.too_long" = "Bereinigte Fassung verdächtig lang (%.0f %% des Rohtexts) — Modell hat vermutlich geantwortet statt bereinigt";
 "core.cleanup.invalid_ollama_url" = "Ungültige Ollama-URL: %@";

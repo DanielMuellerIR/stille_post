@@ -7,10 +7,10 @@ import Security
 ///
 /// Die zwei größten Ärgernisse anderer Diktier-Tools werden hier doppelt abgesichert:
 ///  1. Ein sehr strikter System-Prompt (unten), der Umformulieren/Beantworten verbietet.
-///  2. Eine Plausibilitätsprüfung NACH dem LLM: Weicht die bereinigte Fassung in der
-///     Länge stark vom Rohtext ab (Indiz dafür, dass das Modell gekürzt, gedichtet
-///     oder eine "Frage beantwortet" hat), wird automatisch der Rohtext verwendet.
-///     Ein Diktat kann so nie durch die Bereinigung zerstört werden.
+///  2. Eine Worttreue- und Plausibilitätsprüfung NACH dem LLM: Die Ausgabe darf nur
+///     Wörter aus dem Rohtext in unveränderter Reihenfolge enthalten. Sie darf also
+///     Füllwörter löschen und Satzzeichen korrigieren, aber keine Wörter ersetzen,
+///     ergänzen oder umstellen. Bei einem Verstoß wird der Rohtext verwendet.
 public final class CleanupService {
 
     /// Ergebnis einer Bereinigung.
@@ -276,9 +276,11 @@ public final class CleanupService {
     /// Prüft, ob die LLM-Ausgabe noch wie eine Bereinigung des Rohtexts aussieht.
     /// Liefert bei Verdacht eine Begründung, sonst nil.
     ///
-    /// Heuristik über die Textlänge: Bereinigen entfernt nur Füllwörter/Stottern,
-    /// die Länge schrumpft also höchstens moderat und wächst kaum. Alles außerhalb
-    /// des Korridors ist verdächtig (Modell hat gekürzt, geantwortet oder gedichtet).
+    /// Worttreue ist die harte Sicherheitsgrenze: Nach ignorierter Zeichensetzung
+    /// und Groß-/Kleinschreibung müssen alle Ausgabewörter eine ordnungserhaltende
+    /// Teilfolge der Eingabewörter bilden. Erlaubt sind damit nur Löschungen; jede
+    /// Ergänzung, Ersetzung oder Umstellung führt zum Rohtext-Fallback.
+    /// Die bisherige Längenprüfung bleibt als zusätzlicher Schutz bestehen.
     static func sanityCheckFailure(raw: String, cleaned: String) -> String? {
         if cleaned.isEmpty { return L10n.text("core.cleanup.empty") }
         // Struktur-Prüfung: Gesprochene Sprache enthält keine Markdown-Syntax.
@@ -291,6 +293,18 @@ public final class CleanupService {
                     marker.trimmingCharacters(in: .whitespacesAndNewlines)
                 )
             }
+        }
+        let rawWords = normalizedWords(in: raw)
+        let cleanedWords = normalizedWords(in: cleaned)
+        var rawIndex = rawWords.startIndex
+        for cleanedWord in cleanedWords {
+            while rawIndex < rawWords.endIndex, rawWords[rawIndex] != cleanedWord {
+                rawIndex = rawWords.index(after: rawIndex)
+            }
+            guard rawIndex < rawWords.endIndex else {
+                return L10n.text("core.cleanup.words_changed")
+            }
+            rawIndex = rawWords.index(after: rawIndex)
         }
         let rawCount = Double(raw.count)
         let cleanedCount = Double(cleaned.count)
@@ -306,6 +320,16 @@ public final class CleanupService {
             return L10n.format("core.cleanup.too_long", ratio * 100)
         }
         return nil
+    }
+
+    /// Zerlegt Text Unicode-sicher in vergleichbare Wörter. Satzzeichen,
+    /// Bindestriche und Groß-/Kleinschreibung sind für die Treueprüfung egal;
+    /// Umlaute und andere nicht-ASCII-Buchstaben bleiben erhalten.
+    private static func normalizedWords(in text: String) -> [String] {
+        text.precomposedStringWithCanonicalMapping
+            .lowercased()
+            .split { !$0.isLetter && !$0.isNumber }
+            .map(String.init)
     }
 
     // MARK: - Provider: Ollama (lokal oder anderer Rechner im eigenen Netz)
@@ -525,7 +549,7 @@ public final class CleanupService {
     - Füllwörter raus, wenn sie keine Bedeutung tragen: äh, ähm, hm, also (als Füllsel), halt, quasi, sozusagen, ne, ja (als Füllsel).
     - Versprecher, Stottern, abgebrochene Wortanfänge und unbeabsichtigte Doppelungen raus: „ich ich wollte" → „ich wollte".
     - Selbstkorrektur: Korrigiert sich die Person, nur die korrigierte Fassung behalten.
-    - Rechtschreibung, Groß-/Kleinschreibung, Satzzeichen korrigieren; eindeutige Verhörer (Transkriptionsfehler) korrigieren.
+    - Groß-/Kleinschreibung und Satzzeichen korrigieren. Die Schreibweise der Wörter selbst unverändert lassen.
     - Satzzeichen sparsam und grammatisch korrekt setzen: kein Komma, wo keines hingehört; ein Punkt NUR an echten Satzenden, nie mitten im Satz.
     - Gesprochene Satzzeichen umsetzen („Komma", „Punkt", „neuer Absatz").
     - Sprache der Eingabe beibehalten, nichts übersetzen.

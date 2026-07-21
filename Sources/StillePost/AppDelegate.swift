@@ -150,11 +150,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Meldet den globalen Hotkey an: Aufnahme ein/aus. (Ein alter HotkeyManager
-    /// deregistriert sich in seinem deinit selbst — einfaches Ersetzen reicht.)
+    /// Meldet den globalen Hotkey an: Aufnahme ein/aus.
+    ///
+    /// Wichtig: Den alten Manager VOR dem Erzeugen des neuen freigeben. Swift wertet
+    /// bei `hotkey = HotkeyManager(...)` zuerst die rechte Seite aus; Carbon sähe dann
+    /// kurz zwei identische globale Hotkeys und lehnt den neuen ab. Anschließend würde
+    /// deinit den alten abmelden — übrig bliebe gar keiner.
     private func registerHotkey() {
-        hotkey = HotkeyManager(config: config.hotkey) { [weak self] in
-            self?.engine.toggle()
+        hotkey = nil
+        do {
+            hotkey = try HotkeyManager(config: config.hotkey) { [weak self] in
+                self?.engine.toggle()
+            }
+        } catch let error as HotkeyManager.RegistrationError {
+            overlay.show(.failure(L10n.format(
+                "app.hotkey_registration_failed",
+                HotkeyManager.describe(config.hotkey),
+                error.status
+            )))
+        } catch {
+            overlay.show(.failure(L10n.format(
+                "app.hotkey_registration_failed",
+                HotkeyManager.describe(config.hotkey),
+                -1
+            )))
         }
     }
 
@@ -272,13 +291,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Engine-Callbacks (Zustand -> Oberfläche)
 
     private func setupEngineCallbacks() {
+        // Der Startton wird vollständig vor dem Öffnen des Mikrofons abgespielt.
+        // Gerade das iPhone als Continuity-Mikrofon hört den Mac-Lautsprecher sehr
+        // klar; der Ton darf deshalb nicht Teil des Whisper-Segments werden.
+        engine.onBeforeRecordingStart = { [weak self] in
+            await self?.playSoundAndWait(custom: "dictation-start", fallback: "Pop")
+        }
         engine.onStateChange = { [weak self] state in
             guard let self else { return }
             self.updateStatusIcon(for: state)
             switch state {
             case .recording:
-                // Eigener "Blup" (generiert): deutliches "Aufnahme läuft"-Signal.
-                self.playSound(custom: "dictation-start", fallback: "Pop")
                 self.overlay.show(.recording)
             case .processing:
                 // Tieferer Whoosh/Ding: deutlich ANDERES "Aufnahme beendet"-Signal.
@@ -353,19 +376,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// den benannten macOS-Systemklang.
     private func playSound(custom: String?, fallback: String) {
         guard config.ui.sounds else { return }
+        resolvedSound(custom: custom, fallback: fallback)?.play()
+    }
+
+    /// Spielt das Startsignal und kehrt erst nach dessen Ende zurück. `NSSound.play`
+    /// selbst ist nicht blockierend; ohne dieses Warten würde die unmittelbar danach
+    /// gestartete Aufnahme den restlichen Klang weiterhin mitschneiden.
+    private func playSoundAndWait(custom: String?, fallback: String) async {
+        guard config.ui.sounds,
+              let sound = resolvedSound(custom: custom, fallback: fallback),
+              sound.play() else { return }
+        let duration = max(0, sound.duration) + 0.05
+        guard duration > 0 else { return }
+        try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+    }
+
+    private func resolvedSound(custom: String?, fallback: String) -> NSSound? {
         if let custom {
             if let cached = soundCache[custom] {
-                cached.play()
-                return
+                return cached
             }
             if let url = Bundle.main.resourceURL?
                 .appendingPathComponent("sounds/\(custom).wav"),
                let sound = NSSound(contentsOf: url, byReference: true) {
                 soundCache[custom] = sound
-                sound.play()
-                return
+                return sound
             }
         }
-        NSSound(named: fallback)?.play()
+        return NSSound(named: fallback)
     }
 }

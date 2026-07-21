@@ -1,8 +1,9 @@
 #!/bin/bash
 # Ende-zu-Ende-Test ohne Mikrofon und ohne GUI:
 # 1. erzeugt mit der macOS-Sprachausgabe (`say`) eine deutsche Test-WAV-Datei,
-# 2. schickt sie mit stillepost-cli durch die echte Pipeline (Whisper + Bereinigung),
-# 3. prüft, dass erwartete Schlüsselwörter im Ergebnis stehen.
+# 2. transkribiert sie mit stillepost-cli und prüft die Bereinigung separat gegen
+#    den tatsächlich eingerichteten Endpoint,
+# 3. prüft, dass erwartete Schlüsselwörter und der Wortlaut erhalten bleiben.
 #
 # Voraussetzungen: whisper-Modell installiert (scripts/install-model.sh),
 # Ollama läuft mit dem konfigurierten Bereinigungs-Modell.
@@ -15,10 +16,9 @@ trap 'rm -rf "$TMP"' EXIT
 # Eigene Test-Config: Sprache fest auf Deutsch. Die automatische Sprach-Erkennung
 # stolpert über synthetische say-Stimmen (erkennt Englisch und übersetzt!) —
 # echte menschliche Sprache ist davon nicht betroffen.
-cat > "$TMP/config.json" <<'JSON'
-{ "whisper": { "language": "de" } }
+cat > "$TMP/transcribe-config.json" <<'JSON'
+{ "whisper": { "language": "de" }, "cleanup": { "enabled": false } }
 JSON
-export STILLEPOST_CONFIG="$TMP/config.json"
 
 echo "1/3  Test-Audio erzeugen (say) …"
 # Hinweis: Der Satz ist bewusst TTS-tauglich gewählt. Füllwörter wie "ähm" spricht
@@ -29,9 +29,10 @@ TEXT="Hallo, das ist ein Test der Spracherkennung. Bitte alles genau so überneh
 say -v Anna -o "$TMP/test.aiff" "$TEXT"
 afconvert -f WAVE -d LEI16@16000 -c 1 "$TMP/test.aiff" "$TMP/test.wav"
 
-echo "2/3  Pipeline (STT + Bereinigung) …"
+echo "2/3  Spracherkennung …"
 swift build >/dev/null
-RESULT="$(.build/debug/stillepost-cli transcribe "$TMP/test.wav")"
+RESULT="$(STILLEPOST_CONFIG="$TMP/transcribe-config.json" \
+    .build/debug/stillepost-cli transcribe "$TMP/test.wav" --raw)"
 echo "     Ergebnis: $RESULT"
 
 echo "3/3  Prüfen …"
@@ -51,6 +52,9 @@ fi
 # Bereinigungs-Mechanik: Füllwörter + Doppelungen müssen aus ECHTEM Text verschwinden,
 # Eigennamen und Wortlaut müssen erhalten bleiben.
 CLEAN_IN="also ähm ich wollte halt sagen dass dass der Orkus-Server äh morgen aktualisiert wird"
+# Für diesen separaten Schritt gilt die normale Benutzer-Config: Sie enthält den
+# tatsächlich eingerichteten Cleanup-Endpoint. Die temporäre STT-Config würde sonst
+# unbemerkt auf den Default-Endpoint zurückfallen und gar nicht das reale Setup testen.
 CLEAN_OUT="$(.build/debug/stillepost-cli cleanup "$CLEAN_IN")"
 echo "     Bereinigung: $CLEAN_OUT"
 if grep -qiE "ähm|äh |halt " <<<"$CLEAN_OUT "; then
