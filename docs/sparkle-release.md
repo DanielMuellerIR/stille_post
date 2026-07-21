@@ -4,8 +4,8 @@ Stille Post bindet Sparkle 2.9.4 per SwiftPM ein. Die App prüft den Feed unter
 `https://danielmuellerir.github.io/stille_post/appcast.xml`, lädt das DMG weiterhin
 aus dem zugehörigen GitHub Release und installiert ausschließlich nach Zustimmung.
 
-Version 0.8.5 ist der einmalige Bootstrap: 0.8.4 enthält noch keinen Sparkle-Code und
-kann 0.8.5 deshalb nicht selbst finden. Bestehende Installationen müssen 0.8.5 noch
+Version 0.8.9 ist der einmalige Bootstrap: 0.8.4 enthält noch keinen Sparkle-Code und
+kann 0.8.9 deshalb nicht selbst finden. Bestehende Installationen müssen 0.8.9 noch
 einmal manuell per DMG installieren; erst danach funktionieren automatische Updates.
 
 Zwei voneinander unabhängige Prüfungen bleiben Pflicht:
@@ -47,7 +47,7 @@ im App-Bundle eingecheckt.
    `https://danielmuellerir.github.io/stille_post/appcast.xml` prüfen. Im App-Menü
    **„Nach Updates suchen …“** muss eine ältere, notarisiert installierte und bereits
    Sparkle-fähige Testversion das neue Release finden, installieren und neu starten.
-   Für 0.8.5 bedeutet das: einen signierten Test-Build mit kleinerer
+   Für 0.8.9 bedeutet das: einen signierten Test-Build mit kleinerer
    `CFBundleVersion` und demselben Schlüssel verwenden. Die echte 0.8.4 eignet sich
    nicht, weil dort der Updater fehlt.
 

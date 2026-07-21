@@ -23,6 +23,12 @@ Datei mit dem Versions-Bump fortgeschrieben.
   der Prompt erlaubt keine vermeintlichen Rechtschreib- oder Verhörerkorrekturen
   mehr.
 
+### Hinweis
+
+- 0.8.9 ist die erste öffentlich veröffentlichte Version mit Sparkle. Installationen
+  von 0.8.4 müssen dieses Update einmalig manuell per DMG installieren; danach sind
+  signierte automatische Updates verfügbar.
+
 ## [0.8.8] — 2026-07-21
 
 ### Behoben
