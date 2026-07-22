@@ -40,18 +40,14 @@ final class CoreTests: XCTestCase {
 
     // MARK: WAV
 
-    func testWavRoundTrip() throws {
-        // Samples -> WAV-Daten -> Datei -> wieder einlesen: Werte müssen (bis auf
-        // 16-Bit-Quantisierung) erhalten bleiben.
+    func testWavEncodingProducesExpectedHeaderAndSamples() throws {
         let original: [Float] = (0..<1600).map { 0.8 * sin(Float($0) * 0.05) }
         let data = WavCodec.wavData(from: original)
         XCTAssertEqual(data.count, 44 + original.count * 2, "Header 44 Bytes + 2 Bytes pro Sample")
-
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("roundtrip-\(UUID()).wav")
-        try data.write(to: url)
-        defer { try? FileManager.default.removeItem(at: url) }
-
-        let restored = try WavCodec.samples(fromWavFile: url)
+        XCTAssertEqual(String(data: data[0..<4], encoding: .ascii), "RIFF")
+        XCTAssertEqual(String(data: data[8..<12], encoding: .ascii), "WAVE")
+        XCTAssertEqual(wavUInt32(data, at: 40), UInt32(original.count * 2))
+        let restored = wavSamples(data)
         XCTAssertEqual(restored.count, original.count)
         for (a, b) in zip(original, restored) {
             XCTAssertEqual(a, b, accuracy: 0.001)
@@ -67,10 +63,24 @@ final class CoreTests: XCTestCase {
         try writer.append([Float](repeating: -0.5, count: 800))
         try writer.finish()
 
-        let restored = try WavCodec.samples(fromWavFile: url)
+        let restored = wavSamples(try Data(contentsOf: url))
         XCTAssertEqual(restored.count, 1600)
         XCTAssertEqual(restored[0], 0.5, accuracy: 0.001)
         XCTAssertEqual(restored[1599], -0.5, accuracy: 0.001)
+    }
+
+    func testWavFileWriterRetainsAndReportsFirstAppendFailure() throws {
+        enum Expected: Error { case diskFull }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("writer-fail-\(UUID()).wav")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let writer = try WavFileWriter(url: url) { writeIndex in
+            if writeIndex == 1 { throw Expected.diskFull }
+        }
+
+        XCTAssertThrowsError(try writer.append([0.5]))
+        XCTAssertThrowsError(try writer.append([0.25]))
+        XCTAssertThrowsError(try writer.finish())
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
     }
 
     // MARK: Plausibilitätsprüfung der Bereinigung
@@ -581,5 +591,22 @@ private actor CleanupGate {
     func waitUntilFinished() async {
         if finished { return }
         await withCheckedContinuation { finishedWaiters.append($0) }
+    }
+}
+
+private func wavUInt32(_ data: Data, at offset: Int) -> UInt32 {
+    UInt32(data[offset])
+        | (UInt32(data[offset + 1]) << 8)
+        | (UInt32(data[offset + 2]) << 16)
+        | (UInt32(data[offset + 3]) << 24)
+}
+
+/// Decoder nur für Byte-Level-Tests des tatsächlich hochgeladenen WAV-Formats;
+/// Produktcode lädt Retry-Dateien unverändert als `Data` und braucht keinen zweiten
+/// Decoder-Pfad.
+private func wavSamples(_ data: Data) -> [Float] {
+    stride(from: 44, to: data.count - 1, by: 2).map { offset in
+        let bits = UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+        return Float(Int16(bitPattern: bits)) / 32767
     }
 }

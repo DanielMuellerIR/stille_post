@@ -48,33 +48,6 @@ public enum WavCodec {
         return header
     }
 
-    /// Liest eine WAV-Datei und liefert Float-Samples in 16 kHz mono zurück.
-    /// Unterstützt nur unser eigenes Format (16-Bit PCM mono 16 kHz) — reicht, weil
-    /// nur unsere selbst geschriebenen Aufnahme-Dateien wieder eingelesen werden
-    /// (Funktion "Erneut transkribieren").
-    public static func samples(fromWavFile url: URL) throws -> [Float] {
-        let data = try Data(contentsOf: url)
-        guard data.count > 44 else { throw WavError.tooShort }
-        // Das "data"-Chunk suchen (nach dem Header können theoretisch weitere Chunks liegen).
-        guard let range = data.range(of: Data("data".utf8), in: 36..<min(data.count, 4096)) else {
-            throw WavError.noDataChunk
-        }
-        let payloadStart = range.upperBound + 4  // 4 Bytes Chunk-Länge überspringen
-        let payload = data[payloadStart...]
-        var samples = [Float]()
-        samples.reserveCapacity(payload.count / 2)
-        var iterator = payload.makeIterator()
-        while let lo = iterator.next(), let hi = iterator.next() {
-            let value = Int16(bitPattern: UInt16(lo) | (UInt16(hi) << 8))
-            samples.append(Float(value) / 32767)
-        }
-        return samples
-    }
-
-    public enum WavError: Error {
-        case tooShort
-        case noDataChunk
-    }
 }
 
 /// Schreibt eine WAV-Datei fortlaufend auf Platte, während die Aufnahme läuft.
@@ -85,33 +58,85 @@ public enum WavCodec {
 /// Absturz mitten in der Aufnahme sind die Audio-Daten trotzdem noch da.
 public final class WavFileWriter {
     private let handle: FileHandle
+    private let lock = NSLock()
+    /// Testgrenze für reproduzierbare Schreibfehler. Der Zähler ist 0 für den
+    /// Platzhalter-Header, 1 für den ersten Sample-Block usw.
+    private let beforeWrite: ((Int) throws -> Void)?
+    private var writeCount = 0
     private var dataBytes = 0
+    private var firstError: Error?
+    private var isFinished = false
     public let url: URL
 
-    public init(url: URL) throws {
+    public convenience init(url: URL) throws {
+        try self.init(url: url, beforeWrite: nil)
+    }
+
+    init(url: URL, beforeWrite: ((Int) throws -> Void)?) throws {
         self.url = url
+        self.beforeWrite = beforeWrite
         FileManager.default.createFile(atPath: url.path, contents: nil)
         handle = try FileHandle(forWritingTo: url)
         // Platzhalter-Header (Längenfelder 0) — wird in finish() korrigiert.
+        try beforeWrite?(0)
         try handle.write(contentsOf: WavCodec.wavHeader(dataByteCount: 0))
+        writeCount = 1
     }
 
     /// Hängt Float-Samples als 16-Bit-PCM an die Datei an.
     public func append(_ samples: [Float]) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if let firstError { throw firstError }
+        guard !isFinished else { throw WriterError.alreadyFinished }
         var pcm = Data(capacity: samples.count * 2)
         for sample in samples {
             let clamped = max(-1, min(1, sample))
             var value = Int16(clamped * 32767)
             withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
         }
-        try handle.write(contentsOf: pcm)
-        dataBytes += pcm.count
+        do {
+            try beforeWrite?(writeCount)
+            try handle.write(contentsOf: pcm)
+            writeCount += 1
+            dataBytes += pcm.count
+        } catch {
+            firstError = error
+            throw error
+        }
     }
 
     /// Trägt die echten Längen in den Header ein und schließt die Datei.
+    /// Ein früherer Append-Fehler wird nach dem bestmöglichen Finalisieren erneut
+    /// geworfen. Dadurch kann der Audio-Thread weiterlaufen, aber `stop()` meldet
+    /// den ersten Datenverlust zuverlässig und verwendet die Datei nicht für Retry.
     public func finish() throws {
-        try handle.seek(toOffset: 0)
-        try handle.write(contentsOf: WavCodec.wavHeader(dataByteCount: dataBytes))
-        try handle.close()
+        lock.lock()
+        defer { lock.unlock() }
+        if isFinished {
+            if let firstError { throw firstError }
+            return
+        }
+        var finishError = firstError
+        do {
+            try handle.seek(toOffset: 0)
+            try beforeWrite?(writeCount)
+            try handle.write(contentsOf: WavCodec.wavHeader(dataByteCount: dataBytes))
+            writeCount += 1
+        } catch {
+            if finishError == nil { finishError = error }
+        }
+        do {
+            try handle.close()
+        } catch {
+            if finishError == nil { finishError = error }
+        }
+        isFinished = true
+        firstError = finishError
+        if let finishError { throw finishError }
+    }
+
+    enum WriterError: Error {
+        case alreadyFinished
     }
 }

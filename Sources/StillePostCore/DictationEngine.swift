@@ -173,7 +173,18 @@ public final class DictationEngine {
         // irgendetwas fehl, ist das Audio nicht weg ("Erneut transkribieren").
         // Nach ERFOLGREICHER Transkription wird die Datei sofort gelöscht.
         let wavURL = history.newRecordingURL()
-        wavWriter = try? WavFileWriter(url: wavURL)
+        let writer: WavFileWriter
+        do {
+            writer = try WavFileWriter(url: wavURL)
+        } catch {
+            segmentResults = nil
+            setState(.error(L10n.format(
+                "core.dictation.audio_writer_start_failed", wavURL.path,
+                error.localizedDescription
+            )))
+            return
+        }
+        wavWriter = writer
 
         // Fertige Segmente sofort transkribieren (läuft parallel weiter). Die
         // Bereinigung passiert absichtlich NICHT hier, sondern einmal am Ende über
@@ -198,16 +209,19 @@ public final class DictationEngine {
         }
 
         // Audio-Strom: an Segmentierer UND WAV-Datei verteilen.
-        recorder.onSamples = { [weak self] samples in
-            guard let self else { return }
+        recorder.onSamples = { samples in
             segmenter.process(samples)
-            try? self.wavWriter?.append(samples)
+            // Der Writer merkt sich den ersten Fehler unter einem Lock. Der
+            // Audio-Thread darf nicht blockierend UI-Zustand ändern; `stop()`
+            // holt denselben Fehler beim Finalisieren sichtbar nach.
+            do { try writer.append(samples) } catch {}
         }
 
         do {
             try recorder.start()
         } catch {
             wavWriter = nil
+            try? writer.finish()
             try? FileManager.default.removeItem(at: wavURL)
             setState(.error(L10n.format("core.dictation.recording_start_failed", error.localizedDescription)))
             return
@@ -236,8 +250,21 @@ public final class DictationEngine {
 
         let writer = wavWriter
         self.wavWriter = nil
-        try? writer?.finish()
-        let wavURL = writer?.url
+        let wavURL: URL?
+        do {
+            try writer?.finish()
+            wavURL = writer?.url
+        } catch {
+            // Unvollständiges Audio als Diagnose behalten, aber niemals als
+            // angeblich erneut transkribierbare Aufnahme in den Verlauf hängen.
+            segmentResults = nil
+            sessionGeneration &+= 1
+            let retainedPath = writer?.url.path ?? "–"
+            setState(.error(L10n.format(
+                "core.dictation.audio_write_failed", retainedPath, error.localizedDescription
+            )))
+            return
+        }
 
         guard let collector = segmentResults else { return }
         segmentResults = nil

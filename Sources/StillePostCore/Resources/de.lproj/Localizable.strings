@@ -185,6 +185,8 @@
 "core.cleanup.unreachable" = "nicht erreichbar (%@)";
 "core.dictation.microphone_permission" = "Kein Mikrofon-Zugriff — bitte in Systemeinstellungen → Datenschutz erlauben";
 "core.dictation.recording_start_failed" = "Aufnahme-Start fehlgeschlagen: %@";
+"core.dictation.audio_writer_start_failed" = "Sicherungsdatei für die Aufnahme konnte unter %@ nicht angelegt werden: %@";
+"core.dictation.audio_write_failed" = "Aufnahme konnte nicht vollständig gespeichert werden. Die Diagnose-Datei bleibt unter %@ erhalten: %@";
 "core.dictation.segments_failed" = "Transkription fehlgeschlagen (%d Segment(e)) — Aufnahme wurde behalten";
 "core.dictation.transcription_failed" = "Transkription fehlgeschlagen — über den Verlauf erneut versuchen";
 "core.dictation.audio_missing" = "Aufnahme-Datei nicht mehr vorhanden";

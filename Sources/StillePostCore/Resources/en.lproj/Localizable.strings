@@ -185,6 +185,8 @@
 "core.cleanup.unreachable" = "unreachable (%@)";
 "core.dictation.microphone_permission" = "No microphone access — allow it in System Settings → Privacy & Security";
 "core.dictation.recording_start_failed" = "Recording could not start: %@";
+"core.dictation.audio_writer_start_failed" = "The recording safety file could not be created at %@: %@";
+"core.dictation.audio_write_failed" = "The recording could not be saved completely. The diagnostic file remains at %@: %@";
 "core.dictation.segments_failed" = "Transcription failed (%d segment(s)) — the recording was retained";
 "core.dictation.transcription_failed" = "Transcription failed — try again from History";
 "core.dictation.audio_missing" = "Recording file is no longer available";
