@@ -187,6 +187,28 @@ final class CoreTests: XCTestCase {
         }
     }
 
+    func testWhisperServerManagerStopsOwnedProcessOnDeinit() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sleep")
+        process.arguments = ["30"]
+        try process.run()
+        var manager: WhisperServerManager? = WhisperServerManager(
+            config: Config.Whisper(), ownedProcess: process
+        )
+        XCTAssertTrue(process.isRunning)
+
+        manager = nil
+        let deadline = Date().addingTimeInterval(2)
+        while process.isRunning, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        if process.isRunning {
+            process.terminate()
+            XCTFail("Eigener Kindprozess lief nach Manager-deinit weiter")
+        }
+        XCTAssertNil(manager)
+    }
+
     // MARK: Denk-Blöcke von Reasoning-Modellen
 
     func testStripThinking() {

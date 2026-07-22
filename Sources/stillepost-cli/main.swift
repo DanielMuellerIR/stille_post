@@ -251,6 +251,9 @@ case "transcribe":
         let text: String = try runBlocking {
             let whisperClient = WhisperClient(config: config.whisper)
             let serverManager = WhisperServerManager(config: config.whisper)
+            // Scope-Besitz: Nur ein von diesem Manager gestarteter Kindprozess wird
+            // beendet; ein bereits laufender fremder Server bleibt unangetastet.
+            defer { serverManager.stop() }
             try await serverManager.ensureRunning(client: whisperClient)
             let started = Date()
             let raw = try await whisperClient.transcribe(wavFile: URL(fileURLWithPath: wavPath))

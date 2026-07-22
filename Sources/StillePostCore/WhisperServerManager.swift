@@ -10,8 +10,19 @@ public final class WhisperServerManager {
     private let config: Config.Whisper
     private var process: Process?
 
-    public init(config: Config.Whisper) {
+    public convenience init(config: Config.Whisper) {
+        self.init(config: config, ownedProcess: nil)
+    }
+
+    /// `ownedProcess` ist eine enge Testgrenze für den Besitzvertrag: Nur der hier
+    /// gespeicherte Kindprozess darf beim Scope-Ende beendet werden.
+    init(config: Config.Whisper, ownedProcess: Process?) {
         self.config = config
+        self.process = ownedProcess
+    }
+
+    deinit {
+        stop()
     }
 
     /// Stellt sicher, dass ein whisper-server erreichbar ist.
@@ -66,8 +77,9 @@ public final class WhisperServerManager {
 
     /// Beendet den selbst gestarteten Server (fremde Server bleiben unangetastet).
     public func stop() {
-        process?.terminate()
+        let ownedProcess = process
         process = nil
+        if ownedProcess?.isRunning == true { ownedProcess?.terminate() }
     }
 
     public enum ServerError: Error, LocalizedError {
