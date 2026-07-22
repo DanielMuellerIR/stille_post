@@ -38,7 +38,10 @@ im App-Bundle eingecheckt.
    übernommen und muss monoton steigen.
 2. `scripts/build-app.sh --notarize` mit einem konfigurierten `NOTARY_PROFILE`
    ausführen. Das Skript signiert Sparkles Helfer von innen nach außen mit derselben
-   Developer-ID wie die App.
+   Developer-ID wie die App und prüft danach Notary-Ticket sowie Gatekeeper. Eine
+   Installation nach `/Applications` ist ausschließlich mit dem kombinierten Aufruf
+   `scripts/build-app.sh --notarize --install` möglich; der geprüfte Build wird dort
+   erst unter einem Nachbarpfad bereitgestellt und anschließend atomar ausgetauscht.
 3. Aus der gestapelten App das übliche DMG erstellen, das DMG selbst mit Developer ID
    signieren, notarisieren und stapeln.
 4. Ein GitHub Release als Entwurf anlegen, genau ein DMG anhängen, Release Notes

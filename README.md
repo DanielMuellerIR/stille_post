@@ -254,7 +254,7 @@ Without the link, use
 ```bash
 git clone https://github.com/DanielMuellerIR/stille_post.git
 cd stille_post
-scripts/build-app.sh --install   # install a release build in /Applications
+scripts/build-app.sh --notarize --install  # notarize, verify, then install atomically
 swift test            # unit tests (VAD, WAV, sanity check, history …)
 scripts/e2e-test.sh   # end to end: say voice -> Whisper -> cleanup -> assertions
 ```

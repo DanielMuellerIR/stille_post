@@ -12,9 +12,9 @@
 #   scripts/build-app.sh                # bauen + bestmöglich signieren
 #   scripts/build-app.sh --notarize     # zusätzlich bei Apple notarisieren + stapeln
 #                                       # (braucht NOTARY_PROFILE, siehe unten)
-#   scripts/build-app.sh --install      # danach nach /Applications kopieren —
-#                                       # empfohlen: stabiler Ort, macOS-Berechtigungen
-#                                       # überleben so auch das Löschen von build/
+#   scripts/build-app.sh --notarize --install
+#                                      # geprüften Build atomar nach /Applications
+#                                      # installieren (nur zusammen mit --notarize)
 #   (Flags sind kombinierbar)
 #
 # Umgebungsvariablen:
@@ -34,6 +34,11 @@ for arg in "$@"; do
         *) echo "Unbekannte Option: $arg" >&2; exit 2 ;;
     esac
 done
+
+if [ "$INSTALL" = "1" ] && [ "$NOTARIZE" != "1" ]; then
+    echo "FEHLER: --install ist nur zusammen mit --notarize zulässig." >&2
+    exit 2
+fi
 
 echo "Kompiliere (Release) …"
 swift build -c release
@@ -189,16 +194,57 @@ if [ "$NOTARIZE" = "1" ]; then
     xcrun notarytool submit build/StillePost.zip --keychain-profile "$NOTARY_PROFILE" --wait
     xcrun stapler staple "$APP"
     rm -f build/StillePost.zip
+    # Ein erfolgreicher Upload allein beweist weder ein angeheftetes Ticket noch
+    # die lokale Gatekeeper-Akzeptanz. Beides ist vor Installation verpflichtend.
+    xcrun stapler validate "$APP"
+    spctl --assess --type execute --verbose=4 "$APP"
     echo "Notarisierung abgeschlossen und angeheftet."
 fi
 
 if [ "$INSTALL" = "1" ]; then
-    # Laufende Instanz beenden, dann atomar ersetzen (ditto erhält Signatur/Staple).
+    DESTINATION_APP="/Applications/StillePost.app"
+    STAGED_APP="/Applications/.StillePost.app.install-$$"
+    if [ -e "$STAGED_APP" ]; then
+        echo "FEHLER: Installations-Zwischenpfad existiert bereits: $STAGED_APP" >&2
+        exit 1
+    fi
+    cleanup_staged_app() {
+        if [ -e "$STAGED_APP" ]; then
+            rm -rf -- "$STAGED_APP"
+        fi
+    }
+    trap cleanup_staged_app EXIT
+
+    # Erst vollständig in dasselbe Dateisystem kopieren und die Kopie erneut
+    # prüfen. So kann ein Fehler weder eine halbe noch gar keine Installation
+    # hinterlassen.
+    ditto "$APP" "$STAGED_APP"
+    codesign --verify --deep --strict "$STAGED_APP"
+    xcrun stapler validate "$STAGED_APP"
+    spctl --assess --type execute --verbose=4 "$STAGED_APP"
+
+    # Laufende Instanz erst unmittelbar vor dem atomaren Austausch beenden.
     pkill -x StillePost 2>/dev/null || true
-    rm -rf /Applications/StillePost.app
-    ditto "$APP" /Applications/StillePost.app
-    echo "Installiert: /Applications/StillePost.app"
-    APP="/Applications/StillePost.app"
+    /usr/bin/swift - "$STAGED_APP" "$DESTINATION_APP" <<'SWIFT'
+import Foundation
+
+let fileManager = FileManager.default
+let source = URL(fileURLWithPath: CommandLine.arguments[1])
+let destination = URL(fileURLWithPath: CommandLine.arguments[2])
+if fileManager.fileExists(atPath: destination.path) {
+    _ = try fileManager.replaceItemAt(
+        destination,
+        withItemAt: source,
+        backupItemName: nil,
+        options: [.usingNewMetadataOnly]
+    )
+} else {
+    try fileManager.moveItem(at: source, to: destination)
+}
+SWIFT
+    trap - EXIT
+    echo "Installiert: $DESTINATION_APP"
+    APP="$DESTINATION_APP"
 fi
 
 echo "Fertig: $APP"
