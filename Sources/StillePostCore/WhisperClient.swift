@@ -28,8 +28,11 @@ public final class WhisperClient {
     }
 
     private func transcribe(wavData: Data) async throws -> String {
-        guard let url = URL(string: "\(config.serverURL)/inference") else {
-            throw WhisperError.badConfig(L10n.format("core.whisper.invalid_url", config.serverURL))
+        let endpoint: WhisperEndpoint
+        do {
+            endpoint = try WhisperEndpoint(serverURL: config.serverURL)
+        } catch {
+            throw WhisperError.badConfig(error.localizedDescription)
         }
 
         // Multipart-Request von Hand bauen (kein externes Paket nötig):
@@ -53,7 +56,7 @@ public final class WhisperClient {
         }
         body.append(Data("--\(boundary)--\r\n".utf8))
 
-        var request = URLRequest(url: url)
+        var request = URLRequest(url: endpoint.inferenceURL)
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         request.httpBody = body
@@ -71,8 +74,8 @@ public final class WhisperClient {
 
     /// Prüft, ob der whisper-server erreichbar ist.
     public func isReachable() async -> Bool {
-        guard let url = URL(string: config.serverURL) else { return false }
-        var request = URLRequest(url: url)
+        guard let endpoint = try? WhisperEndpoint(serverURL: config.serverURL) else { return false }
+        var request = URLRequest(url: endpoint.baseURL)
         request.timeoutInterval = 2
         // Jede HTTP-Antwort (auch 404) heißt: Server-Prozess lebt.
         return (try? await session.data(for: request)) != nil

@@ -164,6 +164,7 @@
 "core.server.start_failed" = "whisper-server (%@) hat sich sofort beendet — Modellpfad prüfen";
 "core.server.start_timeout" = "whisper-server antwortet nicht (Timeout beim Start)";
 "core.whisper.invalid_url" = "Ungültige whisper-server-URL: %@";
+"core.whisper.loopback_only" = "Der Whisper-Server muss ein lokaler HTTP-Endpunkt mit Port auf 127.0.0.0/8 oder ::1 sein: %@";
 "core.whisper.server_error" = "whisper-server-Fehler: %@";
 "core.whisper.bad_response" = "Unerwartetes Antwortformat vom whisper-server";
 "core.model.unavailable" = "Modell \"%@\" ist bei Hugging Face nicht abrufbar — Netzverbindung prüfen";
@@ -200,6 +201,7 @@
 "cli.doctor.model_download_help" = "  herunterladen mit: stillepost-cli install-model";
 "cli.doctor.server_running" = "✓ whisper-server läuft: %@";
 "cli.doctor.server_stopped" = "· whisper-server läuft nicht (wird bei Bedarf automatisch gestartet)";
+"cli.doctor.server_invalid" = "✗ Whisper-Server-Konfiguration ungültig: %@";
 "cli.doctor.language_auto" = "· Hinweis: whisper.language steht auf \"auto\" — Empfehlung: feste Sprache setzen (z. B. \"de\"), sonst übersetzt Whisper bei Fehl-Erkennung ungefragt";
 "cli.doctor.cleanup_off" = "· Textbereinigung: ausgeschaltet";
 "cli.doctor.cleanup_remote_config" = "✗ Bereinigung (%@): remote.baseURL/model fehlen in config.json";

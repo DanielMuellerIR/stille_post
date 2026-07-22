@@ -17,6 +17,12 @@ public final class WhisperServerManager {
     /// Stellt sicher, dass ein whisper-server erreichbar ist.
     /// Wirft mit verständlicher Meldung, wenn Binary/Modell fehlen oder der Start scheitert.
     public func ensureRunning(client: WhisperClient) async throws {
+        let endpoint: WhisperEndpoint
+        do {
+            endpoint = try WhisperEndpoint(serverURL: config.serverURL)
+        } catch {
+            throw ServerError.notReachable(error.localizedDescription)
+        }
         if await client.isReachable() { return }
         guard config.autostart else {
             throw ServerError.notReachable(config.serverURL)
@@ -30,10 +36,6 @@ public final class WhisperServerManager {
         guard FileManager.default.fileExists(atPath: model) else {
             throw ServerError.modelMissing(model)
         }
-        guard let url = URL(string: config.serverURL), let port = url.port else {
-            throw ServerError.notReachable(config.serverURL)
-        }
-
         // Server als Kindprozess starten. Er lauscht nur auf localhost —
         // nichts ist von außen erreichbar.
         let process = Process()
@@ -41,7 +43,7 @@ public final class WhisperServerManager {
         process.arguments = [
             "-m", model,
             "--host", "127.0.0.1",
-            "--port", String(port),
+            "--port", String(endpoint.port),
             "-t", String(config.threads),
         ]
         // Server-Logs nicht in unser Terminal mischen.

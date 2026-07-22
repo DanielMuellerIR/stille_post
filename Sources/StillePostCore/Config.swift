@@ -261,6 +261,7 @@ public struct Config: Codable, Equatable {
 
     /// Schreibt die Config als hübsch formatiertes JSON (damit sie von Hand editierbar bleibt).
     public func save() throws {
+        _ = try WhisperEndpoint(serverURL: whisper.serverURL)
         try FileManager.default.createDirectory(at: Config.appSupportDir, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

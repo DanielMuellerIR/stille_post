@@ -124,6 +124,27 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(WhisperClient.cleanWhisperArtifacts("Ganz normaler Satz."), "Ganz normaler Satz.")
     }
 
+    func testWhisperEndpointAcceptsOnlyExplicitLoopbackAddresses() throws {
+        let ipv4 = try WhisperEndpoint(serverURL: "http://127.23.4.5:8181")
+        XCTAssertEqual(ipv4.inferenceURL.absoluteString, "http://127.23.4.5:8181/inference")
+        XCTAssertEqual(ipv4.port, 8181)
+
+        let ipv6 = try WhisperEndpoint(serverURL: "http://[::1]:9090/")
+        XCTAssertEqual(ipv6.port, 9090)
+
+        for unsafe in [
+            "http://localhost:8181",
+            "http://192.168.1.10:8181",
+            "https://127.0.0.1:8181",
+            "http://127.0.0.1",
+            "http://127.0.0.1:8181/prefix",
+            "http://user@127.0.0.1:8181",
+            "http://[::ffff:127.0.0.1]:8181",
+        ] {
+            XCTAssertThrowsError(try WhisperEndpoint(serverURL: unsafe), unsafe)
+        }
+    }
+
     // MARK: Denk-Blöcke von Reasoning-Modellen
 
     func testStripThinking() {

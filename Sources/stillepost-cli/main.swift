@@ -71,6 +71,14 @@ switch command {
 case "doctor":
     var problems = 0
     let whisperClient = WhisperClient(config: config.whisper)
+    let whisperEndpoint: WhisperEndpoint?
+    do {
+        whisperEndpoint = try WhisperEndpoint(serverURL: config.whisper.serverURL)
+    } catch {
+        whisperEndpoint = nil
+        problems += 1
+        print(L10n.format("cli.doctor.server_invalid", error.localizedDescription))
+    }
 
     // whisper-server-Binary + Modell-Datei
     let binary = Config.expandPath(config.whisper.binaryPath)
@@ -100,10 +108,12 @@ case "doctor":
     }
 
     // Läuft der Server? (Falls nicht: kein Fehler — die App startet ihn selbst.)
-    let reachable = try runBlocking { await whisperClient.isReachable() }
-    print(reachable
-        ? L10n.format("cli.doctor.server_running", config.whisper.serverURL)
-        : L10n.text("cli.doctor.server_stopped"))
+    if whisperEndpoint != nil {
+        let reachable = try runBlocking { await whisperClient.isReachable() }
+        print(reachable
+            ? L10n.format("cli.doctor.server_running", config.whisper.serverURL)
+            : L10n.text("cli.doctor.server_stopped"))
+    }
 
     // Häufigster Anfänger-Stolperstein: language=auto rät die Sprache pro
     // Sprech-Segment und ÜBERSETZT bei Fehl-Erkennung ungefragt.
