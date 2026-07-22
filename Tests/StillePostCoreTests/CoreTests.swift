@@ -192,6 +192,31 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(DictationEngine.joinSegments([]), "")
     }
 
+    @MainActor
+    func testCancelInvalidatesProcessingBeforeItCanPersistOrDeliver() async throws {
+        let baseDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sp-cancel-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: baseDir) }
+        let cleanupGate = CleanupGate()
+        let history = HistoryStore(baseDir: baseDir)
+        let engine = DictationEngine(config: Config(), history: history) { rawText in
+            await cleanupGate.clean(rawText)
+        }
+        var deliveredTexts: [String] = []
+        engine.onResult = { deliveredTexts.append($0.text) }
+
+        engine.processForTesting(rawText: "nicht mehr ausliefern")
+        await cleanupGate.waitUntilStarted()
+        engine.cancel()
+        await cleanupGate.release()
+        await cleanupGate.waitUntilFinished()
+        await Task.yield()
+
+        XCTAssertEqual(engine.state, .idle)
+        XCTAssertTrue(deliveredTexts.isEmpty)
+        XCTAssertTrue(try history.list().isEmpty)
+    }
+
     // MARK: Config
 
     func testConfigToleratesMissingFields() throws {
@@ -514,5 +539,47 @@ final class CoreTests: XCTestCase {
         XCTAssertThrowsError(try failing.deleteAll())
         XCTAssertEqual(try working.list().count, 1)
         XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
+    }
+}
+
+/// Steuerbare asynchrone Bereinigung für den Lifecycle-Test. Der Actor vermeidet
+/// Timingschätzungen und gibt den wartenden Engine-Task erst nach `cancel()` frei.
+private actor CleanupGate {
+    private var started = false
+    private var released = false
+    private var finished = false
+    private var startedWaiters: [CheckedContinuation<Void, Never>] = []
+    private var releaseContinuation: CheckedContinuation<Void, Never>?
+    private var finishedWaiters: [CheckedContinuation<Void, Never>] = []
+
+    func clean(_ rawText: String) async -> CleanupService.Result {
+        started = true
+        startedWaiters.forEach { $0.resume() }
+        startedWaiters.removeAll()
+        if !released {
+            await withCheckedContinuation { releaseContinuation = $0 }
+        }
+        finished = true
+        finishedWaiters.forEach { $0.resume() }
+        finishedWaiters.removeAll()
+        return CleanupService.Result(
+            text: rawText, usedFallback: false, fallbackReason: nil, endpoint: nil
+        )
+    }
+
+    func waitUntilStarted() async {
+        if started { return }
+        await withCheckedContinuation { startedWaiters.append($0) }
+    }
+
+    func release() {
+        released = true
+        releaseContinuation?.resume()
+        releaseContinuation = nil
+    }
+
+    func waitUntilFinished() async {
+        if finished { return }
+        await withCheckedContinuation { finishedWaiters.append($0) }
     }
 }

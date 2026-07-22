@@ -63,6 +63,9 @@ public final class DictationEngine {
     private let whisper: WhisperClient
     private let serverManager: WhisperServerManager
     private let cleanup: CleanupService
+    /// Enge Testgrenze für die einzige asynchrone Nachverarbeitung nach Whisper.
+    /// Produktiv zeigt sie immer direkt auf `CleanupService.clean`.
+    private let cleanupText: (String) async -> CleanupService.Result
 
     // Zustand einer laufenden Aufnahme:
     private var recorder: AudioRecorder?
@@ -70,15 +73,25 @@ public final class DictationEngine {
     private var wavWriter: WavFileWriter?
     private var recordingStart: Date?
     private var sessionTask: Task<Void, Never>?
+    /// Jede Start-/Abbruchfolge bekommt eine neue Generation. Ein alter Task darf
+    /// nach einem Await nur weiterarbeiten, wenn seine Generation noch aktiv ist.
+    private var sessionGeneration: UInt64 = 0
     /// Segment-Ergebnisse in Aufnahme-Reihenfolge (Index -> Text).
     private var segmentResults: SegmentCollector?
 
-    public init(config: Config, history: HistoryStore? = nil) {
+    public convenience init(config: Config, history: HistoryStore? = nil) {
+        self.init(config: config, history: history, cleanupText: nil)
+    }
+
+    init(config: Config, history: HistoryStore? = nil,
+         cleanupText: ((String) async -> CleanupService.Result)?) {
         self.config = config
         self.history = history ?? HistoryStore()
         self.whisper = WhisperClient(config: config.whisper)
         self.serverManager = WhisperServerManager(config: config.whisper)
-        self.cleanup = CleanupService(config: config.cleanup)
+        let cleanup = CleanupService(config: config.cleanup)
+        self.cleanup = cleanup
+        self.cleanupText = cleanupText ?? { raw in await cleanup.clean(raw) }
         // Fallback-Wechsel der Bereinigung an die Oberfläche durchreichen
         // (CleanupService meldet von beliebigem Thread -> auf Main-Thread heben).
         self.cleanup.onFallbackEndpoint = { [weak self] label in
@@ -107,25 +120,33 @@ public final class DictationEngine {
         guard state == .idle || {
             if case .error = state { return true } else { return false }
         }() else { return }
+        sessionTask?.cancel()
+        sessionTask = nil
+        sessionGeneration &+= 1
+        let generation = sessionGeneration
         setState(.starting)
 
         Task { @MainActor in
             // 1. Mikrofon-Berechtigung sicherstellen (System fragt beim ersten Mal).
             guard await AudioRecorder.requestMicrophoneAccess() else {
+                guard self.isCurrentSession(generation) else { return }
                 self.setState(.error(L10n.text("core.dictation.microphone_permission")))
                 return
             }
+            guard self.isCurrentSession(generation), !Task.isCancelled else { return }
             // 2. whisper-server sicherstellen (läuft er schon, kostet das nur einen Ping).
             do {
                 try await self.serverManager.ensureRunning(client: self.whisper)
             } catch {
+                guard self.isCurrentSession(generation), !Task.isCancelled else { return }
                 self.setState(.error(error.localizedDescription))
                 return
             }
             // shutdown()/Einstellungswechsel kann während des Server-Starts den
             // Zustand zurücksetzen. Dann weder Modell noch Startton der alten Engine
             // unnötig auslösen.
-            guard self.state == .starting else { return }
+            guard self.state == .starting, self.isCurrentSession(generation),
+                  !Task.isCancelled else { return }
             // 3. Bereinigungs-Modell VORWÄRMEN — lädt parallel, während man spricht.
             self.cleanup.warmUp()
             // 4. Startsignal vollständig VOR der Aufnahme abspielen. Unsere kurzen
@@ -134,13 +155,15 @@ public final class DictationEngine {
             await self.onBeforeRecordingStart?()
             // Wurde die Engine während des asynchronen Startsignals beendet oder
             // neu aufgebaut, darf der alte Startvorgang kein Mikrofon mehr öffnen.
-            guard self.state == .starting else { return }
+            guard self.state == .starting, self.isCurrentSession(generation),
+                  !Task.isCancelled else { return }
             // 5. Aufnahme wirklich starten.
-            self.beginRecording()
+            self.beginRecording(generation: generation)
         }
     }
 
-    private func beginRecording() {
+    private func beginRecording(generation: UInt64) {
+        guard isCurrentSession(generation) else { return }
         let segmenter = VadSegmenter(config: config.vad)
         let recorder = AudioRecorder(config: config.audio)
         let collector = SegmentCollector()
@@ -219,87 +242,113 @@ public final class DictationEngine {
         guard let collector = segmentResults else { return }
         segmentResults = nil
 
+        let generation = sessionGeneration
+        sessionTask?.cancel()
         sessionTask = Task { @MainActor in
+            defer {
+                if self.isCurrentSession(generation) { self.sessionTask = nil }
+            }
             // Auf alle noch laufenden Segment-Transkriptionen warten
             // (dank Streaming meist nur noch das letzte Segment).
             let segments = await collector.finish()
-
-            let failures = segments.filter { $0 == nil }.count
-            let rawJoined = Self.joinSegments(segments.compactMap { $0 })
-
-            if failures > 0 {
-                // Mindestens ein Segment ist gescheitert (Server weg o. Ä.):
-                // Audio-Datei BEHALTEN und als fehlgeschlagen in den Verlauf —
-                // von dort aus kann man "Erneut transkribieren" klicken.
-                // (Keine Bereinigung: Der Text ist ohnehin unvollständig; "Erneut
-                // transkribieren" bereinigt später den vollständigen Text.)
-                let entry = HistoryStore.Entry(
-                    rawText: rawJoined, cleanText: rawJoined,
-                    status: "failed",
-                    errorMessage: L10n.format("core.dictation.segments_failed", failures),
-                    audioFileName: wavURL?.lastPathComponent,
-                    durationSec: duration
-                )
-                do {
-                    try self.history.append(entry)
-                } catch {
-                    self.setState(.error(L10n.format(
-                        "core.history.persistence_failed", error.localizedDescription
-                    )))
-                    return
-                }
-                self.setState(.error(L10n.text("core.dictation.transcription_failed")))
-                self.onResult?(DictationResult(text: "", entry: entry))
-                return
-            }
-
-            if rawJoined.isEmpty {
-                // Nur Stille aufgenommen: nichts einfügen, keinen Verlaufs-Müll erzeugen.
-                if let wavURL { try? FileManager.default.removeItem(at: wavURL) }
-                self.setState(.idle)
-                self.onResult?(DictationResult(text: "", entry: nil))
-                return
-            }
-
-            // Bereinigung über den GESAMTEN Text in einem Aufruf (Modell ist seit
-            // Aufnahme-Start vorgewärmt). Bei Fehlern/Verdacht fällt clean() selbst
-            // auf den Rohtext zurück — hier kommt immer verwendbarer Text an.
-            let cleanupStarted = Date()
-            let cleaned = await self.cleanup.clean(rawJoined)
-
-            let entry = HistoryStore.Entry(
-                rawText: rawJoined, cleanText: cleaned.text, status: "ok",
-                durationSec: duration, cleanupFellBack: cleaned.usedFallback,
-                cleanupEndpoint: cleaned.endpoint,
-                cleanupSec: Date().timeIntervalSince(cleanupStarted)
+            guard self.isCurrentSession(generation), !Task.isCancelled else { return }
+            await self.finishSession(
+                segments: segments, duration: duration, wavURL: wavURL,
+                generation: generation
             )
+        }
+    }
+
+    private func finishSession(segments: [String?], duration: TimeInterval,
+                               wavURL: URL?, generation: UInt64) async {
+        guard isCurrentSession(generation), !Task.isCancelled else { return }
+        let failures = segments.filter { $0 == nil }.count
+        let rawJoined = Self.joinSegments(segments.compactMap { $0 })
+
+        if failures > 0 {
+            // Mindestens ein Segment ist gescheitert (Server weg o. Ä.):
+            // Audio-Datei BEHALTEN und als fehlgeschlagen in den Verlauf —
+            // von dort aus kann man "Erneut transkribieren" klicken.
+            // (Keine Bereinigung: Der Text ist ohnehin unvollständig; "Erneut
+            // transkribieren" bereinigt später den vollständigen Text.)
+            let entry = HistoryStore.Entry(
+                rawText: rawJoined, cleanText: rawJoined,
+                status: "failed",
+                errorMessage: L10n.format("core.dictation.segments_failed", failures),
+                audioFileName: wavURL?.lastPathComponent,
+                durationSec: duration
+            )
+            guard isCurrentSession(generation), !Task.isCancelled else { return }
             do {
-                // Disk first: Nur ein wirklich persistierter Erfolg darf die
-                // Diagnoseaufnahme irreversibel entfernen.
-                try self.history.append(entry)
+                try history.append(entry)
             } catch {
-                self.setState(.error(L10n.format(
+                guard isCurrentSession(generation) else { return }
+                setState(.error(L10n.format(
                     "core.history.persistence_failed", error.localizedDescription
                 )))
                 return
             }
-            if let wavURL {
-                do {
-                    try FileManager.default.removeItem(at: wavURL)
-                } catch {
-                    self.setState(.error(L10n.format(
-                        "core.history.audio_delete_failed", error.localizedDescription
-                    )))
-                    return
-                }
-            }
-            self.setState(.idle)
-            self.onResult?(DictationResult(text: cleaned.text, entry: entry))
+            guard isCurrentSession(generation), !Task.isCancelled else { return }
+            setState(.error(L10n.text("core.dictation.transcription_failed")))
+            onResult?(DictationResult(text: "", entry: entry))
+            return
         }
+
+        if rawJoined.isEmpty {
+            // Nur Stille aufgenommen: nichts einfügen, keinen Verlaufs-Müll erzeugen.
+            if let wavURL { try? FileManager.default.removeItem(at: wavURL) }
+            guard isCurrentSession(generation), !Task.isCancelled else { return }
+            setState(.idle)
+            onResult?(DictationResult(text: "", entry: nil))
+            return
+        }
+
+        // Bereinigung über den GESAMTEN Text in einem Aufruf (Modell ist seit
+        // Aufnahme-Start vorgewärmt). Bei Fehlern/Verdacht fällt clean() selbst
+        // auf den Rohtext zurück — hier kommt immer verwendbarer Text an.
+        let cleanupStarted = Date()
+        let cleaned = await cleanupText(rawJoined)
+        guard isCurrentSession(generation), !Task.isCancelled else { return }
+
+        let entry = HistoryStore.Entry(
+            rawText: rawJoined, cleanText: cleaned.text, status: "ok",
+            durationSec: duration, cleanupFellBack: cleaned.usedFallback,
+            cleanupEndpoint: cleaned.endpoint,
+            cleanupSec: Date().timeIntervalSince(cleanupStarted)
+        )
+        do {
+            // Disk first: Nur ein wirklich persistierter Erfolg darf die
+            // Diagnoseaufnahme irreversibel entfernen.
+            try history.append(entry)
+        } catch {
+            guard isCurrentSession(generation) else { return }
+            setState(.error(L10n.format(
+                "core.history.persistence_failed", error.localizedDescription
+            )))
+            return
+        }
+        guard isCurrentSession(generation), !Task.isCancelled else { return }
+        if let wavURL {
+            do {
+                try FileManager.default.removeItem(at: wavURL)
+            } catch {
+                guard isCurrentSession(generation) else { return }
+                setState(.error(L10n.format(
+                    "core.history.audio_delete_failed", error.localizedDescription
+                )))
+                return
+            }
+        }
+        guard isCurrentSession(generation), !Task.isCancelled else { return }
+        setState(.idle)
+        onResult?(DictationResult(text: cleaned.text, entry: entry))
     }
 
     /// Bricht eine laufende Aufnahme ab, ohne Text zu erzeugen (Menüpunkt "Abbrechen").
     public func cancel() {
+        sessionGeneration &+= 1
+        sessionTask?.cancel()
+        sessionTask = nil
         recorder?.stop()
         recorder = nil
         segmenter = nil
@@ -388,6 +437,28 @@ public final class DictationEngine {
             onStateChange?(newState)
         } else {
             DispatchQueue.main.async { self.onStateChange?(newState) }
+        }
+    }
+
+    private func isCurrentSession(_ generation: UInt64) -> Bool {
+        generation == sessionGeneration
+    }
+
+    /// Startet nur die Nachverarbeitung ohne Mikrofon. Der schmale Testweg hält
+    /// echte Aufnahme-/TCC-Zustände aus Lifecycle-Regressionen heraus.
+    func processForTesting(rawText: String, duration: TimeInterval = 1) {
+        sessionTask?.cancel()
+        sessionGeneration &+= 1
+        let generation = sessionGeneration
+        setState(.processing)
+        sessionTask = Task { @MainActor in
+            defer {
+                if self.isCurrentSession(generation) { self.sessionTask = nil }
+            }
+            await self.finishSession(
+                segments: [rawText], duration: duration, wavURL: nil,
+                generation: generation
+            )
         }
     }
 }
