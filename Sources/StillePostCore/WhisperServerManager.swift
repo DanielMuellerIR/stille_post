@@ -5,7 +5,7 @@ import Foundation
 /// Die App ist damit selbstversorgend: Läuft auf dem konfigurierten Port schon ein
 /// Server (z. B. von Hand oder per launchd gestartet), wird der benutzt. Sonst
 /// startet die App den Server selbst und beendet ihn beim eigenen Ende wieder.
-public final class WhisperServerManager {
+public final class WhisperServerManager: DictationServer {
 
     private let config: Config.Whisper
     private var process: Process?
@@ -28,6 +28,10 @@ public final class WhisperServerManager {
     /// Stellt sicher, dass ein whisper-server erreichbar ist.
     /// Wirft mit verständlicher Meldung, wenn Binary/Modell fehlen oder der Start scheitert.
     public func ensureRunning(client: WhisperClient) async throws {
+        try await ensureRunning(reachability: client)
+    }
+
+    func ensureRunning(reachability client: any DictationTranscriber) async throws {
         let endpoint: WhisperEndpoint
         do {
             endpoint = try WhisperEndpoint(serverURL: config.serverURL)

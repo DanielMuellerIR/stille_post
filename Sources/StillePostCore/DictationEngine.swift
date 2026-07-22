@@ -60,17 +60,20 @@ public final class DictationEngine {
     public let history: HistoryStore
 
     private let config: Config
-    private let whisper: WhisperClient
-    private let serverManager: WhisperServerManager
-    private let cleanup: CleanupService
+    private let whisper: any DictationTranscriber
+    private let serverManager: any DictationServer
+    private let cleanup: any DictationCleanup
+    private let makeRecorder: (Config.Audio) -> any DictationRecorder
+    private let makeSegmenter: (Config.Vad) -> any DictationSegmenter
+    private let makeWavWriter: (URL) throws -> any DictationWavWriter
     /// Enge Testgrenze für die einzige asynchrone Nachverarbeitung nach Whisper.
     /// Produktiv zeigt sie immer direkt auf `CleanupService.clean`.
     private let cleanupText: (String) async -> CleanupService.Result
 
     // Zustand einer laufenden Aufnahme:
-    private var recorder: AudioRecorder?
-    private var segmenter: VadSegmenter?
-    private var wavWriter: WavFileWriter?
+    private var recorder: (any DictationRecorder)?
+    private var segmenter: (any DictationSegmenter)?
+    private var wavWriter: (any DictationWavWriter)?
     private var recordingStart: Date?
     private var sessionTask: Task<Void, Never>?
     /// Jede Start-/Abbruchfolge bekommt eine neue Generation. Ein alter Task darf
@@ -83,14 +86,26 @@ public final class DictationEngine {
         self.init(config: config, history: history, cleanupText: nil)
     }
 
+    convenience init(config: Config, history: HistoryStore? = nil,
+                     cleanupText: ((String) async -> CleanupService.Result)?) {
+        self.init(
+            config: config, history: history, dependencies: .live(config: config),
+            cleanupText: cleanupText
+        )
+    }
+
     init(config: Config, history: HistoryStore? = nil,
-         cleanupText: ((String) async -> CleanupService.Result)?) {
+         dependencies: DictationDependencies,
+         cleanupText: ((String) async -> CleanupService.Result)? = nil) {
         self.config = config
         self.history = history ?? HistoryStore()
-        self.whisper = WhisperClient(config: config.whisper)
-        self.serverManager = WhisperServerManager(config: config.whisper)
-        let cleanup = CleanupService(config: config.cleanup)
+        self.whisper = dependencies.transcriber
+        self.serverManager = dependencies.server
+        let cleanup = dependencies.cleanup
         self.cleanup = cleanup
+        self.makeRecorder = dependencies.makeRecorder
+        self.makeSegmenter = dependencies.makeSegmenter
+        self.makeWavWriter = dependencies.makeWavWriter
         self.cleanupText = cleanupText ?? { raw in await cleanup.clean(raw) }
         // Fallback-Wechsel der Bereinigung an die Oberfläche durchreichen
         // (CleanupService meldet von beliebigem Thread -> auf Main-Thread heben).
@@ -136,7 +151,7 @@ public final class DictationEngine {
             guard self.isCurrentSession(generation), !Task.isCancelled else { return }
             // 2. whisper-server sicherstellen (läuft er schon, kostet das nur einen Ping).
             do {
-                try await self.serverManager.ensureRunning(client: self.whisper)
+                try await self.serverManager.ensureRunning(reachability: self.whisper)
             } catch {
                 guard self.isCurrentSession(generation), !Task.isCancelled else { return }
                 self.setState(.error(error.localizedDescription))
@@ -164,8 +179,8 @@ public final class DictationEngine {
 
     private func beginRecording(generation: UInt64) {
         guard isCurrentSession(generation) else { return }
-        let segmenter = VadSegmenter(config: config.vad)
-        let recorder = AudioRecorder(config: config.audio)
+        let segmenter = makeSegmenter(config.vad)
+        let recorder = makeRecorder(config.audio)
         let collector = SegmentCollector()
         segmentResults = collector
 
@@ -173,9 +188,9 @@ public final class DictationEngine {
         // irgendetwas fehl, ist das Audio nicht weg ("Erneut transkribieren").
         // Nach ERFOLGREICHER Transkription wird die Datei sofort gelöscht.
         let wavURL = history.newRecordingURL()
-        let writer: WavFileWriter
+        let writer: any DictationWavWriter
         do {
-            writer = try WavFileWriter(url: wavURL)
+            writer = try makeWavWriter(wavURL)
         } catch {
             segmentResults = nil
             setState(.error(L10n.format(
@@ -403,7 +418,7 @@ public final class DictationEngine {
         }
         let raw: String
         do {
-            try await serverManager.ensureRunning(client: whisper)
+            try await serverManager.ensureRunning(reachability: whisper)
             raw = try await whisper.transcribe(wavFile: audioURL)
         } catch {
             var updated = entry
