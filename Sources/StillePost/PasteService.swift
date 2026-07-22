@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import StillePostCore
 
 /// Fügt den fertigen Text an der aktuellen Cursor-Position ein.
 ///
@@ -46,11 +47,13 @@ enum PasteService {
     static func paste(_ text: String) -> Outcome {
         let pasteboard = NSPasteboard.general
 
-        // Vorherigen Zwischenablage-Inhalt merken (nur Text — reicht für den Alltag).
-        let previous = pasteboard.string(forType: .string)
+        // Alle Items und Typen tief kopieren. Bilder, Dateien und Rich Text dürfen
+        // durch ein Diktat ebenso wenig verlorengehen wie einfacher Text.
+        let previous = PasteboardSnapshot(pasteboard: pasteboard)
 
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+        let ownChangeCount = pasteboard.changeCount
 
         guard AXIsProcessTrusted() else {
             // Keine Berechtigung: Text bleibt wenigstens in der Zwischenablage,
@@ -70,12 +73,10 @@ enum PasteService {
 
         postCmdV()
 
-        // Zwischenablage nach kurzer Zeit wiederherstellen.
-        if let previous {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                pasteboard.clearContents()
-                pasteboard.setString(previous, forType: .string)
-            }
+        // Zwischenablage nach kurzer Zeit wiederherstellen — aber nur, wenn sie
+        // noch unseren Text enthält. Eine neue Kopieraktion hat Vorrang.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            previous.restore(to: pasteboard, ifChangeCountIs: ownChangeCount)
         }
         return .pasted
     }

@@ -1,10 +1,42 @@
 import XCTest
 import AVFoundation
+import AppKit
 @testable import StillePostCore
 
 /// Tests für WAV-Verarbeitung, Plausibilitätsprüfung, Artefakt-Filter,
 /// Segment-Zusammenfügen und Config-Toleranz.
 final class CoreTests: XCTestCase {
+
+    func testPasteboardSnapshotRestoresAllItemsAndHonorsChangeCount() throws {
+        let pasteboard = NSPasteboard(name: .init("stillepost-test-\(UUID())"))
+        pasteboard.clearContents()
+        let first = NSPasteboardItem()
+        first.setString("alter Text", forType: .string)
+        first.setData(Data("{\\rtf1 alt}".utf8), forType: .rtf)
+        let second = NSPasteboardItem()
+        let customType = NSPasteboard.PasteboardType("org.stillepost.test-binary")
+        second.setData(Data([0, 1, 2, 255]), forType: customType)
+        XCTAssertTrue(pasteboard.writeObjects([first, second]))
+
+        let snapshot = PasteboardSnapshot(pasteboard: pasteboard)
+        pasteboard.clearContents()
+        pasteboard.setString("Diktat", forType: .string)
+        let ownChangeCount = pasteboard.changeCount
+        XCTAssertTrue(snapshot.restore(to: pasteboard, ifChangeCountIs: ownChangeCount))
+        XCTAssertEqual(pasteboard.pasteboardItems?.count, 2)
+        XCTAssertEqual(pasteboard.pasteboardItems?[0].string(forType: .string), "alter Text")
+        XCTAssertEqual(pasteboard.pasteboardItems?[0].data(forType: .rtf), Data("{\\rtf1 alt}".utf8))
+        XCTAssertEqual(pasteboard.pasteboardItems?[1].data(forType: customType), Data([0, 1, 2, 255]))
+
+        let secondSnapshot = PasteboardSnapshot(pasteboard: pasteboard)
+        pasteboard.clearContents()
+        pasteboard.setString("Diktat 2", forType: .string)
+        let secondOwnChangeCount = pasteboard.changeCount
+        pasteboard.clearContents()
+        pasteboard.setString("neu kopiert", forType: .string)
+        XCTAssertFalse(secondSnapshot.restore(to: pasteboard, ifChangeCountIs: secondOwnChangeCount))
+        XCTAssertEqual(pasteboard.string(forType: .string), "neu kopiert")
+    }
 
     // MARK: WAV
 
