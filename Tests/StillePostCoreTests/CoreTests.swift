@@ -176,7 +176,7 @@ final class CoreTests: XCTestCase {
 
         for unsafe in [
             "http://localhost:8181",
-            "http://192.168.1.10:8181",
+            "http://192.0.2.10:8181",
             "https://127.0.0.1:8181",
             "http://127.0.0.1",
             "http://127.0.0.1:8181/prefix",
