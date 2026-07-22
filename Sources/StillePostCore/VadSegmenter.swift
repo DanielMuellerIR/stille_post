@@ -32,9 +32,11 @@ public final class VadSegmenter {
     /// Callback: Abwesenheitserkennung hat zugeschlagen (so lange Stille, dass die
     /// Aufnahme beendet werden soll). Wird höchstens einmal pro Aufnahme gefeuert.
     public var onAutoStop: (() -> Void)?
-    /// Aktueller Pegel in dBFS (für die Live-Anzeige im Overlay). Thread-sicher
-    /// als einfacher Snapshot-Wert.
-    public private(set) var currentLevelDb: Double = -120
+    /// Aktueller Pegel in dBFS (für die Live-Anzeige im Overlay). Der Audio-Thread
+    /// schreibt, der Main-Thread liest; ein Lock bildet die nötige Speichergrenze.
+    public var currentLevelDb: Double { levelLock.withLock { levelDbSnapshot } }
+    private let levelLock = NSLock()
+    private var levelDbSnapshot: Double = -120
 
     private let config: Config.Vad
     /// Frame-Größe für die Pegelmessung: 30 ms bei 16 kHz = 480 Samples.
@@ -86,7 +88,7 @@ public final class VadSegmenter {
         for sample in frame { sumSquares += Double(sample) * Double(sample) }
         let rms = (sumSquares / Double(frame.count)).squareRoot()
         let db = rms > 0 ? 20 * log10(rms) : -120
-        currentLevelDb = db
+        levelLock.withLock { levelDbSnapshot = db }
 
         let frameSec = Double(frame.count) / Double(WavCodec.sampleRate)
         let isSpeech = db > config.silenceThresholdDb

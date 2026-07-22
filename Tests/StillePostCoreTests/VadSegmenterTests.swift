@@ -262,4 +262,26 @@ final class VadSegmenterTests: XCTestCase {
         XCTAssertEqual(segments.count, 1)
         XCTAssertFalse(segments[0].samples.isEmpty)
     }
+
+    func testLevelSnapshotSupportsConcurrentAudioWritesAndUiReads() {
+        let segmenter = VadSegmenter(config: makeConfig())
+        let group = DispatchGroup()
+        let audioQueue = DispatchQueue(label: "stillepost.test.audio")
+        let uiQueue = DispatchQueue(label: "stillepost.test.ui")
+        let frame = tone(seconds: 0.03)
+
+        group.enter()
+        audioQueue.async {
+            for _ in 0..<2_000 { segmenter.process(frame) }
+            group.leave()
+        }
+        group.enter()
+        uiQueue.async {
+            for _ in 0..<20_000 { _ = segmenter.currentLevelDb }
+            group.leave()
+        }
+
+        XCTAssertEqual(group.wait(timeout: .now() + 5), .success)
+        XCTAssertGreaterThan(segmenter.currentLevelDb, -20)
+    }
 }
