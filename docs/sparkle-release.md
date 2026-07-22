@@ -22,11 +22,14 @@ im App-Bundle eingecheckt.
 
 1. In den Repository-Einstellungen unter **Pages** als Quelle **GitHub Actions**
    wählen.
-2. Den privaten Schlüssel als Actions-Secret `SPARKLE_PRIVATE_KEY` hinterlegen.
+2. Unter **Actions → Variables** die nicht geheime Variable
+   `DEVELOPER_TEAM_ID` auf die erwartete Apple-Team-ID setzen. Der Workflow lehnt
+   jedes DMG und jede App mit einer anderen Identität ab.
+3. Den privaten Schlüssel als Actions-Secret `SPARKLE_PRIVATE_KEY` hinterlegen.
    Sparkles `generate_keys -x` exportiert ihn vorübergehend in eine lokale Datei;
    `gh secret set SPARKLE_PRIVATE_KEY < datei` liest diese Datei über stdin. Die
    Exportdatei danach sicher entfernen. Den Schlüssel nie auf stdout ausgeben.
-3. Den Schlüssel zusätzlich verschlüsselt sichern. Geht er verloren, ist eine
+4. Den Schlüssel zusätzlich verschlüsselt sichern. Geht er verloren, ist eine
    kontrollierte Schlüsselrotation über ein Developer-ID-signiertes DMG nötig.
 
 ## Ablauf pro Release
@@ -40,7 +43,10 @@ im App-Bundle eingecheckt.
    signieren, notarisieren und stapeln.
 4. Ein GitHub Release als Entwurf anlegen, genau ein DMG anhängen, Release Notes
    eintragen und erst danach veröffentlichen.
-5. `.github/workflows/publish-appcast.yml` lädt dieses DMG, erzeugt mit Sparkles
+5. `.github/workflows/publish-appcast.yml` lädt dieses DMG, prüft vor dem Zugriff
+   auf den Sparkle-Schlüssel mit `scripts/verify-release.sh` Tag und Bundle-Version,
+   Bundle- und Team-ID, Developer-ID-Signatur, Notary-Tickets sowie Gatekeeper für
+   DMG und App. Erst danach erzeugt es mit Sparkles
    `generate_appcast` einen signierten Feed, bettet die Release Notes ein und
    veröffentlicht `appcast.xml` über GitHub Pages.
 6. Den Workflow und anschließend

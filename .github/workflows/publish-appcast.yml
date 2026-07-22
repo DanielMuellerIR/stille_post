@@ -26,19 +26,19 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     env:
-      GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
-      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
 
     steps:
       - name: Quelltext auschecken
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: GitHub Pages vorbereiten
-        uses: actions/configure-pages@v6
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
 
       - name: Release-DMG und Release Notes laden
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p update site
@@ -54,8 +54,32 @@ jobs:
           # Gleicher Basisname: generate_appcast ordnet die Markdown-Datei dem DMG zu.
           gh release view "$RELEASE_TAG" --json body --jq .body > "${dmgs[0]%.dmg}.md"
 
+      - name: Developer-ID und Notarisierung des Releases prüfen
+        shell: bash
+        env:
+          EXPECTED_TEAM_ID: ${{ vars.DEVELOPER_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          dmg=(update/*.dmg)
+          scripts/verify-release.sh "${dmg[0]}" "$RELEASE_TAG" "$EXPECTED_TEAM_ID"
+
+      - name: Sparkle-Werkzeug vorbereiten
+        id: sparkle
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift package resolve
+          tool="$(find .build/artifacts/sparkle -type f -name generate_appcast -print -quit)"
+          if [[ -z "$tool" ]]; then
+            echo "FEHLER: Sparkles generate_appcast wurde nicht gefunden." >&2
+            exit 1
+          fi
+          echo "tool=$tool" >> "$GITHUB_OUTPUT"
+
       - name: Signierten Appcast erzeugen
         shell: bash
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
           set -euo pipefail
           if [[ -z "$SPARKLE_PRIVATE_KEY" ]]; then
@@ -63,15 +87,8 @@ jobs:
             exit 1
           fi
 
-          swift package resolve
-          tool="$(find .build/artifacts/sparkle -type f -name generate_appcast -print -quit)"
-          if [[ -z "$tool" ]]; then
-            echo "FEHLER: Sparkles generate_appcast wurde nicht gefunden." >&2
-            exit 1
-          fi
-
           # Der geheime Schlüssel steht weder in argv noch in einer Datei oder im Log.
-          printf '%s' "$SPARKLE_PRIVATE_KEY" | "$tool" \
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | "${{ steps.sparkle.outputs.tool }}" \
             --ed-key-file - \
             --embed-release-notes \
             --maximum-versions 1 \
@@ -81,13 +98,14 @@ jobs:
             -o "$PWD/site/appcast.xml" \
             "$PWD/update"
 
+          unset SPARKLE_PRIVATE_KEY
           xmllint --noout site/appcast.xml
 
       - name: Pages-Artefakt hochladen
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: site
 
       - name: Appcast auf GitHub Pages veröffentlichen
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
