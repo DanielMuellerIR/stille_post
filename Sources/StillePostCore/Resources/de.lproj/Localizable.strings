@@ -136,6 +136,7 @@
 "history.cleaned_via" = "Bereinigt in %.1f s via %@";
 "history.transcription_failed" = "Transkription fehlgeschlagen";
 "history.show_raw" = "Rohtext zeigen";
+"history.persistence_error" = "Verlaufsfehler";
 
 /* Modell-Download */
 "model.summary.turbo" = "Standard — beste Mischung aus Qualität und Tempo";
@@ -188,6 +189,10 @@
 "core.dictation.transcription_failed" = "Transkription fehlgeschlagen — über den Verlauf erneut versuchen";
 "core.dictation.audio_missing" = "Aufnahme-Datei nicht mehr vorhanden";
 "core.dictation.retry_failed" = "Erneuter Versuch fehlgeschlagen: %@";
+"core.history.persistence_failed" = "Verlauf konnte nicht sicher gespeichert werden: %@";
+"core.history.audio_delete_failed" = "Gespeicherte Aufnahme konnte nicht gelöscht werden: %@";
+"core.history.entry_missing" = "Der Verlaufseintrag existiert nicht mehr.";
+"core.history.unsafe_audio_name" = "Unsicherer Aufnahme-Dateiname im Verlauf.";
 
 /* CLI */
 "cli.usage" = "Verwendung:\n  stillepost-cli doctor\n  stillepost-cli install-model [large-v3-turbo|large-v3] [--force]\n  stillepost-cli transcribe <datei.wav> [--raw]\n  stillepost-cli cleanup <text|->\n  stillepost-cli history list [--json]\n  stillepost-cli history clear\n  stillepost-cli set-cleanup-key   (liest den Key von stdin — NIE als Argument übergeben!)";
@@ -231,6 +236,7 @@
 "cli.history.cleanup_info" = "  [%.1f s via %@]";
 "cli.history.empty" = "Verlauf ist leer.";
 "cli.history.cleared" = "Verlauf und zurückbehaltene Aufnahmen gelöscht.";
+"cli.history.persistence_failed" = "Verlaufsoperation fehlgeschlagen: %@";
 "cli.key.prompt" = "API-Key eingeben (Eingabe wird nicht angezeigt, Ende mit Enter):";
 "cli.key.empty" = "Kein Key eingegeben.";
 "cli.key.saved" = "Key im Schlüsselbund gespeichert (Eintrag: %@).";

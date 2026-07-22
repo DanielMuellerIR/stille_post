@@ -44,6 +44,7 @@ final class HistoryViewModel: ObservableObject {
     @Published var entries: [HistoryStore.Entry] = []
     /// IDs der Einträge, bei denen gerade "Erneut transkribieren" läuft.
     @Published var retrying: Set<UUID> = []
+    @Published var errorMessage: String?
 
     let engine: DictationEngine
 
@@ -55,7 +56,11 @@ final class HistoryViewModel: ObservableObject {
     }
 
     func reload() {
-        entries = engine.history.list()
+        do {
+            entries = try engine.history.list()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 
     func copyToClipboard(_ text: String) {
@@ -66,14 +71,22 @@ final class HistoryViewModel: ObservableObject {
     func retry(_ entry: HistoryStore.Entry) {
         retrying.insert(entry.id)
         Task { @MainActor in
-            _ = await engine.retry(entry: entry)
+            do {
+                _ = try await engine.retry(entry: entry)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
             retrying.remove(entry.id)
             reload()
         }
     }
 
     func deleteAll() {
-        engine.history.deleteAll()
+        do {
+            try engine.history.deleteAll()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
         reload()
     }
 }
@@ -123,6 +136,14 @@ struct HistoryView: View {
             .padding(10)
         }
         .frame(minWidth: 480, minHeight: 320)
+        .alert(L10n.text("history.persistence_error"), isPresented: Binding(
+            get: { model.errorMessage != nil },
+            set: { if !$0 { model.errorMessage = nil } }
+        )) {
+            Button(L10n.text("common.ok")) { model.errorMessage = nil }
+        } message: {
+            Text(model.errorMessage ?? "")
+        }
     }
 }
 

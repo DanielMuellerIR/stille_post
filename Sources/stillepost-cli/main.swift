@@ -300,7 +300,12 @@ case "history":
     let store = HistoryStore()
     switch arguments.dropFirst().first {
     case "list":
-        let entries = store.list()
+        let entries: [HistoryStore.Entry]
+        do {
+            entries = try store.list()
+        } catch {
+            fail(L10n.format("cli.history.persistence_failed", error.localizedDescription))
+        }
         if arguments.contains("--json") {
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -321,7 +326,11 @@ case "history":
             if entries.isEmpty { log(L10n.text("cli.history.empty")) }
         }
     case "clear":
-        store.deleteAll()
+        do {
+            try store.deleteAll()
+        } catch {
+            fail(L10n.format("cli.history.persistence_failed", error.localizedDescription))
+        }
         log(L10n.text("cli.history.cleared"))
     default:
         fail(usage, code: 2)

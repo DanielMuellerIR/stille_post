@@ -431,25 +431,56 @@ final class CoreTests: XCTestCase {
         // Fehlgeschlagenen Eintrag mit Audio-Datei anlegen.
         let audioURL = store.newRecordingURL()
         try Data("wav".utf8).write(to: audioURL)
-        store.append(HistoryStore.Entry(rawText: "", cleanText: "", status: "failed",
+        try store.append(HistoryStore.Entry(rawText: "", cleanText: "", status: "failed",
                                         errorMessage: "Test", audioFileName: audioURL.lastPathComponent,
                                         durationSec: 3))
-        store.append(HistoryStore.Entry(rawText: "roh", cleanText: "sauber", status: "ok", durationSec: 5,
+        try store.append(HistoryStore.Entry(rawText: "roh", cleanText: "sauber", status: "ok", durationSec: 5,
                                         cleanupEndpoint: "modell @ http://127.0.0.1:11434", cleanupSec: 1.2))
 
-        XCTAssertEqual(store.list().count, 2)
+        XCTAssertEqual(try store.list().count, 2)
         XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
 
         // Neu laden (Persistenz prüfen) — inkl. der Diagnose-Felder der Bereinigung.
         let reloaded = HistoryStore(baseDir: baseDir)
-        XCTAssertEqual(reloaded.list().count, 2)
-        let okEntry = reloaded.list().first { $0.status == "ok" }
+        XCTAssertEqual(try reloaded.list().count, 2)
+        let okEntry = try reloaded.list().first { $0.status == "ok" }
         XCTAssertEqual(okEntry?.cleanupEndpoint, "modell @ http://127.0.0.1:11434")
         XCTAssertEqual(okEntry?.cleanupSec, 1.2)
 
         // Alle löschen muss auch die Audio-Datei entfernen.
-        reloaded.deleteAll()
-        XCTAssertEqual(reloaded.list().count, 0)
+        try reloaded.deleteAll()
+        XCTAssertEqual(try reloaded.list().count, 0)
         XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
+    }
+
+    func testHistoryStoresReloadInsideCrossProcessLock() throws {
+        let baseDir = FileManager.default.temporaryDirectory.appendingPathComponent("sp-lock-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: baseDir) }
+        let appStore = HistoryStore(baseDir: baseDir)
+        let cliStore = HistoryStore(baseDir: baseDir)
+
+        try appStore.append(.init(rawText: "alt", cleanText: "alt", status: "ok", durationSec: 1))
+        try cliStore.deleteAll()
+        try appStore.append(.init(rawText: "neu", cleanText: "neu", status: "ok", durationSec: 1))
+
+        XCTAssertEqual(try HistoryStore(baseDir: baseDir).list().map(\.cleanText), ["neu"])
+    }
+
+    func testHistoryWriteFailureKeepsDiskStateAndAudio() throws {
+        enum Expected: Error { case writeFailure }
+        let baseDir = FileManager.default.temporaryDirectory.appendingPathComponent("sp-write-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: baseDir) }
+        let working = HistoryStore(baseDir: baseDir)
+        let audioURL = working.newRecordingURL()
+        try FileManager.default.createDirectory(at: audioURL.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data("wav".utf8).write(to: audioURL)
+        try working.append(.init(rawText: "", cleanText: "", status: "failed",
+                                 audioFileName: audioURL.lastPathComponent, durationSec: 1))
+
+        let failing = HistoryStore(baseDir: baseDir) { _, _ in throw Expected.writeFailure }
+        XCTAssertThrowsError(try failing.deleteAll())
+        XCTAssertEqual(try working.list().count, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
     }
 }

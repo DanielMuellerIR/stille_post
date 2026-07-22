@@ -136,6 +136,7 @@
 "history.cleaned_via" = "Cleaned in %.1f s via %@";
 "history.transcription_failed" = "Transcription failed";
 "history.show_raw" = "Show raw text";
+"history.persistence_error" = "History Error";
 
 /* Model download */
 "model.summary.turbo" = "Default — best balance of quality and speed";
@@ -188,6 +189,10 @@
 "core.dictation.transcription_failed" = "Transcription failed — try again from History";
 "core.dictation.audio_missing" = "Recording file is no longer available";
 "core.dictation.retry_failed" = "Retry failed: %@";
+"core.history.persistence_failed" = "History could not be saved safely: %@";
+"core.history.audio_delete_failed" = "The saved recording could not be deleted: %@";
+"core.history.entry_missing" = "The history entry no longer exists.";
+"core.history.unsafe_audio_name" = "Unsafe recording file name in history.";
 
 /* CLI */
 "cli.usage" = "Usage:\n  stillepost-cli doctor\n  stillepost-cli install-model [large-v3-turbo|large-v3] [--force]\n  stillepost-cli transcribe <file.wav> [--raw]\n  stillepost-cli cleanup <text|->\n  stillepost-cli history list [--json]\n  stillepost-cli history clear\n  stillepost-cli set-cleanup-key   (reads the key from stdin — NEVER pass it as an argument!)";
@@ -231,6 +236,7 @@
 "cli.history.cleanup_info" = "  [%.1f s via %@]";
 "cli.history.empty" = "History is empty.";
 "cli.history.cleared" = "History and retained recordings deleted.";
+"cli.history.persistence_failed" = "History operation failed: %@";
 "cli.key.prompt" = "Enter the API key (input is hidden; press Enter when finished):";
 "cli.key.empty" = "No key entered.";
 "cli.key.saved" = "Key saved in Keychain (entry: %@).";

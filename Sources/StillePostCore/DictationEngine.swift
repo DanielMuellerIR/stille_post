@@ -240,17 +240,22 @@ public final class DictationEngine {
                     audioFileName: wavURL?.lastPathComponent,
                     durationSec: duration
                 )
-                self.history.append(entry)
+                do {
+                    try self.history.append(entry)
+                } catch {
+                    self.setState(.error(L10n.format(
+                        "core.history.persistence_failed", error.localizedDescription
+                    )))
+                    return
+                }
                 self.setState(.error(L10n.text("core.dictation.transcription_failed")))
                 self.onResult?(DictationResult(text: "", entry: entry))
                 return
             }
 
-            // Erfolg: Audio sofort löschen (Datensparsamkeit — Text ist im Verlauf).
-            if let wavURL { try? FileManager.default.removeItem(at: wavURL) }
-
             if rawJoined.isEmpty {
                 // Nur Stille aufgenommen: nichts einfügen, keinen Verlaufs-Müll erzeugen.
+                if let wavURL { try? FileManager.default.removeItem(at: wavURL) }
                 self.setState(.idle)
                 self.onResult?(DictationResult(text: "", entry: nil))
                 return
@@ -268,7 +273,26 @@ public final class DictationEngine {
                 cleanupEndpoint: cleaned.endpoint,
                 cleanupSec: Date().timeIntervalSince(cleanupStarted)
             )
-            self.history.append(entry)
+            do {
+                // Disk first: Nur ein wirklich persistierter Erfolg darf die
+                // Diagnoseaufnahme irreversibel entfernen.
+                try self.history.append(entry)
+            } catch {
+                self.setState(.error(L10n.format(
+                    "core.history.persistence_failed", error.localizedDescription
+                )))
+                return
+            }
+            if let wavURL {
+                do {
+                    try FileManager.default.removeItem(at: wavURL)
+                } catch {
+                    self.setState(.error(L10n.format(
+                        "core.history.audio_delete_failed", error.localizedDescription
+                    )))
+                    return
+                }
+            }
             self.setState(.idle)
             self.onResult?(DictationResult(text: cleaned.text, entry: entry))
         }
@@ -293,38 +317,40 @@ public final class DictationEngine {
 
     /// Transkribiert die zurückbehaltene Aufnahme eines fehlgeschlagenen Eintrags neu.
     /// Bei Erfolg wird der Eintrag aktualisiert und die Audio-Datei gelöscht.
-    public func retry(entry: HistoryStore.Entry) async -> HistoryStore.Entry {
+    public func retry(entry: HistoryStore.Entry) async throws -> HistoryStore.Entry {
         guard let audioURL = history.audioURL(for: entry),
               FileManager.default.fileExists(atPath: audioURL.path) else {
             var updated = entry
             updated.errorMessage = L10n.text("core.dictation.audio_missing")
-            history.update(updated)
+            try history.update(updated)
             return updated
         }
+        let raw: String
         do {
             try await serverManager.ensureRunning(client: whisper)
-            let raw = try await whisper.transcribe(wavFile: audioURL)
-            let cleanupStarted = Date()
-            let cleaned = await cleanup.clean(raw)
-            var updated = entry
-            updated.rawText = raw
-            updated.cleanText = cleaned.text
-            updated.status = "ok"
-            updated.errorMessage = nil
-            updated.cleanupFellBack = cleaned.usedFallback
-            updated.cleanupEndpoint = cleaned.endpoint
-            updated.cleanupSec = Date().timeIntervalSince(cleanupStarted)
-            // Erfolg -> Aufnahme jetzt löschen (wie beim normalen Diktat).
-            history.deleteAudio(for: entry)
-            updated.audioFileName = nil
-            history.update(updated)
-            return updated
+            raw = try await whisper.transcribe(wavFile: audioURL)
         } catch {
             var updated = entry
             updated.errorMessage = L10n.format("core.dictation.retry_failed", error.localizedDescription)
-            history.update(updated)
+            try history.update(updated)
             return updated
         }
+        let cleanupStarted = Date()
+        let cleaned = await cleanup.clean(raw)
+        var updated = entry
+        updated.rawText = raw
+        updated.cleanText = cleaned.text
+        updated.status = "ok"
+        updated.errorMessage = nil
+        updated.cleanupFellBack = cleaned.usedFallback
+        updated.cleanupEndpoint = cleaned.endpoint
+        updated.cleanupSec = Date().timeIntervalSince(cleanupStarted)
+        updated.audioFileName = nil
+        // Wieder disk first: Der Verlauf darf erst auf „ohne Audio“ zeigen, wenn
+        // dieser Zustand atomar gespeichert ist; erst danach wird die WAV gelöscht.
+        try history.update(updated)
+        try history.deleteAudio(for: entry)
+        return updated
     }
 
     /// Hält das Bereinigungs-Modell geladen. Die App ruft das beim Start und
