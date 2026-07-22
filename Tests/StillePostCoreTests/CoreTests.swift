@@ -424,18 +424,85 @@ final class CoreTests: XCTestCase {
         XCTAssertFalse(retryReported, "ohne Recency-Marker kein Direkt-Zweitversuch")
     }
 
-    func testStreamChunkParsing() {
+    func testStreamChunkParsing() throws {
         // Normales Häppchen
-        var parsed = CleanupService.streamChunk(fromLine: #"{"message":{"content":"Hallo "},"done":false}"#)
+        var parsed = try CleanupService.streamChunk(fromLine: #"{"message":{"content":"Hallo "},"done":false}"#)
         XCTAssertEqual(parsed.chunk, "Hallo ")
         XCTAssertFalse(parsed.done)
         // Letzte Zeile: done + oft leerer content
-        parsed = CleanupService.streamChunk(fromLine: #"{"message":{"content":""},"done":true}"#)
+        parsed = try CleanupService.streamChunk(fromLine: #"{"message":{"content":""},"done":true}"#)
         XCTAssertTrue(parsed.done)
-        // Kaputte/fremde Zeilen still überspringen
-        parsed = CleanupService.streamChunk(fromLine: "kein json")
-        XCTAssertNil(parsed.chunk)
-        XCTAssertFalse(parsed.done)
+        XCTAssertThrowsError(try CleanupService.streamChunk(fromLine: "kein json"))
+        XCTAssertThrowsError(try CleanupService.streamChunk(fromLine: #"{"error":"Modell abgestürzt"}"#)) {
+            guard case CleanupService.CleanupError.providerError(let detail) = $0 else {
+                return XCTFail("Falscher Fehler: \($0)")
+            }
+            XCTAssertEqual(detail, "Modell abgestürzt")
+        }
+    }
+
+    func testCleanupStreamRequiresExplicitCompletion() async {
+        let raw = "das ist ein ausreichend langer roher text der niemals als halbe antwort verloren gehen darf"
+        let partial = "Das ist ein ausreichend langer roher Text, der niemals als halbe Antwort"
+        let transport = StubCleanupTransport(streams: [
+            [#"{"message":{"content":"\#(partial)"},"done":false}"#],
+            [#"{"message":{"content":"\#(partial)"},"done":false}"#],
+        ])
+        let service = CleanupService(config: Config.Cleanup(), transport: transport)
+        service.notePrimarySuccess()
+
+        let result = await service.clean(raw)
+
+        XCTAssertEqual(result.text, raw)
+        XCTAssertTrue(result.usedFallback)
+        XCTAssertEqual(transport.streamCallCount, 2, "Direktpfad plus frische Verbindung")
+        XCTAssertTrue(result.fallbackReason?.contains("ohne Abschluss") ?? false)
+    }
+
+    func testCleanupStreamRetriesProviderErrorOnFreshConnection() async {
+        let raw = "also das ist ein vollständiger test für einen provider fehler"
+        let cleaned = "Das ist ein vollständiger Test für einen Provider-Fehler."
+        let transport = StubCleanupTransport(streams: [
+            [#"{"error":"Modell wird neu geladen"}"#],
+            [
+                #"{"message":{"content":"\#(cleaned)"},"done":false}"#,
+                #"{"message":{"content":""},"done":true}"#,
+            ],
+        ])
+        let service = CleanupService(config: Config.Cleanup(), transport: transport)
+        service.notePrimarySuccess()
+        var retryReported = false
+        service.onPrimaryRetry = { retryReported = true }
+
+        let result = await service.clean(raw)
+
+        XCTAssertEqual(result.text, cleaned)
+        XCTAssertFalse(result.usedFallback)
+        XCTAssertTrue(retryReported)
+        XCTAssertEqual(transport.streamCallCount, 2)
+    }
+
+    func testCleanupFallsBackAfterTwoIncompletePrimaryStreams() async {
+        let raw = "also das ist ein vollständiger test für einen echten fallback endpoint"
+        let cleaned = "Das ist ein vollständiger Test für einen echten Fallback-Endpoint."
+        var config = Config.Cleanup()
+        config.fallbacks = [Config.Cleanup.Endpoint()]
+        let incomplete = #"{"message":{"content":"Das ist ein vollständiger Test"},"done":false}"#
+        let transport = StubCleanupTransport(
+            streams: [[incomplete], [incomplete]], normalContent: cleaned
+        )
+        let service = CleanupService(config: config, transport: transport)
+        service.notePrimarySuccess()
+        var fallbackLabel: String?
+        service.onFallbackEndpoint = { fallbackLabel = $0 }
+
+        let result = await service.clean(raw)
+
+        XCTAssertEqual(result.text, cleaned)
+        XCTAssertEqual(result.endpoint, config.fallbacks[0].label)
+        XCTAssertEqual(fallbackLabel, config.fallbacks[0].label)
+        XCTAssertEqual(transport.probeCallCount, 1)
+        XCTAssertEqual(transport.normalCallCount, 1)
     }
 
     func testStreamingCleanAgainstLocalOllamaIfAvailable() throws {
@@ -608,5 +675,56 @@ private func wavSamples(_ data: Data) -> [Float] {
     stride(from: 44, to: data.count - 1, by: 2).map { offset in
         let bits = UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
         return Float(Int16(bitPattern: bits)) / 32767
+    }
+}
+
+private final class StubCleanupTransport: CleanupTransport {
+    private let lock = NSLock()
+    private var streams: [[String]]
+    private let normalContent: String
+    private(set) var streamCallCount = 0
+    private(set) var probeCallCount = 0
+    private(set) var normalCallCount = 0
+
+    init(streams: [[String]], normalContent: String = "") {
+        self.streams = streams
+        self.normalContent = normalContent
+    }
+
+    func data(for request: URLRequest, probing: Bool) async throws -> (Data, URLResponse) {
+        lock.withLock {
+            if probing { probeCallCount += 1 } else { normalCallCount += 1 }
+        }
+        let body: Data
+        if probing {
+            body = Data(#"{"version":"test"}"#.utf8)
+        } else {
+            body = try JSONSerialization.data(withJSONObject: [
+                "message": ["content": normalContent]
+            ])
+        }
+        return (body, httpResponse(for: request, status: 200))
+    }
+
+    func streamLines(for request: URLRequest, freshConnection: Bool) async throws
+        -> (AsyncThrowingStream<String, Error>, URLResponse) {
+        let frames = lock.withLock {
+            streamCallCount += 1
+            return streams.isEmpty ? [] : streams.removeFirst()
+        }
+        let stream = AsyncThrowingStream<String, Error> { continuation in
+            frames.forEach { continuation.yield($0) }
+            continuation.finish()
+        }
+        return (stream, httpResponse(for: request, status: 200))
+    }
+
+    func sendWarmUp(_ request: URLRequest) {}
+
+    private func httpResponse(for request: URLRequest, status: Int) -> HTTPURLResponse {
+        HTTPURLResponse(
+            url: request.url!, statusCode: status, httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
     }
 }

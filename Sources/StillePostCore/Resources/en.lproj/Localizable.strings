@@ -183,6 +183,9 @@
 "core.cleanup.server_error" = "LLM server error: %@";
 "core.cleanup.bad_response" = "Unexpected response format from the LLM";
 "core.cleanup.unreachable" = "unreachable (%@)";
+"core.cleanup.incomplete_stream" = "The LLM stream ended without completion";
+"core.cleanup.invalid_stream_frame" = "Invalid frame in the LLM stream";
+"core.cleanup.provider_error" = "LLM provider error: %@";
 "core.dictation.microphone_permission" = "No microphone access — allow it in System Settings → Privacy & Security";
 "core.dictation.recording_start_failed" = "Recording could not start: %@";
 "core.dictation.audio_writer_start_failed" = "The recording safety file could not be created at %@: %@";

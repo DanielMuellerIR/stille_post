@@ -183,6 +183,9 @@
 "core.cleanup.server_error" = "LLM-Server-Fehler: %@";
 "core.cleanup.bad_response" = "Unerwartetes Antwortformat vom LLM";
 "core.cleanup.unreachable" = "nicht erreichbar (%@)";
+"core.cleanup.incomplete_stream" = "LLM-Stream endete ohne Abschluss";
+"core.cleanup.invalid_stream_frame" = "Ungültiger Frame im LLM-Stream";
+"core.cleanup.provider_error" = "LLM-Provider-Fehler: %@";
 "core.dictation.microphone_permission" = "Kein Mikrofon-Zugriff — bitte in Systemeinstellungen → Datenschutz erlauben";
 "core.dictation.recording_start_failed" = "Aufnahme-Start fehlgeschlagen: %@";
 "core.dictation.audio_writer_start_failed" = "Sicherungsdatei für die Aufnahme konnte unter %@ nicht angelegt werden: %@";

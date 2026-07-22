@@ -63,38 +63,15 @@ public final class CleanupService {
     }
 
     private let config: Config.Cleanup
-    private let session: URLSession
-    private let probeSession: URLSession
-    private let streamSession: URLSession
+    private let transport: CleanupTransport
 
-    public init(config: Config.Cleanup) {
-        self.config = config
-        // Eigene Session mit großzügigem Timeout (lange Diktate = längere LLM-Antwort).
-        let sessionConfig = URLSessionConfiguration.ephemeral
-        sessionConfig.timeoutIntervalForRequest = 120
-        self.session = URLSession(configuration: sessionConfig)
-        // Kurze Session NUR für die Erreichbarkeits-Probe: Ein ausgeschalteter oder
-        // nicht erreichbarer Rechner darf den Fallback höchstens ~2 s kosten — der
-        // normale TCP-Timeout wären sonst >70 s Hänger nach jedem Diktat.
-        let probeConfig = URLSessionConfiguration.ephemeral
-        probeConfig.timeoutIntervalForRequest = 2
-        probeConfig.timeoutIntervalForResource = 2
-        self.probeSession = URLSession(configuration: probeConfig)
-        // Session für die STREAMING-Direktanfrage an den primären Endpoint.
-        self.streamSession = Self.makeStreamSession()
+    public convenience init(config: Config.Cleanup) {
+        self.init(config: config, transport: URLSessionCleanupTransport())
     }
 
-    /// Session-Konfiguration für Streaming-Anfragen: timeoutIntervalForRequest ist
-    /// ein LEERLAUF-Timeout (Zeit ohne neue Daten) — solange Antwort-Häppchen
-    /// fließen, darf die Generierung beliebig lange dauern; kommt 10 s lang NICHTS
-    /// (auch kein Verbindungsaufbau), ist der Weg wirklich tot. Gleichzeitig hat
-    /// der TCP-Handshake damit genug Luft, verlorene Pakete während einer
-    /// WLAN-Latenzspitze selbst zu wiederholen (die alte 2-s-Probe brach da ab).
-    static func makeStreamSession() -> URLSession {
-        let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 10
-        config.timeoutIntervalForResource = 600
-        return URLSession(configuration: config)
+    init(config: Config.Cleanup, transport: CleanupTransport) {
+        self.config = config
+        self.transport = transport
     }
 
     // MARK: - Öffentliche API
@@ -134,13 +111,13 @@ public final class CleanupService {
                         // Verbindung (falls eine gestorbene Pool-Verbindung schuld war).
                         do {
                             cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
-                                                               streamingOn: streamSession)
+                                                               streaming: true,
+                                                               freshConnection: false)
                         } catch {
                             onPrimaryRetry?()
-                            let freshSession = Self.makeStreamSession()
-                            defer { freshSession.finishTasksAndInvalidate() }
                             cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
-                                                               streamingOn: freshSession)
+                                                               streaming: true,
+                                                               freshConnection: true)
                         }
                         notePrimarySuccess()
                     } else {
@@ -155,7 +132,8 @@ public final class CleanupService {
                             throw CleanupError.unreachable(endpoint.ollamaURL)
                         }
                         cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
-                                                           streamingOn: nil)
+                                                           streaming: false,
+                                                           freshConnection: false)
                         if index == 0 { notePrimarySuccess() }
                     }
                 }
@@ -224,7 +202,7 @@ public final class CleanupService {
             "keep_alive": Self.keepAliveValue(endpoint.keepAlive),
             "options": ["num_ctx": endpoint.numCtx],
         ] as [String: Any])
-        session.dataTask(with: request).resume()  // Antwort ist egal, reines Vorwärmen
+        transport.sendWarmUp(request)  // Antwort ist egal, reines Vorwärmen
     }
 
     /// Übersetzt den keep_alive-Wert aus der Config in das, was Ollama im JSON erwartet.
@@ -262,8 +240,9 @@ public final class CleanupService {
     /// Fallback samt Kaltstart des Ausweich-Modells auslösen.
     private func isReachable(ollamaURL: String) async -> Bool {
         guard let url = URL(string: "\(ollamaURL)/api/version") else { return false }
+        let request = URLRequest(url: url)
         for _ in 0..<2 {
-            if let (_, response) = try? await probeSession.data(from: url),
+            if let (_, response) = try? await transport.data(for: request, probing: true),
                (response as? HTTPURLResponse)?.statusCode == 200 {
                 return true
             }
@@ -334,14 +313,15 @@ public final class CleanupService {
 
     // MARK: - Provider: Ollama (lokal oder anderer Rechner im eigenen Netz)
 
-    /// Bereinigt über Ollama. `streamingOn` steuert den Transport:
-    ///  - URLSession übergeben -> Streaming-Anfrage über GENAU diese Session
+    /// Bereinigt über Ollama. `streaming` steuert den Transport:
+    ///  - true -> Streaming-Anfrage, optional über eine frische Verbindung
     ///    (Primär-Pfad: Antwort-Häppchen als Lebenszeichen, Leerlauf-Timeout 10 s).
     ///  - nil -> klassische Komplett-Antwort über die 120-s-Session (Fallback-Pfad:
     ///    ein kalt startendes Modell schweigt erst mal minutenlang — dort wäre ein
     ///    Leerlauf-Timeout genau falsch).
     private func cleanViaOllama(_ text: String, endpoint: Config.Cleanup.Endpoint,
-                                streamingOn: URLSession?) async throws -> String {
+                                streaming: Bool,
+                                freshConnection: Bool) async throws -> String {
         guard let url = URL(string: "\(endpoint.ollamaURL)/api/chat") else {
             throw CleanupError.badConfig(L10n.format("core.cleanup.invalid_ollama_url", endpoint.ollamaURL))
         }
@@ -350,7 +330,7 @@ public final class CleanupService {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "model": endpoint.model,
-            "stream": streamingOn != nil,
+            "stream": streaming,
             // Reasoning-/Thinking-Modus ausschalten: Fürs Textputzen bringt "Nachdenken"
             // nichts außer VIEL Wartezeit (gemessen: 53 s statt <1 s bei qwen3.5:9b).
             // Nicht-Thinking-Modelle ignorieren das Feld einfach.
@@ -370,28 +350,35 @@ public final class CleanupService {
             ],
         ] as [String: Any])
 
-        if let streamSession = streamingOn {
+        if streaming {
             // Streaming: Ollama liefert NDJSON — ein JSON-Objekt pro Zeile mit dem
             // nächsten Text-Häppchen; die letzte Zeile trägt "done": true.
-            let (bytes, response) = try await streamSession.bytes(for: request)
+            let (lines, response) = try await transport.streamLines(
+                for: request, freshConnection: freshConnection
+            )
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 var body = ""
-                for try await line in bytes.lines {
+                for try await line in lines {
                     body += line
                     if body.count > 300 { break }
                 }
                 throw CleanupError.serverError(body: body)
             }
             var content = ""
-            for try await line in bytes.lines {
-                let (chunk, done) = Self.streamChunk(fromLine: line)
+            var receivedCompletion = false
+            for try await line in lines {
+                let (chunk, done) = try Self.streamChunk(fromLine: line)
                 if let chunk { content += chunk }
-                if done { break }
+                if done {
+                    receivedCompletion = true
+                    break
+                }
             }
+            guard receivedCompletion else { throw CleanupError.incompleteStream }
             return Self.stripThinking(content).trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await transport.data(for: request, probing: false)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw CleanupError.serverError(body: String(data: data, encoding: .utf8) ?? "")
         }
@@ -403,15 +390,22 @@ public final class CleanupService {
         return Self.stripThinking(content).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Parst EINE Zeile des Ollama-NDJSON-Streams: (Text-Häppchen, fertig?).
-    /// Unbekannte/kaputte Zeilen werden still übersprungen (nil, false).
-    static func streamChunk(fromLine line: String) -> (chunk: String?, done: Bool) {
+    /// Parst EINE Zeile des Ollama-NDJSON-Streams. Kaputte Frames und explizite
+    /// Provider-Fehler sind Transportfehler; Teilinhalte dürfen nie weiterleben.
+    static func streamChunk(fromLine line: String) throws -> (chunk: String?, done: Bool) {
         guard let data = line.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return (nil, false)
+            throw CleanupError.invalidStreamFrame
+        }
+        if let providerError = json["error"] as? String, !providerError.isEmpty {
+            throw CleanupError.providerError(providerError)
+        }
+        guard let done = json["done"] as? Bool else {
+            throw CleanupError.invalidStreamFrame
         }
         let chunk = (json["message"] as? [String: Any])?["content"] as? String
-        return (chunk, json["done"] as? Bool ?? false)
+        guard chunk != nil || done else { throw CleanupError.invalidStreamFrame }
+        return (chunk, done)
     }
 
     // MARK: - Provider: OpenAI-kompatibler Endpoint (z. B. MiniMax, beliebige Anbieter)
@@ -440,7 +434,7 @@ public final class CleanupService {
             ],
         ] as [String: Any])
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await transport.data(for: request, probing: false)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw CleanupError.serverError(body: String(data: data, encoding: .utf8) ?? "")
         }
@@ -512,6 +506,9 @@ public final class CleanupService {
         case serverError(body: String)
         case badResponse
         case unreachable(String)
+        case incompleteStream
+        case invalidStreamFrame
+        case providerError(String)
         public var errorDescription: String? {
             switch self {
             case .badConfig(let detail): return detail
@@ -521,6 +518,12 @@ public final class CleanupService {
                 return L10n.text("core.cleanup.bad_response")
             case .unreachable(let url):
                 return L10n.format("core.cleanup.unreachable", url)
+            case .incompleteStream:
+                return L10n.text("core.cleanup.incomplete_stream")
+            case .invalidStreamFrame:
+                return L10n.text("core.cleanup.invalid_stream_frame")
+            case .providerError(let detail):
+                return L10n.format("core.cleanup.provider_error", detail)
             }
         }
     }
