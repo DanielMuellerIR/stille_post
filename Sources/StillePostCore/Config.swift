@@ -261,11 +261,32 @@ public struct Config: Codable, Equatable {
 
     /// Schreibt die Config als hübsch formatiertes JSON (damit sie von Hand editierbar bleibt).
     public func save() throws {
-        _ = try WhisperEndpoint(serverURL: whisper.serverURL)
+        try validate()
         try FileManager.default.createDirectory(at: Config.appSupportDir, withIntermediateDirectories: true)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(self).write(to: Config.configFile, options: .atomic)
+    }
+
+    /// Prüft Werte, die nicht allein durch ihren JSON-Typ sicher werden. Die GUI
+    /// nutzt dieselbe Grenze wie `save()`, damit unzulässige Werte gar nicht erst
+    /// persistent werden.
+    public func validate() throws {
+        _ = try WhisperEndpoint(serverURL: whisper.serverURL)
+        if let detail = vad.validationFailure {
+            throw ValidationError.invalidVad(detail)
+        }
+    }
+
+    public enum ValidationError: Error, LocalizedError {
+        case invalidVad(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .invalidVad(let detail):
+                return L10n.format("core.config.invalid_vad", detail)
+            }
+        }
     }
 
     /// Expandiert `~` in Pfaden aus der Config zu einem absoluten Pfad.
@@ -279,12 +300,38 @@ public struct Config: Codable, Equatable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        whisper = (try? c.decode(Whisper.self, forKey: .whisper)) ?? Whisper()
-        cleanup = (try? c.decode(Cleanup.self, forKey: .cleanup)) ?? Cleanup()
-        vad = (try? c.decode(Vad.self, forKey: .vad)) ?? Vad()
-        audio = (try? c.decode(Audio.self, forKey: .audio)) ?? Audio()
-        ui = (try? c.decode(UI.self, forKey: .ui)) ?? UI()
-        hotkey = (try? c.decode(Hotkey.self, forKey: .hotkey)) ?? Hotkey()
+        whisper = c.decodeOrDefault(Whisper.self, forKey: .whisper, default: Whisper())
+        cleanup = c.decodeOrDefault(Cleanup.self, forKey: .cleanup, default: Cleanup())
+        let decodedVad = c.decodeOrDefault(Vad.self, forKey: .vad, default: Vad())
+        if let detail = decodedVad.validationFailure {
+            let message = L10n.format("core.config.invalid_field", "vad", detail)
+            FileHandle.standardError.write(Data(message.utf8))
+        }
+        vad = decodedVad.runtimeSafe
+        audio = c.decodeOrDefault(Audio.self, forKey: .audio, default: Audio())
+        ui = c.decodeOrDefault(UI.self, forKey: .ui, default: UI())
+        hotkey = c.decodeOrDefault(Hotkey.self, forKey: .hotkey, default: Hotkey())
+    }
+}
+
+private extension KeyedDecodingContainer {
+    /// Fehlende Felder bleiben rückwärtskompatibel. Ein vorhandener falscher Typ
+    /// ersetzt dagegen nur genau dieses Feld, meldet den Pfad auf stderr und lässt
+    /// gültige Geschwisterwerte unangetastet.
+    func decodeOrDefault<T: Decodable>(_ type: T.Type, forKey key: Key,
+                                       default defaultValue: T) -> T {
+        guard contains(key) else { return defaultValue }
+        do {
+            return try decodeIfPresent(type, forKey: key) ?? defaultValue
+        } catch {
+            let parent = codingPath.map(\.stringValue).joined(separator: ".")
+            let path = parent.isEmpty ? key.stringValue : "\(parent).\(key.stringValue)"
+            let message = L10n.format(
+                "core.config.invalid_field", path, String(describing: error)
+            )
+            FileHandle.standardError.write(Data(message.utf8))
+            return defaultValue
+        }
     }
 }
 
@@ -295,12 +342,12 @@ extension Config.Whisper {
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        serverURL = try c.decodeIfPresent(String.self, forKey: .serverURL) ?? serverURL
-        autostart = try c.decodeIfPresent(Bool.self, forKey: .autostart) ?? autostart
-        binaryPath = try c.decodeIfPresent(String.self, forKey: .binaryPath) ?? binaryPath
-        modelPath = try c.decodeIfPresent(String.self, forKey: .modelPath) ?? modelPath
-        threads = try c.decodeIfPresent(Int.self, forKey: .threads) ?? threads
-        language = try c.decodeIfPresent(String.self, forKey: .language) ?? language
+        serverURL = c.decodeOrDefault(String.self, forKey: .serverURL, default: serverURL)
+        autostart = c.decodeOrDefault(Bool.self, forKey: .autostart, default: autostart)
+        binaryPath = c.decodeOrDefault(String.self, forKey: .binaryPath, default: binaryPath)
+        modelPath = c.decodeOrDefault(String.self, forKey: .modelPath, default: modelPath)
+        threads = c.decodeOrDefault(Int.self, forKey: .threads, default: threads)
+        language = c.decodeOrDefault(String.self, forKey: .language, default: language)
     }
 }
 
@@ -309,14 +356,15 @@ extension Config.Cleanup {
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? enabled
-        provider = try c.decodeIfPresent(String.self, forKey: .provider) ?? provider
-        ollamaURL = try c.decodeIfPresent(String.self, forKey: .ollamaURL) ?? ollamaURL
-        model = try c.decodeIfPresent(String.self, forKey: .model) ?? model
-        numCtx = try c.decodeIfPresent(Int.self, forKey: .numCtx) ?? numCtx
-        keepAlive = try c.decodeIfPresent(String.self, forKey: .keepAlive) ?? keepAlive
-        remote = try c.decodeIfPresent(Config.Cleanup.Remote.self, forKey: .remote) ?? remote
-        fallbacks = try c.decodeIfPresent([Config.Cleanup.Endpoint].self, forKey: .fallbacks) ?? fallbacks
+        enabled = c.decodeOrDefault(Bool.self, forKey: .enabled, default: enabled)
+        provider = c.decodeOrDefault(String.self, forKey: .provider, default: provider)
+        ollamaURL = c.decodeOrDefault(String.self, forKey: .ollamaURL, default: ollamaURL)
+        model = c.decodeOrDefault(String.self, forKey: .model, default: model)
+        numCtx = c.decodeOrDefault(Int.self, forKey: .numCtx, default: numCtx)
+        keepAlive = c.decodeOrDefault(String.self, forKey: .keepAlive, default: keepAlive)
+        remote = c.decodeOrDefault(Config.Cleanup.Remote.self, forKey: .remote, default: remote)
+        fallbacks = c.decodeOrDefault([Config.Cleanup.Endpoint].self, forKey: .fallbacks,
+                                      default: fallbacks)
     }
 }
 
@@ -325,12 +373,12 @@ extension Config.Cleanup.Endpoint {
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        provider = try c.decodeIfPresent(String.self, forKey: .provider) ?? provider
-        ollamaURL = try c.decodeIfPresent(String.self, forKey: .ollamaURL) ?? ollamaURL
-        model = try c.decodeIfPresent(String.self, forKey: .model) ?? model
-        numCtx = try c.decodeIfPresent(Int.self, forKey: .numCtx) ?? numCtx
-        keepAlive = try c.decodeIfPresent(String.self, forKey: .keepAlive) ?? keepAlive
-        remote = try c.decodeIfPresent(Config.Cleanup.Remote.self, forKey: .remote) ?? remote
+        provider = c.decodeOrDefault(String.self, forKey: .provider, default: provider)
+        ollamaURL = c.decodeOrDefault(String.self, forKey: .ollamaURL, default: ollamaURL)
+        model = c.decodeOrDefault(String.self, forKey: .model, default: model)
+        numCtx = c.decodeOrDefault(Int.self, forKey: .numCtx, default: numCtx)
+        keepAlive = c.decodeOrDefault(String.self, forKey: .keepAlive, default: keepAlive)
+        remote = c.decodeOrDefault(Config.Cleanup.Remote.self, forKey: .remote, default: remote)
     }
 }
 
@@ -339,9 +387,9 @@ extension Config.Cleanup.Remote {
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        baseURL = try c.decodeIfPresent(String.self, forKey: .baseURL) ?? baseURL
-        model = try c.decodeIfPresent(String.self, forKey: .model) ?? model
-        apiKeyEnvVar = try c.decodeIfPresent(String.self, forKey: .apiKeyEnvVar) ?? apiKeyEnvVar
+        baseURL = c.decodeOrDefault(String.self, forKey: .baseURL, default: baseURL)
+        model = c.decodeOrDefault(String.self, forKey: .model, default: model)
+        apiKeyEnvVar = c.decodeOrDefault(String.self, forKey: .apiKeyEnvVar, default: apiKeyEnvVar)
     }
 }
 
@@ -352,13 +400,16 @@ extension Config.Vad {
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        silenceThresholdDb = try c.decodeIfPresent(Double.self, forKey: .silenceThresholdDb) ?? silenceThresholdDb
-        minSpeechSec = try c.decodeIfPresent(Double.self, forKey: .minSpeechSec) ?? minSpeechSec
-        splitAfterSilenceSec = try c.decodeIfPresent(Double.self, forKey: .splitAfterSilenceSec) ?? splitAfterSilenceSec
-        minSegmentSec = try c.decodeIfPresent(Double.self, forKey: .minSegmentSec) ?? minSegmentSec
-        maxSegmentSec = try c.decodeIfPresent(Double.self, forKey: .maxSegmentSec) ?? maxSegmentSec
-        paddingSec = try c.decodeIfPresent(Double.self, forKey: .paddingSec) ?? paddingSec
-        autoStopAfterSilenceSec = try c.decodeIfPresent(Double.self, forKey: .autoStopAfterSilenceSec) ?? autoStopAfterSilenceSec
+        silenceThresholdDb = c.decodeOrDefault(Double.self, forKey: .silenceThresholdDb,
+                                               default: silenceThresholdDb)
+        minSpeechSec = c.decodeOrDefault(Double.self, forKey: .minSpeechSec, default: minSpeechSec)
+        splitAfterSilenceSec = c.decodeOrDefault(Double.self, forKey: .splitAfterSilenceSec,
+                                                 default: splitAfterSilenceSec)
+        minSegmentSec = c.decodeOrDefault(Double.self, forKey: .minSegmentSec, default: minSegmentSec)
+        maxSegmentSec = c.decodeOrDefault(Double.self, forKey: .maxSegmentSec, default: maxSegmentSec)
+        paddingSec = c.decodeOrDefault(Double.self, forKey: .paddingSec, default: paddingSec)
+        autoStopAfterSilenceSec = c.decodeOrDefault(Double.self, forKey: .autoStopAfterSilenceSec,
+                                                    default: autoStopAfterSilenceSec)
     }
 }
 
@@ -367,8 +418,10 @@ extension Config.Audio {
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        inputDeviceUID = try c.decodeIfPresent(String.self, forKey: .inputDeviceUID) ?? inputDeviceUID
-        inputDeviceName = try c.decodeIfPresent(String.self, forKey: .inputDeviceName) ?? inputDeviceName
+        inputDeviceUID = c.decodeOrDefault(String.self, forKey: .inputDeviceUID,
+                                           default: inputDeviceUID)
+        inputDeviceName = c.decodeOrDefault(String.self, forKey: .inputDeviceName,
+                                            default: inputDeviceName)
     }
 }
 
@@ -377,8 +430,9 @@ extension Config.UI {
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        overlayPosition = try c.decodeIfPresent(String.self, forKey: .overlayPosition) ?? overlayPosition
-        sounds = try c.decodeIfPresent(Bool.self, forKey: .sounds) ?? sounds
+        overlayPosition = c.decodeOrDefault(String.self, forKey: .overlayPosition,
+                                            default: overlayPosition)
+        sounds = c.decodeOrDefault(Bool.self, forKey: .sounds, default: sounds)
     }
 }
 
@@ -387,7 +441,79 @@ extension Config.Hotkey {
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        keyCode = try c.decodeIfPresent(Int.self, forKey: .keyCode) ?? keyCode
-        modifiers = try c.decodeIfPresent([String].self, forKey: .modifiers) ?? modifiers
+        keyCode = c.decodeOrDefault(Int.self, forKey: .keyCode, default: keyCode)
+        modifiers = c.decodeOrDefault([String].self, forKey: .modifiers, default: modifiers)
+    }
+}
+
+extension Config.Vad {
+    /// Praktische und overflow-sichere Grenzen für frei editierbare Sekundenwerte.
+    private static let maximumDuration: Double = 3_600
+
+    var validationFailure: String? {
+        guard silenceThresholdDb.isFinite, (-120...0).contains(silenceThresholdDb) else {
+            return L10n.format("core.config.vad_range", "silenceThresholdDb", "−120…0")
+        }
+        for (name, value) in [
+            ("minSpeechSec", minSpeechSec),
+            ("splitAfterSilenceSec", splitAfterSilenceSec),
+            ("minSegmentSec", minSegmentSec),
+            ("maxSegmentSec", maxSegmentSec),
+        ] where !value.isFinite || value <= 0 || value > Self.maximumDuration {
+            return L10n.format(
+                "core.config.vad_range", name, "> 0…\(Int(Self.maximumDuration))"
+            )
+        }
+        guard paddingSec.isFinite, paddingSec >= 0,
+              paddingSec <= Self.maximumDuration else {
+            return L10n.format(
+                "core.config.vad_range", "paddingSec", "0…\(Int(Self.maximumDuration))"
+            )
+        }
+        guard autoStopAfterSilenceSec.isFinite, autoStopAfterSilenceSec >= 0,
+              autoStopAfterSilenceSec <= Self.maximumDuration else {
+            return L10n.format(
+                "core.config.vad_range", "autoStopAfterSilenceSec",
+                "0…\(Int(Self.maximumDuration))"
+            )
+        }
+        guard minSegmentSec <= maxSegmentSec else {
+            return L10n.text("core.config.vad_order")
+        }
+        return nil
+    }
+
+    /// Letzte Schutzschicht für direkt im Code konstruierte Werte. Beim JSON-Laden
+    /// werden nur semantisch defekte VAD-Werte auf bewährte Defaults gesetzt;
+    /// andere Config-Felder bleiben erhalten.
+    var runtimeSafe: Self {
+        guard validationFailure != nil else { return self }
+        let defaults = Self()
+        var safe = self
+        if !safe.silenceThresholdDb.isFinite || !(-120...0).contains(safe.silenceThresholdDb) {
+            safe.silenceThresholdDb = defaults.silenceThresholdDb
+        }
+        func validPositive(_ value: Double) -> Bool {
+            value.isFinite && value > 0 && value <= Self.maximumDuration
+        }
+        if !validPositive(safe.minSpeechSec) { safe.minSpeechSec = defaults.minSpeechSec }
+        if !validPositive(safe.splitAfterSilenceSec) {
+            safe.splitAfterSilenceSec = defaults.splitAfterSilenceSec
+        }
+        if !validPositive(safe.minSegmentSec) { safe.minSegmentSec = defaults.minSegmentSec }
+        if !validPositive(safe.maxSegmentSec) { safe.maxSegmentSec = defaults.maxSegmentSec }
+        if safe.minSegmentSec > safe.maxSegmentSec {
+            safe.minSegmentSec = defaults.minSegmentSec
+            safe.maxSegmentSec = defaults.maxSegmentSec
+        }
+        if !safe.paddingSec.isFinite || safe.paddingSec < 0
+            || safe.paddingSec > Self.maximumDuration {
+            safe.paddingSec = defaults.paddingSec
+        }
+        if !safe.autoStopAfterSilenceSec.isFinite || safe.autoStopAfterSilenceSec < 0
+            || safe.autoStopAfterSilenceSec > Self.maximumDuration {
+            safe.autoStopAfterSilenceSec = defaults.autoStopAfterSilenceSec
+        }
+        return safe
     }
 }

@@ -156,6 +156,10 @@
 
 /* Core-Fehler */
 "core.config.unreadable" = "StillePost: config.json unlesbar (%@) — nutze Defaults\n";
+"core.config.invalid_field" = "StillePost: Ungültiger Config-Wert %@ (%@) — nur dieses Feld nutzt den Default\n";
+"core.config.invalid_vad" = "Ungültige Stille-Erkennung: %@";
+"core.config.vad_range" = "%@ liegt außerhalb des erlaubten Bereichs (%@)";
+"core.config.vad_order" = "minSegmentSec darf nicht größer als maxSegmentSec sein";
 "core.audio.format_setup_failed" = "Audio-Format konnte nicht eingerichtet werden (kein Eingabegerät?)";
 "core.audio.device_unavailable" = "Das ausgewählte Mikrofon „%@“ ist nicht verfügbar. Bitte verbinden oder in den Einstellungen ein anderes wählen.";
 "core.audio.device_configuration_failed" = "Das Mikrofon „%@“ konnte nicht geöffnet werden (Audio-Fehler %d).";

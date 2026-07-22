@@ -72,9 +72,9 @@ struct SettingsView: View {
     let onCancel: () -> Void
     let onHotkeyRecording: (Bool) -> Void
 
-    private var whisperValidationError: String? {
+    private var configValidationError: String? {
         do {
-            _ = try WhisperEndpoint(serverURL: config.whisper.serverURL)
+            try config.validate()
             return nil
         } catch {
             return error.localizedDescription
@@ -111,15 +111,15 @@ struct SettingsView: View {
 
             Divider()
             HStack {
-                Text(whisperValidationError ?? L10n.text("settings.config_hint"))
+                Text(configValidationError ?? L10n.text("settings.config_hint"))
                     .font(.caption)
-                    .foregroundColor(whisperValidationError == nil ? .secondary : .red)
+                    .foregroundColor(configValidationError == nil ? .secondary : .red)
                 Spacer()
                 Button(L10n.text("common.cancel")) { onCancel() }
                     .keyboardShortcut(.cancelAction)
                 Button(L10n.text("common.save")) { onApply(config) }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(whisperValidationError != nil)
+                    .disabled(configValidationError != nil)
             }
             .padding(12)
         }

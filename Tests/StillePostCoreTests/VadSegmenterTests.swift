@@ -248,4 +248,18 @@ final class VadSegmenterTests: XCTestCase {
         segmenter.process(silence(seconds: 0.1))
         XCTAssertLessThan(segmenter.currentLevelDb, -60, "Stille muss sehr niedrigen Pegel melden")
     }
+
+    func testInvalidNegativePaddingCannotCrashSegmentClosure() {
+        var config = makeConfig()
+        config.paddingSec = -1
+        let segmenter = VadSegmenter(config: config)
+        var segments: [VadSegmenter.Segment] = []
+        segmenter.onSegment = { segments.append($0) }
+
+        segmenter.process(tone(seconds: 1))
+        segmenter.flush()
+
+        XCTAssertEqual(segments.count, 1)
+        XCTAssertFalse(segments[0].samples.isEmpty)
+    }
 }

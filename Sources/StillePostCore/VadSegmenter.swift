@@ -63,7 +63,10 @@ public final class VadSegmenter {
     private var preRoll: [Float] = []
 
     public init(config: Config.Vad) {
-        self.config = config
+        // Config.save/load validieren bereits. Diese zusätzliche Normalisierung
+        // schützt Aufrufer, die Config.Vad direkt konstruieren (und verhindert
+        // insbesondere negative/überlaufende Array.suffix-Werte).
+        self.config = config.runtimeSafe
     }
 
     /// Nimmt neue Samples vom Aufnahme-Gerät entgegen (16 kHz mono Float).

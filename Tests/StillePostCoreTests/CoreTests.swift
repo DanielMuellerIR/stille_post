@@ -250,6 +250,33 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(restored, config)
     }
 
+    func testWrongConfigFieldTypeOnlyDefaultsThatField() throws {
+        let json = #"{"cleanup":{"enabled":false,"model":"eigenes-modell","numCtx":"falsch"}}"#
+        let config = try JSONDecoder().decode(Config.self, from: Data(json.utf8))
+
+        XCTAssertFalse(config.cleanup.enabled, "gültiges Datenschutz-Feld muss erhalten bleiben")
+        XCTAssertEqual(config.cleanup.model, "eigenes-modell")
+        XCTAssertEqual(config.cleanup.numCtx, Config.Cleanup().numCtx)
+    }
+
+    func testDecodedVadDefaultsOnlyInvalidSemanticValues() throws {
+        let json = #"{"vad":{"silenceThresholdDb":-35,"minSegmentSec":2,"maxSegmentSec":12,"paddingSec":-1}}"#
+        let config = try JSONDecoder().decode(Config.self, from: Data(json.utf8))
+
+        XCTAssertEqual(config.vad.silenceThresholdDb, -35)
+        XCTAssertEqual(config.vad.minSegmentSec, 2)
+        XCTAssertEqual(config.vad.maxSegmentSec, 12)
+        XCTAssertEqual(config.vad.paddingSec, Config.Vad().paddingSec)
+        XCTAssertNoThrow(try config.validate())
+    }
+
+    func testConfigValidationRejectsInconsistentVadBeforeSave() {
+        var config = Config()
+        config.vad.minSegmentSec = 5
+        config.vad.maxSegmentSec = 1
+        XCTAssertThrowsError(try config.validate())
+    }
+
     func testAudioDeviceCatalogContainsTheSystemDefaultWhenAvailable() throws {
         // Hardware-Integration ohne Aufnahme: Auf einem Rechner ohne Mikrofon wird
         // sauber übersprungen; sonst muss der macOS-Default auch in der Liste stehen.

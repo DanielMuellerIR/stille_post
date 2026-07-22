@@ -156,6 +156,10 @@
 
 /* Core errors */
 "core.config.unreadable" = "StillePost: config.json could not be read (%@) — using defaults\n";
+"core.config.invalid_field" = "StillePost: Invalid config value %@ (%@) — only this field uses its default\n";
+"core.config.invalid_vad" = "Invalid silence detection setting: %@";
+"core.config.vad_range" = "%@ is outside the allowed range (%@)";
+"core.config.vad_order" = "minSegmentSec must not be greater than maxSegmentSec";
 "core.audio.format_setup_failed" = "The audio format could not be configured (no input device?)";
 "core.audio.device_unavailable" = "The selected microphone “%@” is unavailable. Connect it or choose another one in Settings.";
 "core.audio.device_configuration_failed" = "The microphone “%@” could not be opened (audio error %d).";
