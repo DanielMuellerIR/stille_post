@@ -10,6 +10,50 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.8.10] — 2026-07-22
+
+### Sicherheit
+
+- Whisper-Audio darf ausschließlich an einen expliziten lokalen HTTP-Endpunkt auf
+  `127.0.0.0/8` oder `::1` mit Port gehen. App, Einstellungen, CLI und Autostart
+  lehnen Netzwerk-, HTTPS- und mehrdeutige Hostnamen vor jedem Request sichtbar ab.
+- Die Appcast-Automation gibt den privaten Sparkle-Schlüssel nur noch an den
+  Signierschritt weiter und bindet fremde Actions an feste Commit-Stände. Vor der
+  Update-Signatur müssen Tag und Bundle-Version, Bundle- und Team-ID,
+  Developer-ID-Signaturen, Notary-Tickets und Gatekeeper-Prüfungen stimmen.
+- `--install` ist nur noch zusammen mit einer erfolgreichen Notarisierung möglich.
+  Der nochmals geprüfte Build wird unter `/Applications` vollständig bereitgestellt
+  und anschließend atomar ausgetauscht.
+
+### Behoben
+
+- Ein während Start oder Nachverarbeitung abgebrochenes Diktat kann danach weder
+  im Verlauf landen noch verspätet in eine andere aktive Anwendung eingefügt werden.
+- Die Zwischenablage wird mit allen Items und Typdaten wiederhergestellt; eine neue
+  Kopieraktion während des Einfügens wird nicht mehr überschrieben.
+- App und CLI verändern den Verlauf unter einem gemeinsamen Prozess-Lock und laden
+  vor jeder Mutation frisch von Platte. Schreibfehler werden sichtbar gemeldet,
+  und Audio wird erst nach bestätigter Persistenz gelöscht.
+- Anlage, fortlaufendes Schreiben und Finalisierung der Diagnose-WAV werden geprüft.
+  Unvollständige Dateien bleiben zur Diagnose erhalten, werden aber nie als sichere
+  Wiederholungsquelle angeboten.
+- Ollama-Streams benötigen ein ausdrückliches `done: true`. Abgebrochene Antworten,
+  ungültige Frames und Provider-Fehler verwerfen jeden Teiltext und wechseln in den
+  vorgesehenen Retry-/Fallback-Pfad.
+- Ein falscher JSON-Typ setzt nur noch das betroffene Config-Feld auf seinen Default
+  und meldet dessen Pfad; gültige Nachbarwerte bleiben erhalten. VAD-Werte werden
+  beim Laden und Speichern auf endliche, konsistente Grenzen geprüft, sodass auch
+  negatives Padding keinen Absturz mehr auslösen kann.
+- Der Live-Pegel besitzt jetzt eine echte Synchronisationsgrenze zwischen Audio- und
+  Main-Thread. Ein vom CLI-Aufruf selbst gestarteter Whisper-Server wird beim Ende
+  garantiert beendet; bereits fremd laufende Server bleiben unangetastet.
+
+### Geändert
+
+- Kritische Lifecycle-, Netzwerkstream- und Dateifehlerpfade haben injizierbare,
+  deterministische Testgrenzen. Der ungenutzte zweite WAV-Decoder wurde entfernt;
+  Tests prüfen stattdessen direkt das tatsächlich gespeicherte Upload-Format.
+
 ## [0.8.9] — 2026-07-21
 
 ### Behoben

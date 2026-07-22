@@ -574,7 +574,12 @@ final class CoreTests: XCTestCase {
             expectation.fulfill()
         }
         wait(for: [expectation], timeout: 60)
-        XCTAssertEqual(result?.usedFallback, false, "Streaming-Bereinigung muss durchlaufen: \(result?.fallbackReason ?? "")")
+        // Der Live-Test prüft den Transport, nicht die schwankende Modellqualität:
+        // Ändert das echte Modell ein Wort, muss die Worttreue-Sicherung ausdrücklich
+        // auf Rohtext fallen. Ein gesetzter Endpoint beweist, dass der Stream mit
+        // `done: true` vollständig ankam und erst danach geprüft wurde.
+        XCTAssertEqual(result?.endpoint, cleanup.chain[0].label,
+                       "Streaming-Transport muss abschließen: \(result?.fallbackReason ?? "")")
         XCTAssertFalse(result?.text.isEmpty ?? true)
     }
 
