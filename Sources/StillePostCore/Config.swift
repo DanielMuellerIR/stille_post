@@ -78,6 +78,20 @@ public struct Config: Codable, Equatable {
         /// Ausweich-Endpoints in Probier-Reihenfolge (leer = kein Fallback, nur der
         /// primäre Endpoint oben). Jeder Eintrag hat dieselben Felder wie der primäre.
         public var fallbacks: [Endpoint] = []
+        /// Persönliches Fachbegriffs-Wörterbuch: bevorzugte Schreibweisen, die
+        /// Whisper regelmäßig verhört ("Rack" statt "RAG"). Die Begriffe gehen an
+        /// das Bereinigungsmodell (System-Prompt) UND die Worttreue-Prüfung lässt
+        /// ähnlich klingende Korrekturen auf genau diese Begriffe durch.
+        /// Frei editierbar in config.json; die Vorbelegung deckt gängige
+        /// Diktier-Verhörer aus dem Software-Alltag ab.
+        public var dictionary: [String] = Cleanup.defaultDictionary
+
+        /// Vorbelegung des Wörterbuchs (bewusst generisch, keine privaten Namen).
+        public static let defaultDictionary: [String] = [
+            "RAG", "LLM", "MiniMax", "Ollama", "Whisper", "Gemma", "Claude",
+            "Anthropic", "GitHub", "API", "Token", "Prompt", "Repo", "Commit",
+            "Branch", "Backlog", "macOS", "Swift", "SwiftUI", "Python",
+        ]
 
         /// Ein einzelner Bereinigungs-Endpoint (gleiche Bedeutung der Felder wie oben).
         public struct Endpoint: Codable, Equatable {
@@ -353,7 +367,7 @@ extension Config.Whisper {
 }
 
 extension Config.Cleanup {
-    private enum CodingKeys: String, CodingKey { case enabled, provider, ollamaURL, model, numCtx, keepAlive, remote, fallbacks }
+    private enum CodingKeys: String, CodingKey { case enabled, provider, ollamaURL, model, numCtx, keepAlive, remote, fallbacks, dictionary }
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -366,6 +380,7 @@ extension Config.Cleanup {
         remote = c.decodeOrDefault(Config.Cleanup.Remote.self, forKey: .remote, default: remote)
         fallbacks = c.decodeOrDefault([Config.Cleanup.Endpoint].self, forKey: .fallbacks,
                                       default: fallbacks)
+        dictionary = c.decodeOrDefault([String].self, forKey: .dictionary, default: dictionary)
     }
 }
 

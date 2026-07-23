@@ -155,6 +155,7 @@ The most important switches:
 | `cleanup` | `keepAlive` | how long Ollama keeps the model in memory after a dictation: `"2h"` (default), `"20m"`, `"0"` (unload at once) or `"-1"` (never unload). Sent with every request — nothing to configure in Ollama |
 | `cleanup.remote` | `baseURL`, `model` | OpenAI-compatible provider |
 | `cleanup` | `fallbacks` | backup endpoints tried when the primary does not respond (see below) |
+| `cleanup` | `dictionary` | personal glossary of preferred spellings (e.g. `"RAG"`). Passed to the cleanup model, and the word-fidelity check accepts sound-alike corrections to exactly these terms ("Rack" → "RAG") |
 | `vad` | `autoStopAfterSilenceSec` | absence auto-stop (0 = off) |
 | `ui` | `overlayPosition` | `"mouse"` or `"bottomCenter"` |
 

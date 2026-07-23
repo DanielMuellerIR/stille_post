@@ -36,6 +36,10 @@ public final class HistoryStore {
         public var durationSec: Double
         /// Wurde bei der Bereinigung auf den Rohtext zurückgefallen? (Diagnose)
         public var cleanupFellBack: Bool?
+        /// WARUM wurde zurückgefallen bzw. teilweise zurückgesetzt? Ohne diesen
+        /// Grund ließ sich im Verlauf nur raten, ob ein Endpoint down war oder die
+        /// Worttreue-Prüfung die Modell-Ausgabe verworfen hat.
+        public var cleanupFallbackReason: String?
         /// Welcher Endpoint der Kette hat bereinigt? (Diagnose: "war das der Fallback?")
         public var cleanupEndpoint: String?
         /// Wie lange hat die Bereinigung gedauert (Sekunden)? (Diagnose: "warum war
@@ -47,6 +51,7 @@ public final class HistoryStore {
         public init(id: UUID = UUID(), date: Date = Date(), rawText: String, cleanText: String,
                     status: String, errorMessage: String? = nil, audioFileName: String? = nil,
                     durationSec: Double, cleanupFellBack: Bool? = nil,
+                    cleanupFallbackReason: String? = nil,
                     cleanupEndpoint: String? = nil, cleanupSec: Double? = nil) {
             self.id = id
             self.date = date
@@ -57,6 +62,7 @@ public final class HistoryStore {
             self.audioFileName = audioFileName
             self.durationSec = durationSec
             self.cleanupFellBack = cleanupFellBack
+            self.cleanupFallbackReason = cleanupFallbackReason
             self.cleanupEndpoint = cleanupEndpoint
             self.cleanupSec = cleanupSec
         }

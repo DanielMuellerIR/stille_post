@@ -178,6 +178,7 @@
 "core.cleanup.empty" = "Bereinigung lieferte leeren Text";
 "core.cleanup.markdown" = "Bereinigte Fassung enthält Markdown-Strukturen (%@) — Modell hat vermutlich geantwortet statt bereinigt";
 "core.cleanup.words_changed" = "Bereinigte Fassung hat Wörter ergänzt, ersetzt oder umgestellt";
+"core.cleanup.partially_reverted" = "%d Satzteil(e) auf Rohtext zurückgesetzt (Wörter verändert)";
 "core.cleanup.too_short" = "Bereinigte Fassung verdächtig kurz (%.0f %% des Rohtexts)";
 "core.cleanup.too_long" = "Bereinigte Fassung verdächtig lang (%.0f %% des Rohtexts) — Modell hat vermutlich geantwortet statt bereinigt";
 "core.cleanup.invalid_ollama_url" = "Ungültige Ollama-URL: %@";

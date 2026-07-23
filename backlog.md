@@ -210,6 +210,18 @@ Weiterhin offen:
 - Login-Item: gebaut und verifiziert in 0.8.1. Offen bleibt nur das Deaktivieren im
   Alltag und der echte Ab-/Anmeldezyklus.
 - Optional später: Live-Text-Anzeige und Silero-VAD evaluieren.
+- FluidAudio/Parakeet-Benchmark (Idee 2026-07-24): FluidAudio
+  (https://github.com/FluidInference/FluidAudio) ist ein Swift-SDK für lokale
+  Audio-KI auf der Apple Neural Engine — ASR mit Parakeet TDT v3 (0,6B, Deutsch,
+  sehr schnell, liefert Interpunktion/Großschreibung nativ und hat Whispers
+  Übersetzungsproblem bei kurzen Segmenten nicht), dazu Silero-VAD. Vor einem
+  Engine-Wechsel gilt die Repo-Regel: reproduzierbarer Qualitäts- UND
+  Latenzvergleich gegen `large-v3-turbo` mit echten deutschen Diktaten.
+  Referenz-Gegenprobe: VoiceInk (GPL-3) baut auf denselben Bausteinen
+  (whisper.cpp + optional Parakeet via FluidAudio) — architektonisch kein
+  Vorsprung gegenüber Stille Post, aber Ideenquelle (z. B. app-abhängige Modi).
+- Wörterbuch-Pflege in den Einstellungen (GUI) statt nur in `config.json`;
+  Vorbelegung siehe `Config.Cleanup.defaultDictionary` (seit 0.9.0).
 
 Erledigte Release-, README-, Lizenz-, GitHub- und Settings-Arbeit gehört in
 Changelog/Release Notes, nicht zurück in diesen Backlog.

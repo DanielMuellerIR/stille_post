@@ -167,11 +167,21 @@ struct EntryRow: View {
                     .foregroundColor(.secondary)
                 if entry.cleanupFellBack == true {
                     // Kennzeichnung: Die LLM-Bereinigung wurde verworfen (Plausibilitäts-
-                    // prüfung) — es wurde der rohe Whisper-Text verwendet.
+                    // prüfung) — es wurde der rohe Whisper-Text verwendet. Der
+                    // gespeicherte Grund beantwortet als Tooltip "warum eigentlich?".
                     Text(L10n.text("history.raw_fallback"))
                         .font(.caption2)
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Color.orange.opacity(0.2))
+                        .cornerRadius(4)
+                        .help(entry.cleanupFallbackReason ?? "")
+                } else if let note = entry.cleanupFallbackReason {
+                    // Teil-Rücksetzung: Bereinigung wurde verwendet, aber einzelne
+                    // Satzteile kamen aus dem Rohtext (Worttreue-Prüfung).
+                    Text(note)
+                        .font(.caption2)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.yellow.opacity(0.2))
                         .cornerRadius(4)
                 }
                 Spacer()

@@ -10,6 +10,42 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.0] — 2026-07-24
+
+### Hinzugefügt
+
+- Deterministische Vorstufe vor der LLM-Bereinigung: Whisper-Zeilenumbruch-
+  Artefakte werden regelbasiert entfernt — auch mitten im Wort zerrissene Wörter
+  („Identitä⏎tsproblem") werden wieder zusammengefügt (Heuristik am echten
+  Verlaufskorpus validiert: Umbrüche zwischen Wörtern tragen immer ein
+  Leerzeichen). Läuft ohne LLM, also auch bei ausgeschalteter Bereinigung.
+- Deterministische Nachstufe für Rohtext-Fallbacks und zurückgesetzte Satzteile:
+  Punkt vor kleingeschriebenem Wort wird zum Komma (Segmentgrenzen-Artefakt;
+  Abkürzungen, Zahlen und Auslassungspunkte bleiben geschützt), Großschreibung
+  nach `!`/`?` und am Textanfang, gedoppelte Trennzeichen werden zusammengefasst.
+  Ein Diktat ohne (erfolgreiche) LLM-Bereinigung kommt damit deutlich lesbarer an.
+- Persönliches Fachbegriffs-Wörterbuch (`cleanup.dictionary` in `config.json`,
+  mit generischer Vorbelegung): Die Begriffe gehen als bevorzugte Schreibweisen an
+  das Bereinigungsmodell, und die Worttreue-Prüfung akzeptiert ähnlich klingende
+  Korrekturen auf genau diese Begriffe („Mini Macs" → „MiniMax").
+- Der Grund eines Bereinigungs-Fallbacks wird jetzt im Verlauf gespeichert
+  (`cleanupFallbackReason`) und im Verlaufsfenster angezeigt — bisher ließ sich
+  nur raten, ob ein Endpoint down war oder die Worttreue-Prüfung verworfen hat.
+
+### Geändert
+
+- Die Worttreue-Prüfung ist nicht mehr alles-oder-nichts: Statt bei einem einzigen
+  veränderten Wort die komplette Bereinigung zu verwerfen (und damit alle korrekten
+  Satzzeichen-Korrekturen mit), wird der Text an Satzzeichen in Satzteile zerlegt
+  und nur der betroffene Satzteil auf die Roh-Wörter zurückgesetzt. Komplett
+  verworfen wird weiterhin bei Markdown-Strukturen, gesprengtem Längenkorridor,
+  überzogenem Korrektur-Budget oder mehr als der Hälfte betroffener Satzteile.
+  Anlass: Am 2026-07-23 waren alle vier „Ausfälle" in Wahrheit Totalverwürfe wegen
+  einzelner Wörter — die Endpoints hatten in 0,9–3,1 s geantwortet.
+- Gleich klingende Wörter (Kölner Phonetik, ab 3 Buchstaben je Seite) gelten in
+  der Worttreue-Prüfung als zulässige Hör-Korrektur („Rack" → „RAG") statt als
+  verbotene Ersetzung.
+
 ## [0.8.14] — 2026-07-23
 
 ### Behoben

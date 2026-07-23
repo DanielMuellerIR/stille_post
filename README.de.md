@@ -158,6 +158,7 @@ Die wichtigsten Schalter:
 | `cleanup` | `keepAlive` | wie lange Ollama das Modell nach einem Diktat im Speicher behält: `"2h"` (Default), `"20m"`, `"0"` (sofort entladen) oder `"-1"` (nie entladen). Wird bei jeder Anfrage mitgeschickt — in Ollama ist dafür nichts einzustellen |
 | `cleanup.remote` | `baseURL`, `model` | OpenAI-kompatibler Anbieter |
 | `cleanup` | `fallbacks` | Ausweich-Endpoints, falls der primäre nicht antwortet (s. u.) |
+| `cleanup` | `dictionary` | persönliches Fachbegriffs-Wörterbuch mit bevorzugten Schreibweisen (z. B. `"RAG"`). Geht an das Bereinigungsmodell, und die Worttreue-Prüfung akzeptiert ähnlich klingende Korrekturen auf genau diese Begriffe („Rack" → „RAG") |
 | `vad` | `autoStopAfterSilenceSec` | Abwesenheits-Stopp (0 = aus) |
 | `ui` | `overlayPosition` | `"mouse"` oder `"bottomCenter"` |
 

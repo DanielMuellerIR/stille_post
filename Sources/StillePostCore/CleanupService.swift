@@ -19,7 +19,8 @@ public final class CleanupService {
         public let text: String
         /// Wurde die LLM-Ausgabe verworfen und der Rohtext genommen? (Diagnose/Verlauf)
         public let usedFallback: Bool
-        /// Grund für den Fallback (nil, wenn die Bereinigung normal durchlief).
+        /// Grund für den Fallback — oder Hinweis auf teilweise zurückgesetzte
+        /// Satzteile (dann ist usedFallback false). nil = normal durchgelaufen.
         public let fallbackReason: String?
         /// Welcher Endpoint der Kette die Bereinigung geliefert hat (Diagnose;
         /// nil = gar kein Endpoint kam zum Zug, z. B. Bereinigung aus oder alle down).
@@ -85,9 +86,15 @@ public final class CleanupService {
     /// mit dem Rohtext — sie zeigt ein Modell-Qualitätsproblem, keine Ausfall-
     /// Situation, und der Rohtext ist dann die sicherste Antwort.
     public func clean(_ rawText: String) async -> Result {
-        let trimmed = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Deterministische Vorstufe: Whisper-Zeilenumbruch-Artefakte entfernen —
+        // der Text wird lesbarer UND das LLM bekommt weniger verwirrende Eingabe.
+        let trimmed = TranscriptPolish.flattenLineBreaks(rawText)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         guard config.enabled, !trimmed.isEmpty else {
-            return Result(text: trimmed, usedFallback: false, fallbackReason: nil, endpoint: nil)
+            // Auch ohne LLM läuft die deterministische Satzzeichen-Reparatur —
+            // sie ist regelbasiert und verändert keine Wörter.
+            return Result(text: TranscriptPolish.repairPunctuation(trimmed),
+                          usedFallback: false, fallbackReason: nil, endpoint: nil)
         }
         var failures: [String] = []
         for (index, endpoint) in config.chain.enumerated() {
@@ -137,16 +144,30 @@ public final class CleanupService {
                         if index == 0 { notePrimarySuccess() }
                     }
                 }
-                // Plausibilitätsprüfung: Hat das Modell gedichtet/gekürzt/geantwortet?
-                if let reason = Self.sanityCheckFailure(raw: trimmed, cleaned: cleaned) {
-                    return Result(text: trimmed, usedFallback: true, fallbackReason: reason, endpoint: endpoint.label)
+                // Worttreue-Abgleich: Hat das Modell gedichtet/gekürzt/geantwortet?
+                // Einzelne veränderte Satzteile werden chirurgisch auf die
+                // Roh-Wörter zurückgesetzt statt die ganze Bereinigung zu verwerfen.
+                switch Self.reconcile(raw: trimmed, cleaned: cleaned,
+                                      dictionary: Self.normalizedDictionary(config.dictionary)) {
+                case .rejected(let reason):
+                    return Result(text: TranscriptPolish.repairPunctuation(trimmed),
+                                  usedFallback: true, fallbackReason: reason,
+                                  endpoint: endpoint.label)
+                case .accepted(let text, let revertedClauses):
+                    // Zurückgesetzte Satzteile tragen wieder Roh-Schreibung — die
+                    // deterministische Nachstufe repariert dort Satzzeichen/Großschreibung.
+                    let final = revertedClauses > 0
+                        ? TranscriptPolish.repairPunctuation(text) : text
+                    let note = revertedClauses > 0
+                        ? L10n.format("core.cleanup.partially_reverted", revertedClauses) : nil
+                    return Result(text: final, usedFallback: false,
+                                  fallbackReason: note, endpoint: endpoint.label)
                 }
-                return Result(text: cleaned, usedFallback: false, fallbackReason: nil, endpoint: endpoint.label)
             } catch {
                 failures.append("\(endpoint.label): \(error.localizedDescription)")
             }
         }
-        return Result(text: trimmed, usedFallback: true,
+        return Result(text: TranscriptPolish.repairPunctuation(trimmed), usedFallback: true,
                       fallbackReason: L10n.format("core.cleanup.failed", failures.joined(separator: " · ")),
                       endpoint: nil)
     }
@@ -250,130 +271,262 @@ public final class CleanupService {
         return false
     }
 
-    // MARK: - Plausibilitätsprüfung
+    // MARK: - Plausibilitäts- und Worttreue-Abgleich
 
-    /// Prüft, ob die LLM-Ausgabe noch wie eine Bereinigung des Rohtexts aussieht.
-    /// Liefert bei Verdacht eine Begründung, sonst nil.
+    /// Ergebnis des Abgleichs zwischen Rohtext und LLM-Ausgabe.
+    public enum Reconciliation: Equatable {
+        /// Ausgabe insgesamt unbrauchbar (Markdown, extreme Länge, überwiegend
+        /// veränderte Wörter) — der Aufrufer nimmt den Rohtext, `reason` erklärt warum.
+        case rejected(reason: String)
+        /// Ausgabe verwendbar. `revertedClauses` > 0 heißt: einzelne Satzteile
+        /// wurden chirurgisch auf den Rohtext zurückgesetzt, der Rest bleibt bereinigt.
+        case accepted(text: String, revertedClauses: Int)
+    }
+
+    /// Gleicht die LLM-Ausgabe mit dem Rohtext ab — NICHT mehr alles-oder-nichts:
     ///
-    /// Worttreue ist die harte Sicherheitsgrenze: Nach ignorierter Zeichensetzung
-    /// und Groß-/Kleinschreibung werden Roh- und Ausgabewörter ausgerichtet. Erlaubt
-    /// sind Löschungen (Füllwörter) sowie eng begrenzte Mikro-Korrekturen an einer
-    /// Ausrichtungslücke: reine Wort-Trennung/-Fusion (Whisper zerhackt Komposita an
-    /// Sprechpausen: "dauer haft" -> "dauerhaft"), ein einzelner Tippfehler/Verhörer
-    /// ("olama" -> "ollama") und kurze Flexionsendungen ("ein" -> "einen"). Jede
-    /// Einfügung, Umstellung oder echte Ersetzung/Übersetzung ("verbinden" ->
-    /// "verwenden") führt weiter zum Rohtext-Fallback; zu viele Korrekturen ebenfalls.
-    /// Die Längenprüfung bleibt als zusätzlicher Schutz bestehen.
-    static func sanityCheckFailure(raw: String, cleaned: String) -> String? {
-        if cleaned.isEmpty { return L10n.text("core.cleanup.empty") }
+    /// Früher verwarf ein einziges verändertes Wort die komplette Bereinigung —
+    /// inklusive aller korrekten Satzzeichen-Korrekturen im selben Durchlauf. Jetzt
+    /// wird der Text an Satzzeichen in Satzteile ("Klauseln") zerlegt und nur der
+    /// betroffene Satzteil auf die Roh-Wörter zurückgesetzt.
+    ///
+    /// Erlaubte Abweichungen je Ausrichtungslücke (via LCS-Anker):
+    ///  - Löschungen (Füllwörter) und reine Wort-Trennung/-Fusion ("dauer haft").
+    ///  - Ein Tippfehler/Verhörer (Editierabstand 1) und kurze Flexionsendungen.
+    ///  - NEU: gleich klingende Wörter (Kölner Phonetik, "Rack" -> "RAG").
+    ///  - NEU: Wörterbuch-Fachbegriffe, wenn sie ähnlich klingen ("Mini Macs" ->
+    ///    "MiniMax"). `dictionary` enthält dafür normalisierte Begriffe
+    ///    (siehe `normalizedDictionary`).
+    ///
+    /// Harte Gesamtgrenzen führen weiter zum kompletten Rohtext-Fallback:
+    /// Markdown-Strukturen, Längenkorridor, Korrektur-Budget (schleichendes
+    /// Umschreiben) und mehr als die Hälfte zurückgesetzter Satzteile.
+    static func reconcile(raw: String, cleaned: String,
+                          dictionary: Set<String> = []) -> Reconciliation {
+        if cleaned.isEmpty { return .rejected(reason: L10n.text("core.cleanup.empty")) }
         // Struktur-Prüfung: Gesprochene Sprache enthält keine Markdown-Syntax.
         // Tauchen Code-Zäune, Überschriften oder Tabellen NEU in der Ausgabe auf,
         // hat das Modell "geantwortet" (Doku/Beispiele generiert) statt geputzt.
         for marker in ["```", "\n#", "|---", "| ---"] {
             if cleaned.contains(marker), !raw.contains(marker) {
-                return L10n.format(
+                return .rejected(reason: L10n.format(
                     "core.cleanup.markdown",
                     marker.trimmingCharacters(in: .whitespacesAndNewlines)
-                )
+                ))
             }
         }
-        if let reason = fidelityFailure(
-            rawWords: normalizedWords(in: raw),
-            cleanedWords: normalizedWords(in: cleaned)
-        ) {
-            return reason
-        }
+        // Längenkorridor: Bei sehr kurzen Eingaben ist das Verhältnis statistisch
+        // wackelig — dort erlauben wir mehr Spielraum ("ähm ja Punkt" -> "Ja.").
         let rawCount = Double(raw.count)
         let cleanedCount = Double(cleaned.count)
-        // Bei sehr kurzen Eingaben ist das Verhältnis statistisch wackelig — dort
-        // erlauben wir mehr Spielraum (z. B. "ähm ja Punkt" -> "Ja.").
         let lowerBound = rawCount < 60 ? 0.2 : 0.5
         let upperBound = rawCount < 60 ? 3.0 : 1.5
         let ratio = cleanedCount / rawCount
         if ratio < lowerBound {
-            return L10n.format("core.cleanup.too_short", ratio * 100)
+            return .rejected(reason: L10n.format("core.cleanup.too_short", ratio * 100))
         }
         if ratio > upperBound {
-            return L10n.format("core.cleanup.too_long", ratio * 100)
+            return .rejected(reason: L10n.format("core.cleanup.too_long", ratio * 100))
         }
-        return nil
-    }
 
-    /// Zerlegt Text Unicode-sicher in vergleichbare Wörter. Satzzeichen,
-    /// Bindestriche und Groß-/Kleinschreibung sind für die Treueprüfung egal;
-    /// Umlaute und andere nicht-ASCII-Buchstaben bleiben erhalten.
-    private static func normalizedWords(in text: String) -> [String] {
-        text.precomposedStringWithCanonicalMapping
-            .lowercased()
-            .split { !$0.isLetter && !$0.isNumber }
-            .map(String.init)
-    }
+        let rawTokens = tokens(in: raw)
+        let cleanTokens = tokens(in: cleaned)
+        let n = rawTokens.count, m = cleanTokens.count
+        // Alles gelöscht: der Längenkorridor oben ist hier die richtige Grenze.
+        if m == 0 { return .accepted(text: cleaned, revertedClauses: 0) }
 
-    /// Richtet Roh- und Ausgabewörter über eine längste gemeinsame Teilfolge (LCS)
-    /// aus und prüft jede Lücke zwischen zwei gemeinsamen Ankern. Löschungen sind
-    /// erlaubt (Füllwörter), Einfügungen nie (erfundene Wörter). Eine Ersetzung geht
-    /// nur als sichere Mikro-Korrektur durch (siehe `isSmallCorrection`). Ein
-    /// Gesamtbudget verhindert schrittweises Umschreiben über viele Mini-Edits.
-    private static func fidelityFailure(rawWords: [String], cleanedWords: [String]) -> String? {
-        let n = rawWords.count, m = cleanedWords.count
-        // Alles gelöscht: die separate Längenprüfung ist hier die richtige Grenze.
-        if m == 0 { return nil }
         // LCS-Längentabelle von hinten aufgebaut, um Anker vorwärts ablaufen zu können.
         var lcs = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
         if n > 0 {
             for i in stride(from: n - 1, through: 0, by: -1) {
                 for j in stride(from: m - 1, through: 0, by: -1) {
-                    lcs[i][j] = rawWords[i] == cleanedWords[j]
+                    lcs[i][j] = rawTokens[i].norm == cleanTokens[j].norm
                         ? lcs[i + 1][j + 1] + 1
                         : max(lcs[i + 1][j], lcs[i][j + 1])
                 }
             }
         }
-        var i = 0, j = 0, gapRawStart = 0, gapCleanStart = 0, corrections = 0
-        // Klassifiziert die Lücke rawWords[rs..<re] / cleanedWords[cs..<ce] vor einem Anker.
-        func classify(_ rs: Int, _ re: Int, _ cs: Int, _ ce: Int) -> String? {
-            if cs == ce { return nil }                  // nur gelöscht (oder nichts): ok
-            if rs == re {                               // nur eingefügt: Modell erfand Wörter
-                return L10n.text("core.cleanup.words_changed")
+
+        // Je Ausgabe-Wort: Deckungsbereich in Roh-Wort-Indizes (für die spätere
+        // Rücksetzung) und ob es zu einer unzulässigen Änderung gehört.
+        var tainted = [Bool](repeating: false, count: m)
+        var rawLo = [Int](repeating: 0, count: m)
+        var rawHi = [Int](repeating: 0, count: m)
+        var corrections = 0
+        // Bewertet die Lücke rawTokens[rs..<re] / cleanTokens[cs..<ce] vor einem Anker.
+        func classifyGap(_ rs: Int, _ re: Int, _ cs: Int, _ ce: Int) {
+            guard ce > cs else { return }  // reine Löschung (Füllwörter): ok
+            let allowed = rs < re && isAllowedReplacement(
+                rawSpan: rawTokens[rs..<re].map(\.norm),
+                cleanedSpan: cleanTokens[cs..<ce].map(\.norm),
+                dictionary: dictionary
+            )
+            if allowed { corrections += max(re - rs, ce - cs) }
+            for c in cs..<ce {
+                tainted[c] = !allowed  // rs == re wäre eine reine Einfügung: verboten
+                rawLo[c] = rs
+                rawHi[c] = re
             }
-            guard isSmallCorrection(
-                rawSpan: rawWords[rs..<re], cleanedSpan: cleanedWords[cs..<ce]
-            ) else {
-                return L10n.text("core.cleanup.words_changed")
-            }
-            corrections += max(re - rs, ce - cs)
-            return nil
         }
+        var i = 0, j = 0, gapRawStart = 0, gapCleanStart = 0
         while i < n, j < m {
-            if rawWords[i] == cleanedWords[j] {
-                if let r = classify(gapRawStart, i, gapCleanStart, j) { return r }
+            if rawTokens[i].norm == cleanTokens[j].norm {
+                classifyGap(gapRawStart, i, gapCleanStart, j)
+                rawLo[j] = i
+                rawHi[j] = i + 1
                 i += 1; j += 1; gapRawStart = i; gapCleanStart = j
             } else if lcs[i + 1][j] >= lcs[i][j + 1] {
-                i += 1  // rawWords[i] gehört zur Lücke (Löschungs-Kandidat)
+                i += 1  // rawTokens[i] gehört zur Lücke (Löschungs-Kandidat)
             } else {
-                j += 1  // cleanedWords[j] gehört zur Lücke (Einfügungs-Kandidat)
+                j += 1  // cleanTokens[j] gehört zur Lücke (Einfügungs-Kandidat)
             }
         }
-        if let r = classify(gapRawStart, n, gapCleanStart, m) { return r }
+        classifyGap(gapRawStart, n, gapCleanStart, m)
+
         // Backstop gegen schleichendes Umschreiben: viele erlaubte Mini-Korrekturen.
         let budget = max(4, Int((0.25 * Double(n)).rounded(.up)))
-        if corrections > budget { return L10n.text("core.cleanup.words_changed") }
-        return nil
+        if corrections > budget {
+            return .rejected(reason: L10n.text("core.cleanup.words_changed"))
+        }
+        if !tainted.contains(true) {
+            return .accepted(text: cleaned, revertedClauses: 0)
+        }
+
+        // Satzteile bilden: Jede Interpunktion zwischen zwei Ausgabe-Wörtern
+        // eröffnet einen neuen Satzteil.
+        var clauseOf = [Int](repeating: 0, count: m)
+        var clause = 0
+        for j in 1..<m {
+            let gap = cleaned[cleanTokens[j - 1].range.upperBound..<cleanTokens[j].range.lowerBound]
+            if isClauseBoundary(gap) { clause += 1 }
+            clauseOf[j] = clause
+        }
+        let clauseCount = clause + 1
+        var clauseTainted = [Bool](repeating: false, count: clauseCount)
+        var clauseRawLo = [Int](repeating: Int.max, count: clauseCount)
+        var clauseRawHi = [Int](repeating: 0, count: clauseCount)
+        var clauseFirst = [Int](repeating: Int.max, count: clauseCount)
+        var clauseLast = [Int](repeating: 0, count: clauseCount)
+        for j in 0..<m {
+            let k = clauseOf[j]
+            if tainted[j] { clauseTainted[k] = true }
+            clauseRawLo[k] = min(clauseRawLo[k], rawLo[j])
+            clauseRawHi[k] = max(clauseRawHi[k], rawHi[j])
+            clauseFirst[k] = min(clauseFirst[k], j)
+            clauseLast[k] = max(clauseLast[k], j)
+        }
+        let revertedCount = clauseTainted.filter { $0 }.count
+        // Muss mehr als die Hälfte zurückgesetzt werden, ist die Ausgabe insgesamt
+        // nicht vertrauenswürdig — dann ist der komplette Rohtext die ehrlichere Wahl.
+        if revertedCount * 2 > clauseCount {
+            return .rejected(reason: L10n.text("core.cleanup.words_changed"))
+        }
+
+        // Wiederaufbau: unauffällige Satzteile wörtlich aus der Ausgabe übernehmen
+        // (inklusive ihrer Interpunktion), zurückgesetzte durch die Roh-Wörter
+        // ersetzen. `nextRaw` verhindert, dass sich überlappende Deckungsbereiche
+        // benachbarter Satzteile Roh-Wörter doppelt einfügen.
+        var result = ""
+        var cursor = cleaned.startIndex
+        var nextRaw = 0
+        for k in 0..<clauseCount {
+            let firstToken = cleanTokens[clauseFirst[k]]
+            let lastToken = cleanTokens[clauseLast[k]]
+            if clauseTainted[k] {
+                result += cleaned[cursor..<firstToken.range.lowerBound]
+                let lo = min(max(clauseRawLo[k], nextRaw), n)
+                let hi = min(max(clauseRawHi[k], lo), n)
+                result += rawTokens[lo..<hi].map { String($0.text) }.joined(separator: " ")
+                nextRaw = hi
+            } else {
+                result += cleaned[cursor..<lastToken.range.upperBound]
+                nextRaw = max(nextRaw, clauseRawHi[k])
+            }
+            cursor = lastToken.range.upperBound
+        }
+        result += cleaned[cursor...]  // Interpunktion nach dem letzten Wort
+        return .accepted(text: result, revertedClauses: revertedCount)
     }
 
-    /// True nur bei sicheren Mikro-Korrekturen an einer Ausrichtungslücke. Bewusst
-    /// eng (Sicherheit vor Rettung): eine Bedeutungsänderung wie "verbinden" ->
-    /// "verwenden" (Abstand 2, zwei verschiedene Wörter) muss weiter zum Rohtext-
-    /// Fallback führen.
-    ///   1. zusammengefügt gleich  -> reine Wort-Trennung/-Fusion ("dauer haft"->"dauerhaft")
-    ///   2. Editierabstand <= 1     -> ein Tippfehler/Verhörer ("olama"->"ollama")
-    ///   3. Präfix + Endung <= 2    -> kurze Flexion ("ein"->"einen", "...ung"->"...ungen")
-    private static func isSmallCorrection(
-        rawSpan: ArraySlice<String>, cleanedSpan: ArraySlice<String>
+    /// Ein Wort des Originaltexts samt Fundstelle und normalisierter Form.
+    private struct Token {
+        /// Original-Schreibweise (für die Rücksetzung auf Roh-Wörter).
+        let text: Substring
+        /// Vergleichsform: Unicode-normalisiert und kleingeschrieben — Satzzeichen
+        /// und Groß-/Kleinschreibung sind für die Treueprüfung egal.
+        let norm: String
+        /// Fundstelle im Originalstring (für den Klausel-Wiederaufbau).
+        let range: Range<String.Index>
+    }
+
+    /// Zerlegt Text Unicode-sicher in Wörter (Buchstaben-/Ziffernfolgen).
+    private static func tokens(in text: String) -> [Token] {
+        var result: [Token] = []
+        var start: String.Index?
+        var idx = text.startIndex
+        while true {
+            let isWordChar = idx < text.endIndex && (text[idx].isLetter || text[idx].isNumber)
+            if isWordChar, start == nil { start = idx }
+            if !isWordChar, let s = start {
+                let piece = text[s..<idx]
+                result.append(Token(
+                    text: piece,
+                    norm: String(piece).precomposedStringWithCanonicalMapping.lowercased(),
+                    range: s..<idx
+                ))
+                start = nil
+            }
+            if idx == text.endIndex { break }
+            idx = text.index(after: idx)
+        }
+        return result
+    }
+
+    /// Zählt der Text zwischen zwei Wörtern als Satzteil-Grenze? Interpunktion ja;
+    /// ein Bindestrich nur mit Leerraum daneben (Gedankenstrich) — "Repo-Rack"
+    /// bleibt EIN Satzteil.
+    private static func isClauseBoundary(_ gap: Substring) -> Bool {
+        let marks: Set<Character> = [".", ":", ",", ";", "!", "?", "–", "—", "…",
+                                     "\"", "„", "“", "”", "«", "»", "(", ")"]
+        if gap.contains(where: { marks.contains($0) }) { return true }
+        if gap.contains("-"), gap.contains(where: \.isWhitespace) { return true }
+        return false
+    }
+
+    /// Normalisiert Wörterbuch-Begriffe für den Treue-Abgleich: kleingeschrieben,
+    /// nur Buchstaben/Ziffern ("Stille Post" -> "stillepost", "dm0.de" -> "dm0de") —
+    /// dieselbe Form, in der auch Ausrichtungslücken zusammengefügt werden.
+    static func normalizedDictionary(_ terms: [String]) -> Set<String> {
+        Set(terms.map { term in
+            String(term.precomposedStringWithCanonicalMapping.lowercased()
+                .filter { $0.isLetter || $0.isNumber })
+        }.filter { !$0.isEmpty })
+    }
+
+    /// True bei zulässigen Ersetzungen an einer Ausrichtungslücke. Bewusst
+    /// begrenzt (Sicherheit vor Rettung) — Bedeutungsänderungen, die anders
+    /// klingen ("verbinden" -> "verwenden"), bleiben unzulässig:
+    ///   1. zusammengefügt gleich   -> reine Wort-Trennung/-Fusion ("dauer haft"->"dauerhaft")
+    ///   2. Wörterbuch-Fachbegriff  -> erlaubt, wenn er ähnlich klingt ("mini macs"->"minimax")
+    ///   3. Editierabstand <= 1     -> ein Tippfehler/Verhörer ("olama"->"ollama")
+    ///   4. Präfix + Endung <= 2    -> kurze Flexion ("ein"->"einen", "...ung"->"...ungen")
+    ///   5. gleicher Lautcode       -> klingt identisch (Kölner Phonetik, "rack"->"rag")
+    private static func isAllowedReplacement(
+        rawSpan: [String], cleanedSpan: [String], dictionary: Set<String>
     ) -> Bool {
-        let a = Array(rawSpan.joined())
-        let b = Array(cleanedSpan.joined())
+        let joinedRaw = rawSpan.joined()
+        let joinedCleaned = cleanedSpan.joined()
+        let a = Array(joinedRaw)
+        let b = Array(joinedCleaned)
         if a == b { return true }  // reine Wort-Trennung/-Fusion: Buchstaben identisch
+        // Wörterbuch: Ein konfigurierter Fachbegriff darf einen ähnlich klingenden
+        // Verhörer ersetzen — Ähnlichkeit über den Lautcode (Abstand <= 1), damit
+        // nicht jedes beliebige Wort zum Fachbegriff "korrigiert" werden darf.
+        if dictionary.contains(joinedCleaned) {
+            let rawCode = Array(TranscriptPolish.colognePhonetics(joinedRaw))
+            let cleanedCode = Array(TranscriptPolish.colognePhonetics(joinedCleaned))
+            if editDistance(rawCode, cleanedCode) <= 1 { return true }
+        }
         // Tokens mit Ziffern sind fast immer technische Kennungen (Modell-/Versions-
         // namen wie "426b", "id3", "3.59b"): dort ist schon ein Zeichen Unterschied
         // bedeutungstragend. Keine Tippfehler-/Flexionstoleranz — nur exakt gleich.
@@ -381,6 +534,15 @@ public final class CleanupService {
         if editDistance(a, b) <= 1 { return true }
         let (short, long) = a.count <= b.count ? (a, b) : (b, a)
         if long.count - short.count <= 2, long.starts(with: short) { return true }
+        // Gleich klingende Wörter sind Hör-/Schreibvarianten desselben Diktats
+        // ("Rack" -> "RAG"). Erst ab 3 Buchstaben je Seite — sehr kurze Wörter
+        // ("er"/"ihr") teilen sich sonst zu leicht einen Lautcode.
+        if a.count >= 3, b.count >= 3 {
+            let rawCode = TranscriptPolish.colognePhonetics(joinedRaw)
+            if !rawCode.isEmpty, rawCode == TranscriptPolish.colognePhonetics(joinedCleaned) {
+                return true
+            }
+        }
         return false
     }
 
@@ -435,7 +597,7 @@ public final class CleanupService {
                 "num_ctx": endpoint.numCtx, // begrenztes Kontextfenster (RAM! siehe Config)
             ],
             "messages": [
-                ["role": "system", "content": CleanupService.systemPrompt],
+                ["role": "system", "content": Self.systemPrompt(dictionary: config.dictionary)],
                 ["role": "user", "content": text],
             ],
         ] as [String: Any])
@@ -519,7 +681,7 @@ public final class CleanupService {
             "model": endpoint.remote.model,
             "temperature": 0,
             "messages": [
-                ["role": "system", "content": CleanupService.systemPrompt],
+                ["role": "system", "content": Self.systemPrompt(dictionary: config.dictionary)],
                 ["role": "user", "content": text],
             ],
         ] as [String: Any])
@@ -672,4 +834,21 @@ public final class CleanupService {
 
     AUSGABE: Gib nur den geputzten Text aus — keine Anführungszeichen, kein Codeblock, keine Erklärung, keine Begrüßung. Bei leerer Eingabe: leere Ausgabe.
     """
+
+    /// Hängt das konfigurierte Fachbegriffs-Wörterbuch an den System-Prompt an.
+    /// Whisper verhört Fachbegriffe systematisch ("Rack" statt "RAG") — die Liste
+    /// gibt dem Modell die gewünschte Schreibweise vor; die Worttreue-Prüfung
+    /// lässt genau solche ähnlich klingenden Wörterbuch-Korrekturen durch.
+    public static func systemPrompt(dictionary: [String]) -> String {
+        let terms = dictionary
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard !terms.isEmpty else { return systemPrompt }
+        return systemPrompt + """
+
+
+        FACHBEGRIFFE (bevorzugte Schreibweisen): \(terms.joined(separator: ", "))
+        Erkennst du eines dieser Wörter falsch transkribiert (ähnlich klingend, z. B. „Rack" statt „RAG"), verwende exakt die Schreibweise aus dieser Liste. Alle anderen Wörter bleiben unverändert.
+        """
+    }
 }

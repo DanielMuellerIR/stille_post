@@ -83,142 +83,256 @@ final class CoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
     }
 
-    // MARK: Plausibilitätsprüfung der Bereinigung
+    // MARK: Plausibilitäts- und Worttreue-Abgleich der Bereinigung
 
-    func testSanityCheckAcceptsNormalCleanup() {
+    /// Kurzform: Abgleich ohne Wörterbuch — akzeptiert die Ausgabe unverändert?
+    private func acceptsUnchanged(raw: String, cleaned: String) -> Bool {
+        CleanupService.reconcile(raw: raw, cleaned: cleaned)
+            == .accepted(text: cleaned, revertedClauses: 0)
+    }
+
+    /// Kurzform: Abgleich ohne Wörterbuch — komplett verworfen (Rohtext-Fallback)?
+    private func rejects(raw: String, cleaned: String) -> Bool {
+        if case .rejected = CleanupService.reconcile(raw: raw, cleaned: cleaned) {
+            return true
+        }
+        return false
+    }
+
+    func testReconcileAcceptsNormalCleanup() {
         let raw = "also ähm ich wollte halt mal kurz sagen dass das mit dem diktieren noch nicht so richtig schnell läuft"
         let cleaned = "Ich wollte mal kurz sagen, dass das mit dem Diktieren noch nicht so richtig schnell läuft."
-        XCTAssertNil(CleanupService.sanityCheckFailure(raw: raw, cleaned: cleaned))
+        XCTAssertTrue(acceptsUnchanged(raw: raw, cleaned: cleaned))
     }
 
-    func testSanityCheckRejectsMassiveShortening() {
+    func testReconcileRejectsMassiveShortening() {
         // Simuliert den realen Fehlerfall: Modell kürzt langes Diktat auf einen Satz.
         let raw = String(repeating: "das ist ein längerer diktierter satz mit vielen wörtern ", count: 10)
-        let cleaned = "Okay."
-        XCTAssertNotNil(CleanupService.sanityCheckFailure(raw: raw, cleaned: cleaned))
+        XCTAssertTrue(rejects(raw: raw, cleaned: "Okay."))
     }
 
-    func testSanityCheckRejectsAnswering() {
+    func testReconcileRejectsAnswering() {
         // Simuliert: Modell "beantwortet" das Diktat statt zu putzen (Ausgabe wächst stark).
         let raw = "welche lokalen modelle empfiehlst du für textbereinigung"
         let cleaned = String(repeating: "Hier ist eine Tabelle empfohlener Modelle … ", count: 20)
-        XCTAssertNotNil(CleanupService.sanityCheckFailure(raw: raw, cleaned: cleaned))
+        XCTAssertTrue(rejects(raw: raw, cleaned: cleaned))
     }
 
-    func testSanityCheckAllowsShortInputs() {
+    func testReconcileAllowsShortInputs() {
         // Kurze Diktate dürfen stark schrumpfen ("ähm ja Punkt" -> "Ja.").
-        XCTAssertNil(CleanupService.sanityCheckFailure(raw: "ähm ja punkt", cleaned: "Ja."))
+        XCTAssertTrue(acceptsUnchanged(raw: "ähm ja punkt", cleaned: "Ja."))
     }
 
-    func testSanityCheckRejectsWordReplacement() {
-        // Gleiche Länge reichte der alten Prüfung: Eine vermeintliche
-        // Rechtschreibkorrektur darf den Inhalt trotzdem nicht verändern.
-        XCTAssertNotNil(CleanupService.sanityCheckFailure(
+    func testReconcileRevertsOnlyTheChangedClause() {
+        // DER Kernfall der neuen Prüfung: Ein verändertes Wort verwirft nicht mehr
+        // die ganze Bereinigung, sondern setzt nur den betroffenen Satzteil zurück —
+        // die korrekten Korrekturen der übrigen Satzteile bleiben erhalten.
+        let result = CleanupService.reconcile(
+            raw: "das machen wir ähm mit dem tool außerdem verbinden wir die geräte",
+            cleaned: "Das machen wir mit dem Tool, außerdem verwenden wir die Geräte."
+        )
+        XCTAssertEqual(result, .accepted(
+            text: "Das machen wir mit dem Tool, außerdem verbinden wir die geräte.",
+            revertedClauses: 1
+        ))
+    }
+
+    func testReconcileRejectsWhenMostClausesChanged() {
+        // Ist mehr als die Hälfte der Satzteile betroffen, ist die Ausgabe insgesamt
+        // nicht vertrauenswürdig -> kompletter Rohtext-Fallback wie früher.
+        XCTAssertTrue(rejects(
             raw: "Bitte verbinden wir die beiden Geräte morgen",
             cleaned: "Bitte verwenden wir die beiden Geräte morgen."
         ))
     }
 
-    func testSanityCheckRejectsWordReordering() {
+    func testReconcileRejectsWordReordering() {
         // Auch wenn exakt dieselben Wörter vorkommen, bleibt ihre Reihenfolge Teil
         // des Diktats und darf nicht vom Bereinigungsmodell geglättet werden.
-        XCTAssertNotNil(CleanupService.sanityCheckFailure(
+        XCTAssertTrue(rejects(
             raw: "Heute möchte ich den langen Bericht in Ruhe fertig schreiben",
             cleaned: "Den langen Bericht möchte ich heute in Ruhe fertig schreiben."
         ))
     }
 
-    func testSanityCheckAllowsOrderedWordDeletion() {
-        XCTAssertNil(CleanupService.sanityCheckFailure(
+    func testReconcileAllowsOrderedWordDeletion() {
+        XCTAssertTrue(acceptsUnchanged(
             raw: "Also ich ich wollte ähm heute den Bericht schreiben",
             cleaned: "Ich wollte heute den Bericht schreiben."
         ))
     }
 
-    func testSanityCheckRejectsEmpty() {
-        XCTAssertNotNil(CleanupService.sanityCheckFailure(raw: "hallo welt", cleaned: ""))
+    func testReconcileRejectsEmpty() {
+        XCTAssertTrue(rejects(raw: "hallo welt", cleaned: ""))
     }
 
-    func testSanityCheckRejectsMarkdownStructures() {
+    func testReconcileRejectsMarkdownStructures() {
         // Realer Fehlerfall (bei einem anderen Diktat-Tool beobachtet): Das Modell
         // "beantwortet" das Diktat und erzeugt Codeblöcke/Beispiel-Befehle.
         let raw = "bitte noch ein startgeräusch ergänzen das kannst du mit dem generierungstool machen"
         let answered = "Bitte noch ein Startgeräusch ergänzen.\n```\ntool generate --name blup\n```"
-        XCTAssertNotNil(CleanupService.sanityCheckFailure(raw: raw, cleaned: answered))
+        XCTAssertTrue(rejects(raw: raw, cleaned: answered))
         // Aber: Diktiert jemand selbst über Markdown, dürfen vorhandene Marker bleiben.
-        XCTAssertNil(CleanupService.sanityCheckFailure(
+        XCTAssertTrue(acceptsUnchanged(
             raw: "der code steht in einem ```-Block ähm im readme",
             cleaned: "Der Code steht in einem ```-Block im README."))
     }
 
     // MARK: Tolerante Treueprüfung — legitime Mikro-Korrekturen zulassen
 
-    func testSanityCheckAllowsWhisperCompoundSplit() {
+    func testReconcileAllowsWhisperCompoundSplit() {
         // Whisper zerhackt Komposita an Sprechpausen; das Zusammenfügen ist kein
         // Umschreiben und darf nicht länger den Rohtext-Fallback auslösen.
-        XCTAssertNil(CleanupService.sanityCheckFailure(
+        XCTAssertTrue(acceptsUnchanged(
             raw: "das soll dann dauer haft geladen bleiben",
             cleaned: "Das soll dann dauerhaft geladen bleiben."))
-        XCTAssertNil(CleanupService.sanityCheckFailure(
+        XCTAssertTrue(acceptsUnchanged(
             raw: "ich mache das über einen screens hot",
             cleaned: "Ich mache das über einen Screenshot."))
     }
 
-    func testSanityCheckAllowsSingleTypoFix() {
+    func testReconcileAllowsSingleTypoFix() {
         // Ein einzelner Verhörer/Tippfehler (Editierabstand 1) ist eine Korrektur,
         // keine Bedeutungsänderung.
-        XCTAssertNil(CleanupService.sanityCheckFailure(
+        XCTAssertTrue(acceptsUnchanged(
             raw: "ich nutze ein lokales olama modell",
             cleaned: "Ich nutze ein lokales Ollama-Modell."))
-        XCTAssertNil(CleanupService.sanityCheckFailure(
+        XCTAssertTrue(acceptsUnchanged(
             raw: "ich haabe den bericht geschrieben",
             cleaned: "Ich habe den Bericht geschrieben."))
     }
 
-    func testSanityCheckAllowsShortInflectionEnding() {
+    func testReconcileAllowsShortInflectionEnding() {
         // Kurze Flexionsendung (Präfix + max. 2 Zeichen) korrigiert Grammatik,
         // ohne das Wort auszutauschen.
-        XCTAssertNil(CleanupService.sanityCheckFailure(
+        XCTAssertTrue(acceptsUnchanged(
             raw: "wir hätten gerne ein logging modus",
             cleaned: "Wir hätten gerne einen Logging-Modus."))
-        XCTAssertNil(CleanupService.sanityCheckFailure(
+        XCTAssertTrue(acceptsUnchanged(
             raw: "weniger vorhersehbare formulierung bitte",
             cleaned: "Weniger vorhersehbare Formulierungen, bitte."))
     }
 
-    func testSanityCheckStillRejectsTranslationAndSynonyms() {
+    func testReconcileAllowsSoundAlikeWords() {
+        // Gleich klingende Wörter (Kölner Phonetik) sind Hörvarianten desselben
+        // Diktats: "Rack" -> "RAG" ist genau die gewünschte Korrektur.
+        XCTAssertTrue(acceptsUnchanged(
+            raw: "ich möchte mehr mit rack machen also retrieval augmented generation",
+            cleaned: "Ich möchte mehr mit RAG machen, also Retrieval Augmented Generation."))
+    }
+
+    func testReconcileAllowsDictionaryTermThatSoundsSimilar() {
+        // Wörterbuch-Begriff: "Mini Macs" klingt ähnlich wie "MiniMax" (Lautcode-
+        // Abstand 1) — mit Eintrag erlaubt, ohne Eintrag nicht.
+        let raw = "mein mini macs abo läuft diese woche aus und wird nicht verlängert"
+        let cleaned = "Mein MiniMax Abo läuft diese Woche aus und wird nicht verlängert."
+        XCTAssertEqual(
+            CleanupService.reconcile(raw: raw, cleaned: cleaned,
+                                     dictionary: CleanupService.normalizedDictionary(["MiniMax"])),
+            .accepted(text: cleaned, revertedClauses: 0)
+        )
+        // Ohne Wörterbuch bleibt es eine unzulässige Ersetzung (ein Satzteil,
+        // also kompletter Fallback).
+        XCTAssertTrue(rejects(raw: raw, cleaned: cleaned))
+    }
+
+    func testReconcileStillRejectsTranslationAndSynonyms() {
         // Übersetzung eines Fachbegriffs bleibt eine Bedeutungsänderung -> Fallback.
-        XCTAssertNotNil(CleanupService.sanityCheckFailure(
+        XCTAssertTrue(rejects(
             raw: "bitte weniger m dashes verwenden",
             cleaned: "Bitte weniger Gedankenstriche verwenden."))
-        // Synonym mit größerem Abstand bleibt verboten.
-        XCTAssertNotNil(CleanupService.sanityCheckFailure(
+        // Synonym mit größerem Abstand (und anderem Klang) bleibt verboten.
+        XCTAssertTrue(rejects(
             raw: "das ist die hochqualitätigste variante",
             cleaned: "Das ist die hochwertigste Variante."))
     }
 
-    func testSanityCheckProtectsTechnicalTokensWithDigits() {
+    func testReconcileProtectsTechnicalTokensWithDigits() {
         // Modell-/Versionskennungen dürfen NIE als "Tippfehler" durchgehen — ein
         // Zeichen Unterschied ist hier bedeutungstragend (426b ≠ 426c).
-        XCTAssertNotNil(CleanupService.sanityCheckFailure(
+        XCTAssertTrue(rejects(
             raw: "wir nehmen das gemma 426b modell",
             cleaned: "Wir nehmen das Gemma 426c Modell."))
-        XCTAssertNotNil(CleanupService.sanityCheckFailure(
+        XCTAssertTrue(rejects(
             raw: "die tags stehen im id3 header",
             cleaned: "Die Tags stehen im ID4 Header."))
         // Unveränderte Ziffern-Kennung darf drumherum weiter geputzt werden (hier:
         // Füllwort entfernen), solange die Kennung selbst exakt erhalten bleibt.
-        XCTAssertNil(CleanupService.sanityCheckFailure(
+        XCTAssertTrue(acceptsUnchanged(
             raw: "das ist halt das gemma 426b modell",
             cleaned: "Das ist das Gemma 426b Modell."))
     }
 
-    func testSanityCheckRejectsManyMicroEditsAsRewrite() {
+    func testReconcileRejectsManyMicroEditsAsRewrite() {
         // Jede Einzeländerung wäre klein, aber in Summe ist es ein Umschreiben:
         // Das Gesamtbudget muss greifen.
-        XCTAssertNotNil(CleanupService.sanityCheckFailure(
+        XCTAssertTrue(rejects(
             raw: "alpha ein beta ein gamma ein delta ein epsilon ein zeta",
             cleaned: "Alpha einen, Beta einen, Gamma einen, Delta einen, Epsilon einen, Zeta."))
+    }
+
+    // MARK: Deterministische Vorstufe — Zeilenumbruch-Artefakte
+
+    func testFlattenJoinsWordBrokenAcrossLines() {
+        // Realer Whisper-Fall: Umbruch mitten im Wort, ohne Leerzeichen.
+        XCTAssertEqual(TranscriptPolish.flattenLineBreaks("Identitä\ntsproblem"),
+                       "Identitätsproblem")
+        XCTAssertEqual(TranscriptPolish.flattenLineBreaks("was zu dikt\nieren, was"),
+                       "was zu diktieren, was")
+    }
+
+    func testFlattenReplacesLineBreaksBetweenWordsWithSpace() {
+        // Umbrüche ZWISCHEN Wörtern tragen im Korpus immer ein Leerzeichen —
+        // sie (und Mehrfach-Leerraum) werden zu genau einem Leerzeichen.
+        XCTAssertEqual(TranscriptPolish.flattenLineBreaks("ausgeschaltet,\n weil ich"),
+                       "ausgeschaltet, weil ich")
+        XCTAssertEqual(TranscriptPolish.flattenLineBreaks("Hallo\nWelt  und   mehr"),
+                       "Hallo Welt und mehr")
+    }
+
+    // MARK: Deterministische Nachstufe — Satzzeichen-/Großschreibungs-Reparatur
+
+    func testRepairTurnsMidSentencePeriodIntoComma() {
+        XCTAssertEqual(
+            TranscriptPolish.repairPunctuation("Die Bereinigung ist ausgefallen. und zwar öfter"),
+            "Die Bereinigung ist ausgefallen, und zwar öfter")
+    }
+
+    func testRepairKeepsAbbreviationsNumbersAndEllipses() {
+        // "B." ist kürzer als 3 Buchstaben -> Abkürzung, bleibt unangetastet.
+        XCTAssertEqual(TranscriptPolish.repairPunctuation("Wir nehmen z. B. und zwar gerne Äpfel"),
+                       "Wir nehmen z. B. und zwar gerne Äpfel")
+        // Zahlen/Datumsangaben bleiben unangetastet.
+        XCTAssertEqual(TranscriptPolish.repairPunctuation("Das Abo geht bis zum 27.07. und endet dann"),
+                       "Das Abo geht bis zum 27.07. und endet dann")
+        // Auslassungspunkte sind kein Satzende und kein Artefakt.
+        XCTAssertEqual(TranscriptPolish.repairPunctuation("Moment... dann eben nicht"),
+                       "Moment... dann eben nicht")
+    }
+
+    func testRepairCollapsesDoubledPunctuation() {
+        // Entsteht, wenn ein leer zurückgesetzter Satzteil seine Rand-Interpunktion
+        // hinterlässt ("Wort, , dass").
+        XCTAssertEqual(TranscriptPolish.repairPunctuation("Das kostet 200 Dollar, , dass wir das nutzen"),
+                       "Das kostet 200 Dollar, dass wir das nutzen")
+        XCTAssertEqual(TranscriptPolish.repairPunctuation("Genau, , , also gut."),
+                       "Genau, also gut.")
+    }
+
+    func testRepairCapitalizesAfterRealSentenceEnds() {
+        XCTAssertEqual(TranscriptPolish.repairPunctuation("geht das? ja klar! gerne"),
+                       "Geht das? Ja klar! Gerne")
+    }
+
+    // MARK: Kölner Phonetik
+
+    func testColognePhoneticsMatchesSoundAlikes() {
+        XCTAssertEqual(TranscriptPolish.colognePhonetics("Rack"),
+                       TranscriptPolish.colognePhonetics("RAG"))
+        XCTAssertEqual(TranscriptPolish.colognePhonetics("Meier"),
+                       TranscriptPolish.colognePhonetics("Mayr"))
+        XCTAssertNotEqual(TranscriptPolish.colognePhonetics("verbinden"),
+                          TranscriptPolish.colognePhonetics("verwenden"))
     }
 
     // MARK: Whisper-Artefakte
@@ -602,7 +716,9 @@ final class CoreTests: XCTestCase {
 
         let result = await service.clean(raw)
 
-        XCTAssertEqual(result.text, raw)
+        // Fallback-Rohtext läuft durch die deterministische Nachstufe
+        // (hier: nur Großschreibung am Satzanfang).
+        XCTAssertEqual(result.text, "Das" + raw.dropFirst(3))
         XCTAssertTrue(result.usedFallback)
         XCTAssertEqual(transport.streamCallCount, 2, "Direktpfad plus frische Verbindung")
         XCTAssertTrue(result.fallbackReason?.contains("ohne Abschluss") ?? false)
@@ -701,7 +817,8 @@ final class CoreTests: XCTestCase {
             expectation.fulfill()
         }
         wait(for: [expectation], timeout: 15)
-        XCTAssertEqual(result?.text, raw)
+        // Auch ohne erreichbaren Endpoint greift die deterministische Nachstufe.
+        XCTAssertEqual(result?.text, "Das" + raw.dropFirst(3))
         XCTAssertEqual(result?.usedFallback, true)
         XCTAssertNil(result?.endpoint)
         XCTAssertTrue(result?.fallbackReason?.contains("127.0.0.1:1") ?? false)

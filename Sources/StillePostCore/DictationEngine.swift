@@ -355,6 +355,7 @@ public final class DictationEngine {
         let entry = HistoryStore.Entry(
             rawText: rawJoined, cleanText: cleaned.text, status: "ok",
             durationSec: duration, cleanupFellBack: cleaned.usedFallback,
+            cleanupFallbackReason: cleaned.fallbackReason,
             cleanupEndpoint: cleaned.endpoint,
             cleanupSec: Date().timeIntervalSince(cleanupStarted)
         )
@@ -419,7 +420,8 @@ public final class DictationEngine {
         let raw: String
         do {
             try await serverManager.ensureRunning(reachability: whisper)
-            raw = try await whisper.transcribe(wavFile: audioURL)
+            // Wie beim Live-Diktat: Zeilenumbruch-Artefakte sofort deterministisch raus.
+            raw = TranscriptPolish.flattenLineBreaks(try await whisper.transcribe(wavFile: audioURL))
         } catch {
             var updated = entry
             updated.errorMessage = L10n.format("core.dictation.retry_failed", error.localizedDescription)
@@ -434,6 +436,7 @@ public final class DictationEngine {
         updated.status = "ok"
         updated.errorMessage = nil
         updated.cleanupFellBack = cleaned.usedFallback
+        updated.cleanupFallbackReason = cleaned.fallbackReason
         updated.cleanupEndpoint = cleaned.endpoint
         updated.cleanupSec = Date().timeIntervalSince(cleanupStarted)
         updated.audioFileName = nil
@@ -462,10 +465,12 @@ public final class DictationEngine {
 
     // MARK: - Hilfsfunktionen
 
-    /// Fügt Segment-Texte zu einem Gesamttext zusammen.
+    /// Fügt Segment-Texte zu einem Gesamttext zusammen. Whisper-Zeilenumbruch-
+    /// Artefakte werden dabei schon deterministisch entfernt — so ist der Rohtext
+    /// im Verlauf (und jeder Fallback) frei davon, unabhängig vom LLM.
     static func joinSegments(_ texts: [String]) -> String {
         texts
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .map { TranscriptPolish.flattenLineBreaks($0).trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: " ")
     }

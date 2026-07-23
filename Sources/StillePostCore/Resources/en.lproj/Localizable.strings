@@ -178,6 +178,7 @@
 "core.cleanup.empty" = "Cleanup returned empty text";
 "core.cleanup.markdown" = "The cleaned version contains Markdown structures (%@) — the model probably answered instead of cleaning";
 "core.cleanup.words_changed" = "The cleaned version added, replaced, or reordered words";
+"core.cleanup.partially_reverted" = "%d clause(s) reverted to raw text (words were changed)";
 "core.cleanup.too_short" = "Cleaned version is suspiciously short (%.0f%% of the raw text)";
 "core.cleanup.too_long" = "Cleaned version is suspiciously long (%.0f%% of the raw text) — the model probably answered instead of cleaning";
 "core.cleanup.invalid_ollama_url" = "Invalid Ollama URL: %@";
