@@ -50,9 +50,10 @@ public struct Config: Codable, Equatable {
         public var provider: String = "ollama"
         /// Ollama-Endpoint (wir nutzen die native /api/chat-API).
         public var ollamaURL: String = "http://127.0.0.1:11434"
-        /// Modellname in Ollama. `qwen3.5:9b` war im eigenen Vergleich der beste Kompromiss
-        /// aus Geschwindigkeit und Genauigkeit (verfälscht keine Eigennamen).
-        public var model: String = "qwen3.5:9b"
+        /// Modellname in Ollama. `gemma4:e4b-it-qat` gewann den lokalen Benchmark aus
+        /// Treue und Tempo (verfälscht keine Eigennamen) und ist öffentlich beziehbar:
+        /// `ollama pull gemma4:e4b-it-qat` (~6 GB). Details: docs/cleanup-model-benchmark.md.
+        public var model: String = "gemma4:e4b-it-qat"
         /// Kontextfenster (num_ctx) für Ollama. WICHTIG auf Rechnern mit wenig RAM:
         /// Ollama-Installationen haben teils riesige globale Defaults (z. B. 131072),
         /// dann belegt ein 9B-Modell 14 GB statt ~8 GB und der Runner stirbt auf
@@ -82,7 +83,7 @@ public struct Config: Codable, Equatable {
         public struct Endpoint: Codable, Equatable {
             public var provider: String = "ollama"
             public var ollamaURL: String = "http://127.0.0.1:11434"
-            public var model: String = "qwen3.5:9b"
+            public var model: String = "gemma4:e4b-it-qat"
             public var numCtx: Int = 16384
             /// Wie beim primären Endpoint — hier aber mit `"30m"` als Default: Springt
             /// z. B. wegen eines Netz-Aussetzers das lokale Modell ein, soll es auf

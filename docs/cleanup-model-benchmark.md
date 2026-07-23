@@ -37,7 +37,7 @@ außer X" von Natur aus besser ein.
 
 | Modell | Größe | Treue (tolerant) | Putzqual. | ⌀ s | Geliefert |
 |---|---|---|---|---|---|
-| **gemma4:e4b-dictate** | 4B | 30/35 | 4,73 | 0,8 | **4,34** |
+| gemma4:e4b-dictate¹ | 4B | 30/35 | 4,73 | 0,8 | 4,34 |
 | gemma4:12b | 12B | 29/35 | 4,80 | 3,4 | 4,32 |
 | gemma4:e4b | 4B | 28/35 | 4,73 | 1,1 | 4,18 |
 | OpenEuroLLM-German | 8B | 27/35 | 4,61 | 9,5 | 4,02 |
@@ -52,14 +52,32 @@ außer X" von Natur aus besser ein.
 
 Kernaussagen:
 
-- **Ein diszipliniertes 4B gewinnt.** Seine Putzqualität liegt im Rauschen der
-  35B-Modelle (4,73 vs. 4,80), aber es ist am treuesten und mit Abstand am
+- **Ein diszipliniertes kleines Modell gewinnt.** Seine Putzqualität liegt im Rauschen
+  der 35B-Modelle (4,73 vs. 4,80), aber es ist am treuesten und mit Abstand am
   schnellsten. Größere Modelle „verbessern" ungefragt und scheitern dadurch öfter am
   Wächter — z. B. Übersetzen von „M-Dashes" zu „Gedankenstriche" oder Pluralisieren.
-- **Nicht jedes 4B taugt:** `gemma3:4b` (Platz 10) zeigt, dass es auf das konkrete,
-  fürs Diktat abgestimmte Modell ankommt, nicht auf die Parameterzahl allein.
-- Bester **öffentlich beziehbarer** Kandidat ist `gemma4:e4b`. `gemma4:e4b-dictate`
-  ist eine lokal fürs Diktat abgestimmte Variante.
+- **Nicht jedes kleine Modell taugt:** `gemma3:4b` (Platz 10) zeigt, dass es auf das
+  konkrete Modell ankommt, nicht auf die Parameterzahl allein.
+
+## Der ausgelieferte Default: `gemma4:e4b-it-qat`
+
+¹ Das im Vergleich führende `gemma4:e4b-dictate` war ein **schlafendes lokales Artefakt**
+aus einem OpenWhispr-Experiment (2026-06-23): kein trainiertes oder fein-getuntes Modell,
+sondern nur ein `ollama create`-Wrapper um den öffentlichen `nvfp4`-Quant von `gemma4:e4b`
+(rohes Template, sonst nichts). Es ist nicht aus der Registry beziehbar.
+
+Ein Nachtest zeigte, dass **öffentlich pullbare** Quants es erreichen — bei gleichem
+Basismodell und damit gleicher Qualität:
+
+| Modell (pullbar) | Standard-Treue | Härtefall-Treue | Größe |
+|---|---|---|---|
+| **gemma4:e4b-it-qat** (QAT-4-Bit) | **31/35** | 8/14 | 6,1 GB |
+| gemma4:e4b-nvfp4 | 28/35 | 8/14 | 8,8 GB |
+| gemma4:e4b-dictate (lokal) | 30/35 | 8/14 | 9,6 GB |
+
+Der Default ist deshalb das öffentlich beziehbare, kleine `gemma4:e4b-it-qat` (Googles
+quantisierungs-bewusst trainierter 4-Bit-Build) — es erreicht bzw. übertrifft das
+lokale Artefakt, ohne Mystery-Modell und ohne Modelltransfer.
 
 ## Harte Fälle: Fachbegriffe und Selbstkorrekturen
 

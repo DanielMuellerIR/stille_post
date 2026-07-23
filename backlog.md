@@ -72,10 +72,10 @@ Beschlossene Eckwerte (festgelegt 2026-07-15, nicht neu verhandeln):
 
 - Stille-Post-Default für `keep_alive`: **2h** am Primär-Endpoint, **30m** an den
   Fallbacks (heutiges Fallback-Verhalten).
-- Cleanup-Modell: Der **Default bleibt `qwen3.5:9b`** (so steht es im Code, siehe
-  `Config.swift`). Das Referenz-Setup fährt `gemma4:26b` — das ist eine
-  Konfigurationsentscheidung, keine Default-Änderung: ~18 GB RAM nur für
-  Textbereinigung ist die Luxusvariante, `qwen3.5:9b` passt auf die meisten Macs.
+- Cleanup-Modell: Der **Default ist `gemma4:e4b-it-qat`** (seit 2026-07-23
+  evidenzbasiert, siehe `Config.swift` und `docs/cleanup-model-benchmark.md`). Ein
+  diszipliniertes kleines Modell putzt hier treuer als die großen; ~6 GB, passt auf die
+  meisten Macs. (Ersetzt die frühere Annahme „Default `qwen3.5:9b`, Referenz `gemma4:26b`".)
 - Number One: Chat, eBook und Repo-RAG einheitlich auf `qwen3.6:35b`, Timeout 20 min.
 - Log-Verify (`llm.py`) bleibt auf `gemma4:26b`.
 
@@ -203,13 +203,10 @@ Weiterhin offen:
   GitHub ausgeführt.
 - Mehrtägigen Realbetrieb auf beiden vorgesehenen Macs durchführen und Befunde mit
   Datum, Build und Konfiguration notieren.
-- Cleanup-Qualität und Latenz mit repräsentativen deutschen Diktaten messen und den
-  Default `qwen3.5:9b` evidenzbasiert bestätigen oder korrigieren. Größere Modelle wie
-  `gemma4:26b` sind dabei die Vergleichskandidaten, nicht die Baseline.
-- READMEs (beide Sprachen): erklären, dass `qwen3.5:9b` der bewusste Default ist, weil
-  er auf die meisten Macs passt, und wie man auf ein größeres Bereinigungsmodell wie
-  `gemma4:26b` umstellt — samt ehrlicher RAM-Angabe (~18 GB nur für Textbereinigung)
-  und dem Hinweis, dass das die Luxusvariante für starke Rechner ist.
+- Cleanup-Modell-Benchmark: ERLEDIGT (2026-07-23). Evidenzbasierter Default ist jetzt
+  `gemma4:e4b-it-qat` (öffentlich pullbar, ~6 GB); ein diszipliniertes kleines Modell
+  schlägt die großen. Methodik, 12-Modelle-Vergleich und READMEs in
+  `docs/cleanup-model-benchmark.md`.
 - Login-Item: gebaut und verifiziert in 0.8.1. Offen bleibt nur das Deaktivieren im
   Alltag und der echte Ab-/Anmeldezyklus.
 - Optional später: Live-Text-Anzeige und Silero-VAD evaluieren.

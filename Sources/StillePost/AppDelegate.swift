@@ -95,7 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case "processing-fallback":
             overlay.show(.processing(detail: L10n.format(
                 "app.cleanup_fallback",
-                "qwen3.5:9b @ http://127.0.0.1:11434"
+                "gemma4:e4b-it-qat @ http://127.0.0.1:11434"
             )))
         case "success-raw":
             overlay.show(.success(note: L10n.text("app.raw_fallback_note")))

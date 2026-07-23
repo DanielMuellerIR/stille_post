@@ -30,8 +30,9 @@ Kontext, Satzgrenzen und konsistente Zeichensetzung verloren gehen.
 
 - Whisper-Modell: `large-v3-turbo`. Einen Modellwechsel nur nach reproduzierbarer
   Qualitäts- und Latenzmessung vornehmen.
-- Bereinigungsmodell ist derzeit `qwen3.5:9b`. `think: false` bleibt gesetzt.
-  Wechsel zu Gemma oder einem anderen Modell nur evidenzbasiert.
+- Bereinigungsmodell ist `gemma4:e4b-it-qat` (öffentlich beziehbar, ~6 GB; gewann den
+  Benchmark in `docs/cleanup-model-benchmark.md`). `think: false` bleibt gesetzt. Ein
+  diszipliniertes kleines Modell schlägt hier die großen — Wechsel nur evidenzbasiert.
 - `num_ctx` explizit auf 16384 setzen. Warm-up und Chat müssen denselben Wert
   verwenden; unterschiedliche Kontextgrößen können getrennte Modellinstanzen laden.
 - Primärer Endpunkt: direkter Streaming-Request. Bei Verbindungsfehler genau ein

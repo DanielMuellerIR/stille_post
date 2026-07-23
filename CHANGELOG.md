@@ -10,6 +10,22 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.8.12] — 2026-07-23
+
+### Geändert
+
+- Das Standard-Bereinigungsmodell ist jetzt `gemma4:e4b-it-qat` (öffentlich beziehbar,
+  ~6 GB) statt `qwen3.5:9b`. Ein Benchmark über 12 lokale Modelle (siehe
+  [docs/cleanup-model-benchmark.md](docs/cleanup-model-benchmark.md)) zeigte: Ein
+  diszipliniertes kleines Modell putzt treuer und schneller als die großen, die
+  gesprochenen Text ungefragt umschreiben („M-Dashes" → „Gedankenstriche",
+  Pluralisieren). `Config.swift`, beide READMEs, `AGENTS.md` und der Backlog nennen jetzt
+  das neue Modell.
+- Die frühere README-Darstellung „auf einem stärkeren Rechner läuft ein größeres,
+  hochwertigeres Modell (z. B. `gemma4:26b`)" wurde als sachlich falsch korrigiert:
+  Die Bereinigung auf einen anderen Rechner auszulagern spart nur lokalen RAM — es läuft
+  dort dasselbe kleine Modell, das für diese Aufgabe ohnehin besser putzt.
+
 ## [0.8.11] — 2026-07-23
 
 ### Geändert

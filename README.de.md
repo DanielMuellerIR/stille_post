@@ -47,11 +47,13 @@ fertigen Text; Audio wird nie an Ollama gesendet.
 ### 4. Bereinigungsmodell herunterladen
 
 ```bash
-ollama pull qwen3.5:9b
+ollama pull gemma4:e4b-it-qat
 ```
 
-Das Standardmodell belegt etwa 6,6 GB auf der Festplatte und passt auf die meisten
-Macs mit 16–32 GB Arbeitsspeicher.
+Das Standardmodell belegt etwa 6 GB auf der Festplatte und passt auf die meisten
+Macs mit 16–32 GB Arbeitsspeicher. Es gewann einen Vergleich lokaler Modelle aus
+Treue und Tempo (siehe [docs/cleanup-model-benchmark.md](docs/cleanup-model-benchmark.md));
+ein diszipliniertes kleines Modell putzt hier besser als die großen.
 
 ### 5. Stille Post installieren
 
@@ -71,7 +73,7 @@ suchen …“** möglich; Download, Austausch der App und Neustart übernimmt Sp
 erst nach Zustimmung.
 
 > **Warum werden zwei Modelle geladen?** `large-v3-turbo` versteht die Sprache und
-> erzeugt den Rohtext. `qwen3.5:9b` entfernt danach Füllwörter, Versprecher und
+> erzeugt den Rohtext. `gemma4:e4b-it-qat` entfernt danach Füllwörter, Versprecher und
 > Wiederholungen. Beide laufen lokal.
 
 ## Was Stille Post besonders macht
@@ -186,16 +188,17 @@ Der API-Key kommt **nicht** in die Datei, sondern in den Schlüsselbund
 (`stillepost-cli set-cleanup-key`) oder in die Umgebungsvariable
 `STILLEPOST_CLEANUP_API_KEY`.
 
-### Bereinigung auf einem stärkeren Rechner (mit Fallback)
+### Bereinigung auf einem anderen Rechner (mit Fallback)
 
-Auf einem schwächeren Laptop lohnt es sich, die Bereinigung an einen stärkeren
-Rechner im eigenen Netz abzugeben: Dort kann das größere, hochwertigere Modell
-laufen (z. B. gemma4:26b), und der Laptop behält die ~6 GB RAM für sein leichtes
-lokales Fallback.
+Auf einem RAM-knappen Laptop lohnt es sich, die Bereinigung an einen anderen Rechner
+im eigenen Netz abzugeben — nicht für ein „größeres" Modell (für diese enge Aufgabe
+putzt ein diszipliniertes kleines Modell sogar besser, siehe Benchmark), sondern damit
+der Laptop seine ~6 GB RAM frei behält. Dort läuft dasselbe `gemma4:e4b-it-qat`; lokal
+bleibt dasselbe Modell als Fallback.
 
-**Auf dem starken Rechner** (der bedient — er braucht selbst kein Stille Post):
+**Auf dem bedienenden Rechner** (er braucht selbst kein Stille Post):
 
-1. Modell ziehen: `ollama pull gemma4:26b`
+1. Modell ziehen: `ollama pull gemma4:e4b-it-qat`
 2. Ollama auf dem Netz-Interface lauschen lassen statt nur auf localhost:
    `OLLAMA_HOST=0.0.0.0` setzen, oder in der Ollama-App den Schalter
    „Expose Ollama to the network".
@@ -206,7 +209,7 @@ Mehr ist dort nicht nötig — Modell, Kontextgröße und keep_alive schickt Sti
 bei jeder Anfrage mit.
 
 **Auf jedem Mac, auf dem du diktierst:** Stille Post installieren, dann unter
-Einstellungen → Bereinigung den Endpoint des starken Rechners eintragen
+Einstellungen → Bereinigung den Endpoint des bedienenden Rechners eintragen
 (`http://<ip>:11434`), dazu Modell und auf Wunsch die Ladedauer.
 `stillepost-cli doctor` prüft die ganze Kette und sagt, ob der Endpoint antwortet
 und das Modell vorhanden ist.
@@ -225,11 +228,11 @@ fast verzögerungsfrei das lokale Ollama):
 
 ```jsonc
 "cleanup": {
-  "ollamaURL": "http://192.168.1.50:11434",   // starker Rechner im LAN (primär)
-  "model": "gemma4:26b",
+  "ollamaURL": "http://192.168.1.50:11434",   // anderer Rechner im LAN (primär)
+  "model": "gemma4:e4b-it-qat",
   "keepAlive": "2h",                          // "-1" = dauerhaft geladen halten
   "fallbacks": [
-    { "provider": "ollama", "ollamaURL": "http://127.0.0.1:11434", "model": "qwen3.5:9b" },
+    { "provider": "ollama", "ollamaURL": "http://127.0.0.1:11434", "model": "gemma4:e4b-it-qat" },
     { "provider": "openai", "remote": { "baseURL": "https://api.example.com/v1", "model": "modell-name" } }
   ]
 }

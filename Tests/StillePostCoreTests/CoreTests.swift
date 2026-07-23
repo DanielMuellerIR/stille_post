@@ -494,7 +494,7 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(chain.count, 3)
         XCTAssertEqual(chain[0].ollamaURL, "http://192.168.1.50:11434")
         XCTAssertEqual(chain[1].ollamaURL, "http://127.0.0.1:11434", "fehlende Felder im Fallback = Defaults")
-        XCTAssertEqual(chain[1].model, "qwen3.5:9b")
+        XCTAssertEqual(chain[1].model, "gemma4:e4b-it-qat")
         XCTAssertEqual(chain[2].provider, "openai")
         XCTAssertEqual(chain[2].label, "cloud-modell @ https://api.example.com/v1")
     }
