@@ -10,6 +10,19 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.8.13] — 2026-07-23
+
+### Behoben
+
+- Notfall-Korrektur: 0.8.12 stürzte beim Abschluss des ersten Diktats ab — danach
+  fehlten Menüleisten-Icon und Hotkey, die App war unbenutzbar. Ursache war die
+  Übergabe des fertigen Diktats an die Oberfläche auf einem Hintergrund-Thread:
+  `finishSession` läuft als `nonisolated async` bewusst abseits des Main-Threads,
+  reichte das Ergebnis aber direkt an das Overlay (AppKit) weiter. Aktuelles macOS
+  bricht AppKit-Zugriffe außerhalb des Main-Threads hart ab. Das fertige Ergebnis
+  wird jetzt — wie schon die Zustands-Updates — garantiert auf dem Main-Thread an
+  Overlay und Einfügen übergeben. Ein Kern-Test sichert diese Zusage dauerhaft ab.
+
 ## [0.8.12] — 2026-07-23
 
 ### Geändert

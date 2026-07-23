@@ -319,6 +319,36 @@ final class CoreTests: XCTestCase {
         XCTAssertTrue(try history.list().isEmpty)
     }
 
+    @MainActor
+    func testResultIsDeliveredOnMainThread() async throws {
+        // Regression 0.8.13: finishSession ist nonisolated async und läuft off-main;
+        // onResult fasst aber im App-Callback AppKit an (Overlay-Panel). Lieferte die
+        // Engine off-main aus, brach AppKit ab macOS 26 hart ab. Der Vertrag lautet
+        // "onResult auf Main-Thread" — genau das prüft dieser Test.
+        let baseDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sp-deliver-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: baseDir) }
+        let history = HistoryStore(baseDir: baseDir)
+        // Bereinigung synchron und ohne Netzwerk halten: getestet wird nur die
+        // Thread-Zusage der Auslieferung, nicht die Bereinigung selbst.
+        let engine = DictationEngine(config: Config(), history: history) { rawText in
+            CleanupService.Result(text: rawText, usedFallback: false,
+                                  fallbackReason: nil, endpoint: nil)
+        }
+        let delivered = expectation(description: "onResult ausgeliefert")
+        var deliveredOnMainThread: Bool?
+        engine.onResult = { _ in
+            deliveredOnMainThread = Thread.isMainThread
+            delivered.fulfill()
+        }
+
+        engine.processForTesting(rawText: "hallo welt")
+        await fulfillment(of: [delivered], timeout: 5)
+
+        XCTAssertEqual(deliveredOnMainThread, true,
+                       "onResult MUSS auf dem Main-Thread ausgeliefert werden (Overlay/AppKit)")
+    }
+
     // MARK: Config
 
     func testConfigToleratesMissingFields() throws {

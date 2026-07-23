@@ -332,7 +332,7 @@ public final class DictationEngine {
             }
             guard isCurrentSession(generation), !Task.isCancelled else { return }
             setState(.error(L10n.text("core.dictation.transcription_failed")))
-            onResult?(DictationResult(text: "", entry: entry))
+            deliverResult(DictationResult(text: "", entry: entry))
             return
         }
 
@@ -341,7 +341,7 @@ public final class DictationEngine {
             if let wavURL { try? FileManager.default.removeItem(at: wavURL) }
             guard isCurrentSession(generation), !Task.isCancelled else { return }
             setState(.idle)
-            onResult?(DictationResult(text: "", entry: nil))
+            deliverResult(DictationResult(text: "", entry: nil))
             return
         }
 
@@ -383,7 +383,7 @@ public final class DictationEngine {
         }
         guard isCurrentSession(generation), !Task.isCancelled else { return }
         setState(.idle)
-        onResult?(DictationResult(text: cleaned.text, entry: entry))
+        deliverResult(DictationResult(text: cleaned.text, entry: entry))
     }
 
     /// Bricht eine laufende Aufnahme ab, ohne Text zu erzeugen (Menüpunkt "Abbrechen").
@@ -479,6 +479,23 @@ public final class DictationEngine {
             onStateChange?(newState)
         } else {
             DispatchQueue.main.async { self.onStateChange?(newState) }
+        }
+    }
+
+    /// Liefert das fertige Diktat garantiert auf dem Main-Thread aus.
+    ///
+    /// `finishSession` ist eine `nonisolated async`-Funktion und läuft deshalb auf
+    /// dem globalen Concurrency-Executor (Cooperative-Pool) — AUCH wenn `stop()`
+    /// den Aufruf in `Task { @MainActor in … }` kapselt: Swift hebt eine
+    /// nonisolated-async-Funktion nach dem Await bewusst vom Aufrufer-Actor herunter.
+    /// `onResult` fasst aber AppKit an (Overlay-Panel, Statusicon); AppKit bricht ab
+    /// macOS 26 hart ab ("Must only be used from the main thread"), wenn das off-main
+    /// geschieht. Wie `setState` deshalb hier auf den Main-Thread heben.
+    private func deliverResult(_ result: DictationResult) {
+        if Thread.isMainThread {
+            onResult?(result)
+        } else {
+            DispatchQueue.main.async { self.onResult?(result) }
         }
     }
 
