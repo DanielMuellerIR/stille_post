@@ -494,7 +494,7 @@ public final class CleanupService {
     }
 
     /// Normalisiert Wörterbuch-Begriffe für den Treue-Abgleich: kleingeschrieben,
-    /// nur Buchstaben/Ziffern ("Stille Post" -> "stillepost", "dm0.de" -> "dm0de") —
+    /// nur Buchstaben/Ziffern ("Stille Post" -> "stillepost", "beispiel.de" -> "beispielde") —
     /// dieselbe Form, in der auch Ausrichtungslücken zusammengefügt werden.
     static func normalizedDictionary(_ terms: [String]) -> Set<String> {
         Set(terms.map { term in

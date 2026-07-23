@@ -77,7 +77,7 @@ public enum TranscriptPolish {
                 let isSingleDot = (index == 0 || chars[index - 1] != ".")
                     && (index + 1 >= chars.count || chars[index + 1] != ".")
                 // Nächstes Nicht-Leerzeichen suchen — es muss NACH Leerraum kommen,
-                // sonst ist der Punkt Teil eines Tokens ("dm0.de", "1.5").
+                // sonst ist der Punkt Teil eines Tokens ("beispiel.de", "1.5").
                 var next = index + 1
                 var sawWhitespace = false
                 while next < chars.count, chars[next].isWhitespace {
