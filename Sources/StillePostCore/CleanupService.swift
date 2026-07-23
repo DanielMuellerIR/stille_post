@@ -256,10 +256,14 @@ public final class CleanupService {
     /// Liefert bei Verdacht eine Begründung, sonst nil.
     ///
     /// Worttreue ist die harte Sicherheitsgrenze: Nach ignorierter Zeichensetzung
-    /// und Groß-/Kleinschreibung müssen alle Ausgabewörter eine ordnungserhaltende
-    /// Teilfolge der Eingabewörter bilden. Erlaubt sind damit nur Löschungen; jede
-    /// Ergänzung, Ersetzung oder Umstellung führt zum Rohtext-Fallback.
-    /// Die bisherige Längenprüfung bleibt als zusätzlicher Schutz bestehen.
+    /// und Groß-/Kleinschreibung werden Roh- und Ausgabewörter ausgerichtet. Erlaubt
+    /// sind Löschungen (Füllwörter) sowie eng begrenzte Mikro-Korrekturen an einer
+    /// Ausrichtungslücke: reine Wort-Trennung/-Fusion (Whisper zerhackt Komposita an
+    /// Sprechpausen: "dauer haft" -> "dauerhaft"), ein einzelner Tippfehler/Verhörer
+    /// ("olama" -> "ollama") und kurze Flexionsendungen ("ein" -> "einen"). Jede
+    /// Einfügung, Umstellung oder echte Ersetzung/Übersetzung ("verbinden" ->
+    /// "verwenden") führt weiter zum Rohtext-Fallback; zu viele Korrekturen ebenfalls.
+    /// Die Längenprüfung bleibt als zusätzlicher Schutz bestehen.
     static func sanityCheckFailure(raw: String, cleaned: String) -> String? {
         if cleaned.isEmpty { return L10n.text("core.cleanup.empty") }
         // Struktur-Prüfung: Gesprochene Sprache enthält keine Markdown-Syntax.
@@ -273,17 +277,11 @@ public final class CleanupService {
                 )
             }
         }
-        let rawWords = normalizedWords(in: raw)
-        let cleanedWords = normalizedWords(in: cleaned)
-        var rawIndex = rawWords.startIndex
-        for cleanedWord in cleanedWords {
-            while rawIndex < rawWords.endIndex, rawWords[rawIndex] != cleanedWord {
-                rawIndex = rawWords.index(after: rawIndex)
-            }
-            guard rawIndex < rawWords.endIndex else {
-                return L10n.text("core.cleanup.words_changed")
-            }
-            rawIndex = rawWords.index(after: rawIndex)
+        if let reason = fidelityFailure(
+            rawWords: normalizedWords(in: raw),
+            cleanedWords: normalizedWords(in: cleaned)
+        ) {
+            return reason
         }
         let rawCount = Double(raw.count)
         let cleanedCount = Double(cleaned.count)
@@ -309,6 +307,98 @@ public final class CleanupService {
             .lowercased()
             .split { !$0.isLetter && !$0.isNumber }
             .map(String.init)
+    }
+
+    /// Richtet Roh- und Ausgabewörter über eine längste gemeinsame Teilfolge (LCS)
+    /// aus und prüft jede Lücke zwischen zwei gemeinsamen Ankern. Löschungen sind
+    /// erlaubt (Füllwörter), Einfügungen nie (erfundene Wörter). Eine Ersetzung geht
+    /// nur als sichere Mikro-Korrektur durch (siehe `isSmallCorrection`). Ein
+    /// Gesamtbudget verhindert schrittweises Umschreiben über viele Mini-Edits.
+    private static func fidelityFailure(rawWords: [String], cleanedWords: [String]) -> String? {
+        let n = rawWords.count, m = cleanedWords.count
+        // Alles gelöscht: die separate Längenprüfung ist hier die richtige Grenze.
+        if m == 0 { return nil }
+        // LCS-Längentabelle von hinten aufgebaut, um Anker vorwärts ablaufen zu können.
+        var lcs = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
+        if n > 0 {
+            for i in stride(from: n - 1, through: 0, by: -1) {
+                for j in stride(from: m - 1, through: 0, by: -1) {
+                    lcs[i][j] = rawWords[i] == cleanedWords[j]
+                        ? lcs[i + 1][j + 1] + 1
+                        : max(lcs[i + 1][j], lcs[i][j + 1])
+                }
+            }
+        }
+        var i = 0, j = 0, gapRawStart = 0, gapCleanStart = 0, corrections = 0
+        // Klassifiziert die Lücke rawWords[rs..<re] / cleanedWords[cs..<ce] vor einem Anker.
+        func classify(_ rs: Int, _ re: Int, _ cs: Int, _ ce: Int) -> String? {
+            if cs == ce { return nil }                  // nur gelöscht (oder nichts): ok
+            if rs == re {                               // nur eingefügt: Modell erfand Wörter
+                return L10n.text("core.cleanup.words_changed")
+            }
+            guard isSmallCorrection(
+                rawSpan: rawWords[rs..<re], cleanedSpan: cleanedWords[cs..<ce]
+            ) else {
+                return L10n.text("core.cleanup.words_changed")
+            }
+            corrections += max(re - rs, ce - cs)
+            return nil
+        }
+        while i < n, j < m {
+            if rawWords[i] == cleanedWords[j] {
+                if let r = classify(gapRawStart, i, gapCleanStart, j) { return r }
+                i += 1; j += 1; gapRawStart = i; gapCleanStart = j
+            } else if lcs[i + 1][j] >= lcs[i][j + 1] {
+                i += 1  // rawWords[i] gehört zur Lücke (Löschungs-Kandidat)
+            } else {
+                j += 1  // cleanedWords[j] gehört zur Lücke (Einfügungs-Kandidat)
+            }
+        }
+        if let r = classify(gapRawStart, n, gapCleanStart, m) { return r }
+        // Backstop gegen schleichendes Umschreiben: viele erlaubte Mini-Korrekturen.
+        let budget = max(4, Int((0.25 * Double(n)).rounded(.up)))
+        if corrections > budget { return L10n.text("core.cleanup.words_changed") }
+        return nil
+    }
+
+    /// True nur bei sicheren Mikro-Korrekturen an einer Ausrichtungslücke. Bewusst
+    /// eng (Sicherheit vor Rettung): eine Bedeutungsänderung wie "verbinden" ->
+    /// "verwenden" (Abstand 2, zwei verschiedene Wörter) muss weiter zum Rohtext-
+    /// Fallback führen.
+    ///   1. zusammengefügt gleich  -> reine Wort-Trennung/-Fusion ("dauer haft"->"dauerhaft")
+    ///   2. Editierabstand <= 1     -> ein Tippfehler/Verhörer ("olama"->"ollama")
+    ///   3. Präfix + Endung <= 2    -> kurze Flexion ("ein"->"einen", "...ung"->"...ungen")
+    private static func isSmallCorrection(
+        rawSpan: ArraySlice<String>, cleanedSpan: ArraySlice<String>
+    ) -> Bool {
+        let a = Array(rawSpan.joined())
+        let b = Array(cleanedSpan.joined())
+        if a == b { return true }  // reine Wort-Trennung/-Fusion: Buchstaben identisch
+        // Tokens mit Ziffern sind fast immer technische Kennungen (Modell-/Versions-
+        // namen wie "426b", "id3", "3.59b"): dort ist schon ein Zeichen Unterschied
+        // bedeutungstragend. Keine Tippfehler-/Flexionstoleranz — nur exakt gleich.
+        if a.contains(where: \.isNumber) || b.contains(where: \.isNumber) { return false }
+        if editDistance(a, b) <= 1 { return true }
+        let (short, long) = a.count <= b.count ? (a, b) : (b, a)
+        if long.count - short.count <= 2, long.starts(with: short) { return true }
+        return false
+    }
+
+    /// Levenshtein-Editierabstand auf Zeichenebene (zwei Zeilen, O(min·max) Zeit).
+    private static func editDistance(_ a: [Character], _ b: [Character]) -> Int {
+        if a.isEmpty { return b.count }
+        if b.isEmpty { return a.count }
+        var prev = Array(0...b.count)
+        var curr = [Int](repeating: 0, count: b.count + 1)
+        for i in 1...a.count {
+            curr[0] = i
+            for j in 1...b.count {
+                let cost = a[i - 1] == b[j - 1] ? 0 : 1
+                curr[j] = min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost)
+            }
+            swap(&prev, &curr)
+        }
+        return prev[b.count]
     }
 
     // MARK: - Provider: Ollama (lokal oder anderer Rechner im eigenen Netz)

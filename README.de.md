@@ -100,11 +100,18 @@ bereits beim Start der Aufnahme vorgewärmt.
 
 1. Der System-Prompt erlaubt nur das Entfernen von Füllwörtern, Versprechern,
    Stottern und Doppelungen – kein Umformulieren, Zusammenfassen oder Beantworten.
-2. Eine Worttreue-Prüfung verwirft jede Ausgabe, die Wörter ergänzt, ersetzt oder
-   umstellt. Erlaubt sind nur Löschungen sowie Satzzeichen und Groß-/Kleinschreibung;
-   zusätzlich bleibt die Längenprüfung aktiv.
+2. Eine Worttreue-Prüfung richtet Roh- und Ausgabewörter aus und verwirft jedes
+   Ergänzen, Ersetzen, Übersetzen oder Umstellen. Erlaubt sind Löschungen (Füllwörter),
+   Satzzeichen und Groß-/Kleinschreibung sowie eng begrenzte Reparaturen von
+   Whisper-Artefakten (an Sprechpausen zerhackte Komposita, ein einzelner Verhörer,
+   eine kurze Flexionsendung); Modell- und Versionskennungen bleiben unantastbar.
+   Zusätzlich bleibt die Längenprüfung aktiv.
 3. Schlägt die Bereinigung fehl, wird ebenfalls der Rohtext eingefügt.
 4. Overlay und Verlauf kennzeichnen Ausweich-Endpunkte und Rohtext-Rückfälle.
+
+Welche lokalen Modelle am treuesten putzen und wie der Wächter ausgelegt ist,
+dokumentiert [docs/cleanup-model-benchmark.md](docs/cleanup-model-benchmark.md) mit
+reproduzierbaren Messwerten.
 
 ### Welches Whisper-Modell?
 

@@ -10,6 +10,24 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.8.11] — 2026-07-23
+
+### Geändert
+
+- Die Worttreue-Prüfung der Bereinigung ist toleranter. Sie richtet Roh- und
+  Ausgabewörter aus und lässt jetzt eng begrenzte Reparaturen von Whisper-Artefakten
+  durch: an Sprechpausen zerhackte Komposita (»dauer haft« → »dauerhaft«), einen
+  einzelnen Verhörer (»olama« → »ollama«) und kurze Flexionsendungen (»ein« →
+  »einen«). Echtes Umschreiben, Übersetzen, Umstellen oder Ergänzen führt weiterhin
+  zum Rohtext-Rückfall; Modell- und Versionskennungen mit Ziffern (»426b«, »id3«)
+  bleiben unantastbar. Dadurch überstehen deutlich mehr lange, technische Diktate die
+  Prüfung, ohne dass ein Modell den Inhalt verändern kann. Die Längenkorridor-Prüfung
+  bleibt als zusätzliche Sicherheitsgrenze bestehen.
+- Beide READMEs beschreiben die Prüfung neu. Das neue
+  [docs/cleanup-model-benchmark.md](docs/cleanup-model-benchmark.md) hält den
+  Modell-Benchmark über 12 lokale Modelle und die Begründung des toleranten Wächters
+  reproduzierbar fest.
+
 ## [0.8.10] — 2026-07-22
 
 ### Sicherheit

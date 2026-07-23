@@ -151,6 +151,76 @@ final class CoreTests: XCTestCase {
             cleaned: "Der Code steht in einem ```-Block im README."))
     }
 
+    // MARK: Tolerante Treueprüfung — legitime Mikro-Korrekturen zulassen
+
+    func testSanityCheckAllowsWhisperCompoundSplit() {
+        // Whisper zerhackt Komposita an Sprechpausen; das Zusammenfügen ist kein
+        // Umschreiben und darf nicht länger den Rohtext-Fallback auslösen.
+        XCTAssertNil(CleanupService.sanityCheckFailure(
+            raw: "das soll dann dauer haft geladen bleiben",
+            cleaned: "Das soll dann dauerhaft geladen bleiben."))
+        XCTAssertNil(CleanupService.sanityCheckFailure(
+            raw: "ich mache das über einen screens hot",
+            cleaned: "Ich mache das über einen Screenshot."))
+    }
+
+    func testSanityCheckAllowsSingleTypoFix() {
+        // Ein einzelner Verhörer/Tippfehler (Editierabstand 1) ist eine Korrektur,
+        // keine Bedeutungsänderung.
+        XCTAssertNil(CleanupService.sanityCheckFailure(
+            raw: "ich nutze ein lokales olama modell",
+            cleaned: "Ich nutze ein lokales Ollama-Modell."))
+        XCTAssertNil(CleanupService.sanityCheckFailure(
+            raw: "ich haabe den bericht geschrieben",
+            cleaned: "Ich habe den Bericht geschrieben."))
+    }
+
+    func testSanityCheckAllowsShortInflectionEnding() {
+        // Kurze Flexionsendung (Präfix + max. 2 Zeichen) korrigiert Grammatik,
+        // ohne das Wort auszutauschen.
+        XCTAssertNil(CleanupService.sanityCheckFailure(
+            raw: "wir hätten gerne ein logging modus",
+            cleaned: "Wir hätten gerne einen Logging-Modus."))
+        XCTAssertNil(CleanupService.sanityCheckFailure(
+            raw: "weniger vorhersehbare formulierung bitte",
+            cleaned: "Weniger vorhersehbare Formulierungen, bitte."))
+    }
+
+    func testSanityCheckStillRejectsTranslationAndSynonyms() {
+        // Übersetzung eines Fachbegriffs bleibt eine Bedeutungsänderung -> Fallback.
+        XCTAssertNotNil(CleanupService.sanityCheckFailure(
+            raw: "bitte weniger m dashes verwenden",
+            cleaned: "Bitte weniger Gedankenstriche verwenden."))
+        // Synonym mit größerem Abstand bleibt verboten.
+        XCTAssertNotNil(CleanupService.sanityCheckFailure(
+            raw: "das ist die hochqualitätigste variante",
+            cleaned: "Das ist die hochwertigste Variante."))
+    }
+
+    func testSanityCheckProtectsTechnicalTokensWithDigits() {
+        // Modell-/Versionskennungen dürfen NIE als "Tippfehler" durchgehen — ein
+        // Zeichen Unterschied ist hier bedeutungstragend (426b ≠ 426c).
+        XCTAssertNotNil(CleanupService.sanityCheckFailure(
+            raw: "wir nehmen das gemma 426b modell",
+            cleaned: "Wir nehmen das Gemma 426c Modell."))
+        XCTAssertNotNil(CleanupService.sanityCheckFailure(
+            raw: "die tags stehen im id3 header",
+            cleaned: "Die Tags stehen im ID4 Header."))
+        // Unveränderte Ziffern-Kennung darf drumherum weiter geputzt werden (hier:
+        // Füllwort entfernen), solange die Kennung selbst exakt erhalten bleibt.
+        XCTAssertNil(CleanupService.sanityCheckFailure(
+            raw: "das ist halt das gemma 426b modell",
+            cleaned: "Das ist das Gemma 426b Modell."))
+    }
+
+    func testSanityCheckRejectsManyMicroEditsAsRewrite() {
+        // Jede Einzeländerung wäre klein, aber in Summe ist es ein Umschreiben:
+        // Das Gesamtbudget muss greifen.
+        XCTAssertNotNil(CleanupService.sanityCheckFailure(
+            raw: "alpha ein beta ein gamma ein delta ein epsilon ein zeta",
+            cleaned: "Alpha einen, Beta einen, Gamma einen, Delta einen, Epsilon einen, Zeta."))
+    }
+
     // MARK: Whisper-Artefakte
 
     func testArtifactMarkersRemoved() {

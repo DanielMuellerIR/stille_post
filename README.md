@@ -97,11 +97,18 @@ and sentence boundaries. The cleanup model is warmed when recording begins.
 
 1. The system prompt only permits removal of filler words, false starts, stutters,
    and repetitions — no paraphrasing, summarizing, or answering.
-2. A word-fidelity check rejects any result that adds, replaces, or reorders words.
-   Only deletions, punctuation, and capitalization are allowed; the length check
-   remains active as an additional safeguard.
+2. A word-fidelity check aligns the raw and cleaned words and rejects any adding,
+   replacing, translating, or reordering. Allowed are deletions (filler words),
+   punctuation, and capitalization, plus tightly bounded repairs of Whisper artifacts
+   (compounds split at speech pauses, a single mishearing, a short inflection ending);
+   model and version identifiers stay untouchable. The length check remains active as
+   an additional safeguard.
 3. A failed cleanup also falls back to the raw text.
 4. The overlay and history identify backup endpoints and raw-text fallbacks.
+
+Which local models clean most faithfully, and how the check is designed, is
+documented with reproducible measurements in
+[docs/cleanup-model-benchmark.md](docs/cleanup-model-benchmark.md).
 
 ### Which Whisper model?
 
