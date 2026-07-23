@@ -10,6 +10,21 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.8.14] — 2026-07-23
+
+### Behoben
+
+- Die ausgelieferte App fand ihr Lokalisierungs-Bundle nur auf der Build-Maschine
+  und stürzte auf jedem anderen Rechner sofort beim Start ab (fataler Fehler in
+  `Bundle.module`, noch vor dem Menüleisten-Icon). Ursache: der von SwiftPM
+  generierte Zugriff sucht das Ressourcen-Bundle nur im `.app`-Wurzelverzeichnis
+  oder unter dem fest einkompilierten Build-Pfad — nicht dort, wo
+  `scripts/build-app.sh` es ablegt (`Contents/Resources`). `L10n` löst das Bundle
+  jetzt selbst robust auf (Contents/Resources, neben dem Executable, `.app`-Wurzel;
+  Fallback SwiftPM). Damit startet die App unabhängig von der Build-Maschine.
+  0.8.13 war davon bereits betroffen — nur auf der Build-Maschine blieb es
+  unbemerkt, weil dort der einkompilierte Build-Pfad zufällig existiert.
+
 ## [0.8.13] — 2026-07-23
 
 ### Behoben
