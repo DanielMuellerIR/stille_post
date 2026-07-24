@@ -268,10 +268,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let button = statusItem.button else { return }
         let (symbol, description): (String, String)
         switch state {
-        case .idle: (symbol, description) = ("mic", L10n.text("status.ready"))
+        // Ruhesymbol bewusst nicht das nackte "mic": Das Kontrollzentrum zeigt bei
+        // Mikrofon-Nutzung (z. B. Videocall) ein fast identisches Mikrofon in der
+        // Menüleiste, was wie ein doppeltes Stille-Post-Icon wirkt.
+        case .idle: (symbol, description) = ("waveform.and.mic", L10n.text("status.ready"))
         case .starting: (symbol, description) = ("mic.badge.plus", L10n.text("status.starting"))
         case .recording: (symbol, description) = ("record.circle.fill", L10n.text("status.recording"))
-        case .processing: (symbol, description) = ("waveform", L10n.text("status.transcribing"))
+        // Eingekreist statt "waveform", damit Verarbeitung nicht wie das neue
+        // Ruhesymbol (waveform.and.mic) aussieht.
+        case .processing: (symbol, description) = ("waveform.circle", L10n.text("status.transcribing"))
         case .error: (symbol, description) = ("exclamationmark.triangle.fill", L10n.text("status.error"))
         }
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)

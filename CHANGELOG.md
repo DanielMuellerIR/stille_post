@@ -10,6 +10,16 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.1] — 2026-07-24
+
+### Geändert
+
+- Menüleisten-Symbol im Ruhezustand von `mic` auf `waveform.and.mic` geändert:
+  Das Kontrollzentrum zeigt bei Mikrofon-Nutzung (z. B. Videocall) ein fast
+  identisches Mikrofon in der Menüleiste, wodurch Stille Post doppelt vorhanden
+  wirkte. Das Verarbeitungs-Symbol wechselt passend von `waveform` auf
+  `waveform.circle`, damit es sich vom neuen Ruhesymbol unterscheidet.
+
 ## [0.9.0] — 2026-07-24
 
 ### Hinzugefügt
