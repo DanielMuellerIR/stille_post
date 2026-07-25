@@ -275,10 +275,15 @@ Ohne Verlinkung funktioniert auch
 ```bash
 git clone https://github.com/DanielMuellerIR/stille_post.git
 cd stille_post
-scripts/build-app.sh --install   # Release-Build nach /Applications installieren
+./build.sh            # App-Bundle nach build/ bauen
+./install.sh          # bauen, notarisieren, prüfen, atomar installieren
+./release.sh          # bauen, notarisieren, Release-DMG packen und prüfen
 swift test            # Unit-Tests (VAD, WAV, Plausibilitätsprüfung, Verlauf …)
 scripts/e2e-test.sh   # Ende-zu-Ende: say-Stimme -> Whisper -> Bereinigung -> Prüfung
 ```
+
+`install.sh` und `release.sh` brauchen ein notarytool-Keychain-Profil, entweder
+aus `NOTARY_PROFILE` oder aus `git config stillePost.notaryProfile` im Clone.
 
 Der Sparkle-Feed und seine Release-Automation sind in
 [`docs/sparkle-release.md`](docs/sparkle-release.md) beschrieben.

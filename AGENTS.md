@@ -18,8 +18,12 @@ sprachlichen Bereinigung an konfigurierte LLM-Endpunkte gehen.
   Konfigurationsbefehle.
 - `Tests/`: SwiftPM-Tests. Das Verzeichnis muss bestehen bleiben, damit SwiftPM
   den Test-Target korrekt erkennt.
-- `scripts/build-app.sh`: App-Bundle; `scripts/e2e-test.sh`: lokaler End-to-End-
-  Lauf; `VERSION`: Produktversion.
+- Drei Einstiegspunkte im Repo-Root, klar getrennt: `./build.sh` baut nur nach
+  `build/`, `./install.sh` baut + notarisiert + installiert nach `/Applications`,
+  `./release.sh` baut + notarisiert + packt das geprüfte Release-DMG und
+  installiert nie. Die eigentliche Bau- und Signaturlogik bleibt in
+  `scripts/build-app.sh`, das DMG erzeugt `scripts/create-dmg.sh`.
+- `scripts/e2e-test.sh`: lokaler End-to-End-Lauf; `VERSION`: Produktversion.
 
 ## Verbindliche Architektur
 

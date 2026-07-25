@@ -36,14 +36,23 @@ im App-Bundle eingecheckt.
 
 1. `VERSION` und `CHANGELOG.md` aktualisieren. `CFBundleVersion` wird aus `VERSION`
    übernommen und muss monoton steigen.
-2. `scripts/build-app.sh --notarize` mit einem konfigurierten `NOTARY_PROFILE`
-   ausführen. Das Skript signiert Sparkles Helfer von innen nach außen mit derselben
-   Developer-ID wie die App und prüft danach Notary-Ticket sowie Gatekeeper. Eine
-   Installation nach `/Applications` ist ausschließlich mit dem kombinierten Aufruf
-   `scripts/build-app.sh --notarize --install` möglich; der geprüfte Build wird dort
-   erst unter einem Nachbarpfad bereitgestellt und anschließend atomar ausgetauscht.
-3. Aus der gestapelten App das übliche DMG erstellen, das DMG selbst mit Developer ID
-   signieren, notarisieren und stapeln.
+2. `./release.sh` ausführen. Das Skript erledigt Schritt 2 und 3 in einem
+   reproduzierbaren Lauf: Release-Build mit Developer-ID-Signatur (Sparkles Helfer
+   von innen nach außen, dieselbe Identität wie die App), Apple-Notarisierung und
+   Ticket, danach DMG erzeugen, das DMG mit derselben Identität signieren,
+   notarisieren und stapeln. Zum Schluss läuft `scripts/verify-release.sh` gegen das
+   fertige Image — also dieselbe Prüfung wie später in der CI — und erst danach
+   erscheinen DMG und `.sha256` im Repo-Root. Ein bereits vorhandenes Artefakt
+   derselben Version wird nie überschrieben; der Lauf bricht vorher ab.
+
+   Das Notary-Profil kommt aus `NOTARY_PROFILE` oder, wenn die Variable fehlt, aus
+   der clone-lokalen `git config stillePost.notaryProfile` — der Profilname bleibt
+   damit außerhalb des öffentlichen Repos.
+
+   Eine Installation nach `/Applications` macht `release.sh` bewusst **nicht**;
+   dafür gibt es `./install.sh` (baut, notarisiert und tauscht den geprüften Build
+   dort atomar aus). `./build.sh` baut nur.
+3. *(in Schritt 2 enthalten)*
 4. Ein GitHub Release als Entwurf anlegen, genau ein DMG anhängen, Release Notes
    eintragen und erst danach veröffentlichen.
 5. `.github/workflows/publish-appcast.yml` lädt dieses DMG, prüft vor dem Zugriff

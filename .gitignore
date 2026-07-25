@@ -2,6 +2,10 @@
 .build/
 build/
 
+# Release-Artefakte aus ./release.sh — gehören ans GitHub-Release, nicht ins Repo
+/StillePost-*.dmg
+/StillePost-*.dmg.sha256
+
 # macOS
 .DS_Store
 

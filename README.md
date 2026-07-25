@@ -265,10 +265,15 @@ Without the link, use
 ```bash
 git clone https://github.com/DanielMuellerIR/stille_post.git
 cd stille_post
-scripts/build-app.sh --notarize --install  # notarize, verify, then install atomically
+./build.sh            # build the app bundle into build/
+./install.sh          # build, notarize, verify, then install atomically
+./release.sh          # build, notarize, package and verify the release disk image
 swift test            # unit tests (VAD, WAV, sanity check, history …)
 scripts/e2e-test.sh   # end to end: say voice -> Whisper -> cleanup -> assertions
 ```
+
+`install.sh` and `release.sh` need a notarytool keychain profile, taken from
+`NOTARY_PROFILE` or from `git config stillePost.notaryProfile` in your clone.
 
 The Sparkle feed and release automation are documented in
 [`docs/sparkle-release.md`](docs/sparkle-release.md).
