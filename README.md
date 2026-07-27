@@ -275,6 +275,11 @@ scripts/e2e-test.sh   # end to end: say voice -> Whisper -> cleanup -> assertion
 `install.sh` and `release.sh` need a notarytool keychain profile, taken from
 `NOTARY_PROFILE` or from `git config stillePost.notaryProfile` in your clone.
 
+`scripts/build-icon.sh` turns the SVG sources in `Resources/icon/` into the
+finished `Resources/AppIcon.icns`. The result is committed, and `build.sh` only
+copies it — so you only need this script after changing the artwork; commit the
+new `.icns` along with it. Requires `rsvg-convert` (`brew install librsvg`).
+
 The Sparkle feed and release automation are documented in
 [`docs/sparkle-release.md`](docs/sparkle-release.md).
 
