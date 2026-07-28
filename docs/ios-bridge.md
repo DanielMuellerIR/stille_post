@@ -1,6 +1,7 @@
 # Diktat vom iPhone über das Heimnetz
 
-Stand: 2026-07-29 (Stufe 0 gebaut und verifiziert).
+Stand: 2026-07-29 (Stufe 0 gebaut und am iPhone verifiziert: Aktionstaste →
+Diktat → Text in der Zwischenablage, zwei Durchläufe).
 
 Ziel: auf dem iPhone in beliebigen Apps mit der Diktatqualität von Stille Post
 arbeiten, solange man im eigenen Heimnetz ist. Der Mac erledigt Spracherkennung
@@ -121,7 +122,14 @@ Voraussetzungen, die leicht übersehen werden:
 - Der Mac muss **wach** sein. Ein Dauerläufer ist die richtige Grundlage; ein
   zugeklappter Laptop antwortet nicht.
 - Die macOS-Firewall fragt beim ersten eingehenden Zugriff nach einer Freigabe.
-- iOS fragt beim ersten Zugriff nach der Berechtigung für das lokale Netzwerk.
+- iOS fragt beim ersten Zugriff nach der Berechtigung für das lokale Netzwerk
+  (bestätigt am 2026-07-29: die Abfrage kommt beim ersten Lauf des Kurzbefehls).
+- Wurde das Token mit `stillepost-cli bridge token` angelegt, verlangt macOS
+  beim nächsten Start der App einmal eine Schlüsselbund-Freigabe, weil ein
+  anderes Programm (die CLI) den Eintrag erzeugt hat. Bis zum Klick auf
+  „Immer erlauben" lauscht die Brücke nicht — die App wartet still auf den
+  Dialog. Wer die Brücke stattdessen komplett über die App-Einstellungen
+  einrichtet, umgeht das.
 
 ## Der Kurzbefehl auf dem iPhone
 
@@ -131,11 +139,16 @@ gehört auf den Action-Button.
 **„Diktat" (zu Hause, volle Qualität)**
 
 1. *Audio aufnehmen* — Start: sofort, Stoppen: beim Antippen.
-2. *Inhalt von URL abrufen*
+2. *Inhalte von URL abrufen* — die Optionen sind hinter dem blauen Pfeil
+   eingeklappt:
    - URL: `http://<mac-name>.local:8188/v1/dictate`
    - Methode: `POST`
-   - Header: `Authorization` = `Bearer <token>`
-   - Anfragetext: Datei → die Aufnahme aus Schritt 1
+   - Header: Schlüssel `Authorization`, Wert `Bearer <token>`. Das Wort
+     `Bearer` samt Leerzeichen gehört mit in den Wert; nur das Token genügt
+     nicht (die Brücke antwortet dann 401).
+   - Anfragetext: von `JSON` auf `Datei` umstellen und die Variable
+     *Aufgenommenes Audio* wählen. Bleibt `JSON` stehen, geht die Anfrage
+     **ohne** die Aufnahme raus und die Brücke antwortet 400.
 3. *Wörterbuchwert abrufen* → Schlüssel `text`
 4. *In die Zwischenablage kopieren*
 
@@ -161,6 +174,10 @@ vorher, statt sich auf einen fehlgeschlagenen Aufruf zu verlassen.
 Das Vorwärmen der Bereinigung, das Stille Post ohnehin betreibt, wirkt also auch
 für das iPhone. Die Übertragung selbst fällt nicht auf: 18 s Aufnahme sind als
 AAC rund 76 kB.
+
+Der erste echte iPhone-Durchlauf (2026-07-29, Aktionstaste, Modelle warm)
+bestätigt das: 158 kB Aufnahme, 3,85 s vom Eintreffen der Anfrage bis zur
+Antwort — gemessen am Protokoll der Brücke.
 
 ## Prüfen ohne iPhone
 

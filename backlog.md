@@ -8,15 +8,16 @@ Rohtext von eigenen Geräten an, das iPhone bedient sie über einen Kurzbefehl a
 Action-Button und fügt den Text aus der Zwischenablage ein. Keine
 Tastatur-Erweiterung, kein Fernzugriff — beides bewusst verworfen.
 
+Am 2026-07-29 am iPhone verifiziert: Kurzbefehl an der Aktionstaste, zwei
+Diktate bis in die Zwischenablage. Beide Rückfragen sind geklärt — die
+iOS-Abfrage fürs lokale Netzwerk kommt beim ersten Lauf, und *Audio aufnehmen*
+landet nur dann im Anfragetext, wenn dieser ausdrücklich auf „Datei" gestellt
+wird. Die beiden Stolpersteine beim Einrichten (`Bearer` gehört mit in den
+Header-Wert; Anfragetext von `JSON` auf `Datei` umstellen) stehen jetzt samt
+Schlüsselbund-Hinweis in [docs/ios-bridge.md](docs/ios-bridge.md).
+
 Offen:
 
-- **Am iPhone noch nie gelaufen.** Verifiziert ist die Mac-Seite: Unit-Tests, `curl`
-  mit echtem AAC über `.local`, LAN-Adresse und IPv6, und derselbe Weg durch das
-  gebaute App-Bundle. Der Kurzbefehl selbst (Audio aufnehmen → POST → Wörterbuchwert
-  → Zwischenablage) ist beschrieben, aber nicht auf dem Gerät ausprobiert. Dabei
-  sind zwei Rückfragen zu klären: Fragt iOS die Berechtigung für das lokale Netzwerk
-  wie erwartet ab, und liefert *Audio aufnehmen* die Datei in einer Form, die der
-  Anfragetext direkt annimmt?
 - Die macOS-Firewall-Freigabe für eingehende Verbindungen ist ungeprüft (auf diesem
   Mac ist die Firewall nicht aktiv). Auf einem Mac mit aktiver Firewall muss die
   einmalige Freigabe erscheinen und danach bestehen bleiben.
