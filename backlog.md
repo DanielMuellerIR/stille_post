@@ -227,6 +227,9 @@ Weiterhin offen:
 
 ## Weitere offene Arbeit
 
+- GitHub-Push eingefroren (Daniel, 2026-07-29): kein Push nach GitHub, bis die
+  App sinnvoll nutzbar ist. Bis dahin bleibt `main` nur lokal und auf dem
+  privaten Fleet-Remote; der Rückstand von `github/main` ist Absicht.
 - Sparkle-Erstveröffentlichung für 0.8.5 vorbereiten: GitHub Pages auf „GitHub
   Actions“ stellen, `SPARKLE_PRIVATE_KEY` über stdin als Actions-Secret hinterlegen,
   den privaten Schlüssel verschlüsselt sichern, 0.8.5 als einmalig manuell zu
