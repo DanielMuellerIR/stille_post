@@ -21,6 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var overlay: OverlayController!
     private var historyWindow: HistoryWindowController!
     private var settingsWindow: SettingsWindowController!
+    /// Netzwerkzugang für eigene Geräte im Heimnetz; nil = ausgeschaltet.
+    private var bridge: BridgeServer?
     /// Pinnt das primäre Bereinigungs-Modell jede Minute neu — läuft nur im Modus
     /// "dauerhaft geladen" (siehe buildComponents); bei befristetem keep_alive nil.
     private var warmUpTimer: Timer?
@@ -105,6 +107,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        bridge?.stop()
         engine.shutdown()
     }
 
@@ -129,6 +132,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return (self.engine.currentLevelDb, self.engine.recordingDuration)
         }
 
+        startBridgeIfEnabled()
+
         // Bereinigungs-Modell einmal beim Start vorwärmen, damit schon das erste
         // Diktat ohne Kaltstart auskommt.
         engine.keepCleanupModelWarm()
@@ -147,6 +152,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard CleanupService.pinsForever(config.cleanup.keepAlive) else { return }
         warmUpTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.engine.keepCleanupModelWarm()
+        }
+    }
+
+    /// Öffnet den Netzwerkzugang für eigene Geräte im Heimnetz, wenn er in den
+    /// Einstellungen eingeschaltet ist. Fehler (Port belegt, kein Token) werden
+    /// gezeigt statt verschluckt: Ein stillschweigend nicht laufender Zugang wäre
+    /// später als „das iPhone kommt nicht durch“ viel schwerer zu finden.
+    private func startBridgeIfEnabled() {
+        bridge?.stop()
+        bridge = nil
+        guard config.bridge.enabled else { return }
+        let server = BridgeServer(config: config)
+        server.onLog = { message in
+            FileHandle.standardError.write(Data("StillePost bridge: \(message)\n".utf8))
+        }
+        do {
+            try server.start()
+            bridge = server
+        } catch {
+            overlay.show(.failure(L10n.format("app.bridge_start_failed", error.localizedDescription)))
         }
     }
 

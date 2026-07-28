@@ -14,6 +14,9 @@ import StillePostCore
 ///   stillepost-cli cleanup -               # Text von stdin (für Pipes)
 ///   stillepost-cli history list [--json]   # Verlauf anzeigen
 ///   stillepost-cli history clear           # Verlauf + zurückbehaltene Aufnahmen löschen
+///   stillepost-cli bridge status           # Netzwerk-Brücke: Zustand, Adresse, Grenzen
+///   stillepost-cli bridge token [--new]    # Zugangs-Token in die Zwischenablage (--reveal: nach stdout)
+///   stillepost-cli bridge serve            # Brücke im Vordergrund betreiben (Diagnose)
 ///   stillepost-cli set-cleanup-key         # API-Key für Cloud-Bereinigung in den Schlüsselbund (von stdin!)
 ///
 /// Exit-Codes: 0 = ok, 1 = Fehler, 2 = Bedienungsfehler (falsche Argumente).
@@ -297,6 +300,82 @@ case "cleanup":
         log(L10n.format("cli.cleanup.raw_fallback", result.fallbackReason ?? "?"))
     }
     print(result.text)
+
+// MARK: bridge — Netzwerkzugang für eigene Geräte im Heimnetz
+case "bridge":
+    /// Adresse, die auf dem iPhone in den Kurzbefehl gehört (siehe BridgeAddress).
+    func bridgeBaseURL() -> String { BridgeAddress.baseURL(port: config.bridge.port) }
+
+    switch arguments.dropFirst().first {
+
+    case "status":
+        print(config.bridge.enabled
+            ? L10n.format("cli.bridge.enabled", String(config.bridge.port))
+            : L10n.text("cli.bridge.disabled"))
+        print(BridgeToken.load() != nil
+            ? L10n.text("cli.bridge.token_present")
+            : L10n.text("cli.bridge.token_missing"))
+        print(L10n.format("cli.bridge.url", bridgeBaseURL()))
+        print(L10n.format("cli.bridge.limit", config.bridge.maxRequestMegabytes))
+
+    case "token":
+        // Ohne --new bleibt ein vorhandenes Token gültig: Ein neues würde alle
+        // schon eingerichteten Geräte aussperren, und das soll niemandem
+        // versehentlich passieren.
+        let wantsNew = arguments.contains("--new")
+        let token: String
+        if let existing = BridgeToken.load(), !wantsNew {
+            token = existing
+            log(L10n.text("cli.bridge.token_reused"))
+        } else {
+            do {
+                token = try BridgeToken.regenerate()
+            } catch {
+                fail(L10n.format("cli.error", error.localizedDescription))
+            }
+            log(L10n.text("cli.bridge.token_created"))
+        }
+        if arguments.contains("--reveal") {
+            // Ausdrücklich verlangt (für Skripte). Sonst geht das Geheimnis NICHT
+            // nach stdout, damit es nicht in Protokollen und Scrollback landet.
+            print(token)
+        } else {
+            // Über stdin an pbcopy — nie als Argument, sonst stünde das Token in
+            // der Prozessliste. Von der Mac-Zwischenablage kommt es per Handoff
+            // direkt aufs iPhone.
+            let copy = Process()
+            copy.executableURL = URL(fileURLWithPath: "/usr/bin/pbcopy")
+            let pipe = Pipe()
+            copy.standardInput = pipe
+            do {
+                try copy.run()
+                pipe.fileHandleForWriting.write(Data(token.utf8))
+                pipe.fileHandleForWriting.closeFile()
+                copy.waitUntilExit()
+                log(L10n.text("cli.bridge.token_copied"))
+            } catch {
+                fail(L10n.format("cli.bridge.token_copy_failed", error.localizedDescription))
+            }
+        }
+
+    case "serve":
+        // Vordergrund-Betrieb für Diagnose und launchd. Im Alltag startet die App
+        // die Brücke selbst, sobald sie in den Einstellungen eingeschaltet ist.
+        let server = BridgeServer(config: config)
+        server.onLog = { message in
+            FileHandle.standardError.write(Data("stillepost-cli: \(message)\n".utf8))
+        }
+        do {
+            try server.start()
+        } catch {
+            fail(L10n.format("cli.error", error.localizedDescription))
+        }
+        log(L10n.format("cli.bridge.serving", bridgeBaseURL()))
+        dispatchMain()
+
+    default:
+        fail(usage, code: 2)
+    }
 
 // MARK: history — Verlauf anzeigen/löschen
 case "history":

@@ -145,6 +145,29 @@ public struct Config: Codable, Equatable {
         public init() {}
     }
 
+    /// Netzwerkzugang für eigene Geräte im Heimnetz (Diktat vom iPhone).
+    ///
+    /// Der Mac ist hier ausschließlich EMPFÄNGER: Ein gekoppeltes Gerät schickt
+    /// Audio oder Rohtext herein, die Verarbeitung passiert vollständig auf diesem
+    /// Rechner. Die App selbst sendet weiterhin niemals Audio irgendwohin — die
+    /// Loopback-Prüfung in `WhisperEndpoint` bleibt unverändert streng.
+    ///
+    /// Standardmäßig AUS. Wer sie einschaltet, öffnet einen Port im eigenen Netz;
+    /// das ist eine bewusste Entscheidung und keine stille Voreinstellung.
+    public struct Bridge: Codable, Equatable {
+        /// Lauscht die Brücke? (false = kein Port offen, nichts erreichbar)
+        public var enabled: Bool = false
+        /// TCP-Port der Brücke. 8188 liegt neben dem whisper-server (8181), ohne
+        /// mit ihm oder mit Ollama (11434) zu kollidieren.
+        public var port: Int = 8188
+        /// Obergrenze für eine einzelne Anfrage. 25 MB fassen rund 25 Minuten
+        /// AAC-Aufnahme vom iPhone; darüber bricht die Brücke ab, statt beliebig
+        /// viel Speicher zu füllen.
+        public var maxRequestMegabytes: Int = 25
+
+        public init() {}
+    }
+
     /// Einstellungen für die Stille-Erkennung (VAD = Voice Activity Detection).
     public struct Vad: Codable, Equatable {
         /// Pegel-Schwelle in dBFS, unterhalb derer ein Frame als "still" gilt.
@@ -225,6 +248,7 @@ public struct Config: Codable, Equatable {
 
     public var whisper: Whisper = Whisper()
     public var cleanup: Cleanup = Cleanup()
+    public var bridge: Bridge = Bridge()
     public var vad: Vad = Vad()
     public var audio: Audio = Audio()
     public var ui: UI = UI()
@@ -291,15 +315,21 @@ public struct Config: Codable, Equatable {
         if let detail = vad.validationFailure {
             throw ValidationError.invalidVad(detail)
         }
+        if let detail = bridge.validationFailure {
+            throw ValidationError.invalidBridge(detail)
+        }
     }
 
     public enum ValidationError: Error, LocalizedError {
         case invalidVad(String)
+        case invalidBridge(String)
 
         public var errorDescription: String? {
             switch self {
             case .invalidVad(let detail):
                 return L10n.format("core.config.invalid_vad", detail)
+            case .invalidBridge(let detail):
+                return L10n.format("core.config.invalid_bridge", detail)
             }
         }
     }
@@ -311,12 +341,18 @@ public struct Config: Codable, Equatable {
 
     // MARK: - Tolerantes Dekodieren (fehlende Felder -> Defaults)
 
-    private enum CodingKeys: String, CodingKey { case whisper, cleanup, vad, audio, ui, hotkey }
+    private enum CodingKeys: String, CodingKey { case whisper, cleanup, bridge, vad, audio, ui, hotkey }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         whisper = c.decodeOrDefault(Whisper.self, forKey: .whisper, default: Whisper())
         cleanup = c.decodeOrDefault(Cleanup.self, forKey: .cleanup, default: Cleanup())
+        let decodedBridge = c.decodeOrDefault(Bridge.self, forKey: .bridge, default: Bridge())
+        if let detail = decodedBridge.validationFailure {
+            let message = L10n.format("core.config.invalid_field", "bridge", detail)
+            FileHandle.standardError.write(Data(message.utf8))
+        }
+        bridge = decodedBridge.runtimeSafe
         let decodedVad = c.decodeOrDefault(Vad.self, forKey: .vad, default: Vad())
         if let detail = decodedVad.validationFailure {
             let message = L10n.format("core.config.invalid_field", "vad", detail)
@@ -406,6 +442,44 @@ extension Config.Cleanup.Remote {
         baseURL = c.decodeOrDefault(String.self, forKey: .baseURL, default: baseURL)
         model = c.decodeOrDefault(String.self, forKey: .model, default: model)
         apiKeyEnvVar = c.decodeOrDefault(String.self, forKey: .apiKeyEnvVar, default: apiKeyEnvVar)
+    }
+}
+
+extension Config.Bridge {
+    private enum CodingKeys: String, CodingKey { case enabled, port, maxRequestMegabytes }
+    public init(from decoder: Decoder) throws {
+        self.init()
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = c.decodeOrDefault(Bool.self, forKey: .enabled, default: enabled)
+        port = c.decodeOrDefault(Int.self, forKey: .port, default: port)
+        maxRequestMegabytes = c.decodeOrDefault(Int.self, forKey: .maxRequestMegabytes,
+                                                default: maxRequestMegabytes)
+    }
+
+    /// Grenzen für die frei editierbaren Werte. Ports unter 1024 verlangen
+    /// Root-Rechte, die diese App nie hat; ein unbegrenztes Größenlimit wäre eine
+    /// Einladung, den Speicher des Macs mit einer einzigen Anfrage zu füllen.
+    var validationFailure: String? {
+        guard (1024...65535).contains(port) else {
+            return L10n.format("core.config.bridge_range", "port", "1024…65535")
+        }
+        guard (1...200).contains(maxRequestMegabytes) else {
+            return L10n.format("core.config.bridge_range", "maxRequestMegabytes", "1…200")
+        }
+        return nil
+    }
+
+    /// Letzte Schutzschicht beim Laden: defekte Werte fallen einzeln auf den
+    /// Default zurück, statt die ganze Konfiguration zu verwerfen.
+    var runtimeSafe: Self {
+        guard validationFailure != nil else { return self }
+        let defaults = Self()
+        var safe = self
+        if !(1024...65535).contains(safe.port) { safe.port = defaults.port }
+        if !(1...200).contains(safe.maxRequestMegabytes) {
+            safe.maxRequestMegabytes = defaults.maxRequestMegabytes
+        }
+        return safe
     }
 }
 

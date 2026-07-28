@@ -233,6 +233,36 @@ Only transcribed TEXT travels over your network, never audio — speech recognit
 always runs on the machine you dictate on. Which endpoint handled a cleanup is shown
 by `stillepost-cli cleanup` and in the history window.
 
+## Dictation From Your iPhone (Home Network)
+
+Stille Post can accept dictations from your own devices on the same network: the
+iPhone records, the Mac transcribes and cleans up, and the finished text lands on
+the iPhone's clipboard, ready to paste into any app — including a text field in
+Firefox. A shortcut on the Action button is all it takes; no app and no custom
+keyboard are involved.
+
+Switch it on under Settings -> General -> "Dictation From Your Own Devices (Home
+Network)". The same place has the button that copies the access token to the
+clipboard; the token itself is never displayed. Access is off by default.
+
+```bash
+curl -s -H "Authorization: Bearer <token>" \
+     --data-binary @recording.m4a http://<mac-name>.local:8188/v1/dictate
+```
+
+Three routes: `GET /v1/health`, `POST /v1/dictate` (audio -> finished text, `?raw=1`
+skips the cleanup) and `POST /v1/cleanup` (raw text -> cleaned text, for devices
+that transcribe on their own).
+
+**Privacy and limits.** The Mac is only a receiver here: audio is processed on this
+machine, and speech recognition still runs exclusively on loopback. Access is
+restricted to private address ranges and requires the token. The connection is
+**unencrypted**, though - anyone listening on the same Wi-Fi can read your
+dictations. It is not meant for use away from home.
+
+Shortcut instructions, measurements, and the decisions behind this are in
+[docs/ios-bridge.md](docs/ios-bridge.md) (German).
+
 ## Scriptable without the GUI
 
 The entire pipeline is available through the CLI with the same logic and configuration:
@@ -245,6 +275,9 @@ stillepost-cli transcribe file.wav --raw
 stillepost-cli cleanup "raw text"      # cleanup only ("-" reads stdin)
 stillepost-cli history list --json
 stillepost-cli history clear
+stillepost-cli bridge status           # network access: state, address, limits
+stillepost-cli bridge token            # copy the access token to the clipboard
+stillepost-cli bridge serve            # run the network access in the foreground
 stillepost-cli set-cleanup-key         # store API key from stdin in the keychain
 ```
 

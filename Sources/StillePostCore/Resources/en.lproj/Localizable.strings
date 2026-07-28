@@ -28,6 +28,7 @@
 "app.paste_permission_missing" = "No permission to paste — the text is on the clipboard (⌘V)";
 "app.cleanup_fallback" = "⚠️ Fallback: %@";
 "app.cleanup_primary_retry" = "⚠️ Connection problem — retrying …";
+"app.bridge_start_failed" = "The network access could not be opened: %@";
 "overlay.recording" = "RECORDING";
 "overlay.transcribing" = "Transcribing …";
 "overlay.inserted" = "Inserted";
@@ -43,6 +44,17 @@
 "settings.hotkey.section" = "Recording Hotkey";
 "settings.start.section" = "Startup";
 "settings.interface.section" = "Interface";
+"settings.bridge.section" = "Dictation From Your Own Devices (Home Network)";
+"settings.bridge.enabled" = "Accept dictations from the home network";
+"settings.bridge.description" = "Opens a port for your own devices on the same network, such as a shortcut on your iPhone. Audio is processed on this Mac and never leaves it. Access is limited to the home network and requires a token; the connection is unencrypted, so text and recording are readable by other devices on the same Wi-Fi.";
+"settings.bridge.port" = "Port";
+"settings.bridge.address" = "Address for the iPhone";
+"settings.bridge.token_copy" = "Copy token to clipboard";
+"settings.bridge.token_new" = "New token";
+"settings.bridge.token_hint" = "The token is never displayed. From the clipboard you can paste it straight into your iPhone via Handoff.";
+"settings.bridge.token_working" = "One moment …";
+"settings.bridge.token_created" = "The new token is on the clipboard — devices you already set up must be updated.";
+"settings.bridge.token_copied" = "The token is on the clipboard.";
 "settings.overlay_position" = "Overlay position";
 "settings.overlay_position.mouse" = "At the mouse pointer";
 "settings.overlay_position.bottom_center" = "Bottom center";
@@ -160,6 +172,8 @@
 "core.config.invalid_vad" = "Invalid silence detection setting: %@";
 "core.config.vad_range" = "%@ is outside the allowed range (%@)";
 "core.config.vad_order" = "minSegmentSec must not be greater than maxSegmentSec";
+"core.config.invalid_bridge" = "Invalid network bridge setting: %@";
+"core.config.bridge_range" = "%@ is outside the allowed range (%@)";
 "core.audio.format_setup_failed" = "The audio format could not be configured (no input device?)";
 "core.audio.device_unavailable" = "The selected microphone “%@” is unavailable. Connect it or choose another one in Settings.";
 "core.audio.device_configuration_failed" = "The microphone “%@” could not be opened (audio error %d).";
@@ -204,8 +218,44 @@
 "core.history.entry_missing" = "The history entry no longer exists.";
 "core.history.unsafe_audio_name" = "Unsafe recording file name in history.";
 
+/* Network bridge (dictation from your own devices on the home network) */
+"core.bridge.keychain_error" = "The token could not be stored in the keychain (OSStatus %d)";
+"core.bridge.no_token" = "No bridge token yet — create one with: stillepost-cli bridge token";
+"core.bridge.bad_port" = "Invalid bridge port: %@";
+"core.bridge.listen_port_failed" = "Port %@ could not be opened: %@";
+"core.bridge.listening" = "Bridge is listening on port %@";
+"core.bridge.listen_failed" = "Bridge failed: %@";
+"core.bridge.rejected_peer" = "Connection refused (not from the home network): %@";
+"core.bridge.too_many" = "Connection refused (too many open at once)";
+"core.bridge.read_timeout" = "Connection closed (read timeout): %@";
+"core.bridge.read_failed" = "Read error on the connection: %@";
+"core.bridge.request_log" = "%@ %@ → %d (%@ kB, %.2f s) from %@";
+"core.bridge.unauthorized" = "Unauthorized";
+"core.bridge.method_not_allowed" = "Method not allowed for this path";
+"core.bridge.unknown_route" = "Unknown path";
+"core.bridge.bad_request" = "Request could not be read";
+"core.bridge.no_chunked" = "Chunked encoding is not supported — set Content-Length";
+"core.bridge.too_large" = "Request too large (limit: %lld MB)";
+"core.bridge.text_not_utf8" = "Text must be UTF-8";
+"core.bridge.text_empty" = "No text supplied";
+"core.bridge.cleanup_off" = "Text cleanup is switched off on this Mac";
+"core.bridge.audio_empty" = "No usable audio supplied";
+"core.bridge.audio_unsupported" = "Audio format could not be read: %@";
+"core.bridge.audio_format" = "The target format for Whisper could not be configured";
+
 /* CLI */
-"cli.usage" = "Usage:\n  stillepost-cli doctor\n  stillepost-cli install-model [large-v3-turbo|large-v3] [--force]\n  stillepost-cli transcribe <file.wav> [--raw]\n  stillepost-cli cleanup <text|->\n  stillepost-cli history list [--json]\n  stillepost-cli history clear\n  stillepost-cli set-cleanup-key   (reads the key from stdin — NEVER pass it as an argument!)";
+"cli.usage" = "Usage:\n  stillepost-cli doctor\n  stillepost-cli install-model [large-v3-turbo|large-v3] [--force]\n  stillepost-cli transcribe <file.wav> [--raw]\n  stillepost-cli cleanup <text|->\n  stillepost-cli history list [--json]\n  stillepost-cli history clear\n  stillepost-cli bridge status|token [--new] [--reveal]|serve\n  stillepost-cli set-cleanup-key   (reads the key from stdin — NEVER pass it as an argument!)";
+"cli.bridge.enabled" = "✓ Network bridge enabled (port %@)";
+"cli.bridge.disabled" = "· Network bridge disabled (bridge.enabled = false)";
+"cli.bridge.token_present" = "✓ Access token present";
+"cli.bridge.token_missing" = "✗ No access token — create one with: stillepost-cli bridge token";
+"cli.bridge.url" = "  Address for the iPhone: %@";
+"cli.bridge.limit" = "  Size limit per request: %d MB";
+"cli.bridge.token_created" = "New token created — devices you already set up must be updated.";
+"cli.bridge.token_reused" = "Using the existing token (force a new one with --new).";
+"cli.bridge.token_copied" = "The token is on the clipboard. Paste it into the shortcut on your iPhone.";
+"cli.bridge.token_copy_failed" = "The token could not be copied to the clipboard: %@";
+"cli.bridge.serving" = "Bridge is running: %@ — stop it with Ctrl-C";
 "cli.doctor.binary_ok" = "✓ whisper-server binary: %@";
 "cli.doctor.binary_missing" = "✗ whisper-server binary missing: %@ (brew install whisper-cpp)";
 "cli.doctor.model_ok" = "✓ Whisper model: %@ (%lld MB)";

@@ -23,7 +23,7 @@ final class SettingsWindowController {
     func show() {
         if window == nil {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 620, height: 560),
+                contentRect: NSRect(x: 0, y: 0, width: 620, height: 680),
                 styleMask: [.titled, .closable, .resizable],
                 backing: .buffered, defer: false
             )
@@ -123,7 +123,7 @@ struct SettingsView: View {
             }
             .padding(12)
         }
-        .frame(minWidth: 600, minHeight: 520)
+        .frame(minWidth: 600, minHeight: 640)
         .environment(\.locale, Locale(identifier: L10n.languageCode))
     }
 }
@@ -142,6 +142,9 @@ private struct GeneralTab: View {
             }
             Section(L10n.text("settings.start.section")) {
                 LoginItemToggle()
+            }
+            Section(L10n.text("settings.bridge.section")) {
+                BridgeRow(bridge: $config.bridge)
             }
             Section(L10n.text("settings.interface.section")) {
                 Picker(L10n.text("settings.overlay_position"), selection: $config.ui.overlayPosition) {
@@ -448,6 +451,65 @@ private struct APIKeyRow: View {
                 .foregroundColor(.secondary)
                 .frame(maxWidth: 500, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// Netzwerk-Brücke: nimmt Diktate von eigenen Geräten im Heimnetz an (iPhone).
+///
+/// Wie beim API-Key gilt: Der Schlüsselbund wird NIE beim Rendern angefasst, nur
+/// auf ausdrücklichen Knopfdruck — ein modaler Berechtigungsdialog mitten im
+/// Layout würde das Fenster blockieren.
+private struct BridgeRow: View {
+    @Binding var bridge: Config.Bridge
+    @State private var status: String?
+
+    /// Adresse, die auf dem iPhone in den Kurzbefehl gehört (siehe BridgeAddress).
+    private var address: String { BridgeAddress.baseURL(port: bridge.port) }
+
+    var body: some View {
+        Toggle(L10n.text("settings.bridge.enabled"), isOn: $bridge.enabled)
+        Text(L10n.text("settings.bridge.description"))
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        if bridge.enabled {
+            TextField(L10n.text("settings.bridge.port"), value: $bridge.port,
+                      format: .number.grouping(.never))
+            LabeledContent(L10n.text("settings.bridge.address")) {
+                Text(address).textSelection(.enabled).font(.caption)
+            }
+            HStack {
+                Button(L10n.text("settings.bridge.token_copy")) { copyToken(forceNew: false) }
+                Button(L10n.text("settings.bridge.token_new")) { copyToken(forceNew: true) }
+            }
+            Text(status ?? L10n.text("settings.bridge.token_hint"))
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Legt bei Bedarf ein Token an und schiebt es in die Zwischenablage — von dort
+    /// kommt es per Handoff direkt aufs iPhone. Angezeigt wird es nie.
+    private func copyToken(forceNew: Bool) {
+        status = L10n.text("settings.bridge.token_working")
+        Task.detached {
+            let message: String
+            do {
+                let existing = forceNew ? nil : BridgeToken.load()
+                let token = try existing ?? BridgeToken.regenerate()
+                await MainActor.run {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(token, forType: .string)
+                }
+                message = forceNew || existing == nil
+                    ? L10n.text("settings.bridge.token_created")
+                    : L10n.text("settings.bridge.token_copied")
+            } catch {
+                message = L10n.format("settings.cleanup.api_key_error", error.localizedDescription)
+            }
+            await MainActor.run { status = message }
         }
     }
 }

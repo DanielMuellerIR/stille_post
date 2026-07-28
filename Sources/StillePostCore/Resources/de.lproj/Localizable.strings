@@ -28,6 +28,7 @@
 "app.paste_permission_missing" = "Kein Einfüge-Recht — Text liegt in der Zwischenablage (⌘V)";
 "app.cleanup_fallback" = "⚠️ Ausweichweg: %@";
 "app.cleanup_primary_retry" = "⚠️ Verbindungsproblem — zweiter Versuch …";
+"app.bridge_start_failed" = "Netzwerkzugang konnte nicht geöffnet werden: %@";
 "overlay.recording" = "AUFNAHME";
 "overlay.transcribing" = "Transkribiere …";
 "overlay.inserted" = "Eingefügt";
@@ -43,6 +44,17 @@
 "settings.hotkey.section" = "Aufnahme-Hotkey";
 "settings.start.section" = "Start";
 "settings.interface.section" = "Oberfläche";
+"settings.bridge.section" = "Diktat von eigenen Geräten (Heimnetz)";
+"settings.bridge.enabled" = "Diktate aus dem Heimnetz annehmen";
+"settings.bridge.description" = "Öffnet einen Port für eigene Geräte im gleichen Netz — etwa einen Kurzbefehl auf dem iPhone. Audio wird hier auf diesem Mac verarbeitet und verlässt ihn nicht. Der Zugang gilt nur im Heimnetz und nur mit Token; die Verbindung ist unverschlüsselt, Text und Aufnahme sind also für andere Geräte im gleichen WLAN mitlesbar.";
+"settings.bridge.port" = "Port";
+"settings.bridge.address" = "Adresse fürs iPhone";
+"settings.bridge.token_copy" = "Token in die Zwischenablage";
+"settings.bridge.token_new" = "Neues Token";
+"settings.bridge.token_hint" = "Das Token wird nie angezeigt. Aus der Zwischenablage lässt es sich per Handoff direkt auf dem iPhone einfügen.";
+"settings.bridge.token_working" = "Einen Moment …";
+"settings.bridge.token_created" = "Neues Token liegt in der Zwischenablage — schon eingerichtete Geräte müssen es neu eintragen.";
+"settings.bridge.token_copied" = "Token liegt in der Zwischenablage.";
 "settings.overlay_position" = "Overlay-Position";
 "settings.overlay_position.mouse" = "An der Mausposition";
 "settings.overlay_position.bottom_center" = "Unten mittig";
@@ -160,6 +172,8 @@
 "core.config.invalid_vad" = "Ungültige Stille-Erkennung: %@";
 "core.config.vad_range" = "%@ liegt außerhalb des erlaubten Bereichs (%@)";
 "core.config.vad_order" = "minSegmentSec darf nicht größer als maxSegmentSec sein";
+"core.config.invalid_bridge" = "Ungültige Netzwerk-Brücke: %@";
+"core.config.bridge_range" = "%@ liegt außerhalb des erlaubten Bereichs (%@)";
 "core.audio.format_setup_failed" = "Audio-Format konnte nicht eingerichtet werden (kein Eingabegerät?)";
 "core.audio.device_unavailable" = "Das ausgewählte Mikrofon „%@“ ist nicht verfügbar. Bitte verbinden oder in den Einstellungen ein anderes wählen.";
 "core.audio.device_configuration_failed" = "Das Mikrofon „%@“ konnte nicht geöffnet werden (Audio-Fehler %d).";
@@ -204,8 +218,44 @@
 "core.history.entry_missing" = "Der Verlaufseintrag existiert nicht mehr.";
 "core.history.unsafe_audio_name" = "Unsicherer Aufnahme-Dateiname im Verlauf.";
 
+/* Netzwerk-Brücke (Diktat von eigenen Geräten im Heimnetz) */
+"core.bridge.keychain_error" = "Token konnte nicht im Schlüsselbund gespeichert werden (OSStatus %d)";
+"core.bridge.no_token" = "Kein Brücken-Token vorhanden — anlegen mit: stillepost-cli bridge token";
+"core.bridge.bad_port" = "Unzulässiger Brücken-Port: %@";
+"core.bridge.listen_port_failed" = "Port %@ konnte nicht geöffnet werden: %@";
+"core.bridge.listening" = "Brücke lauscht auf Port %@";
+"core.bridge.listen_failed" = "Brücke fehlgeschlagen: %@";
+"core.bridge.rejected_peer" = "Verbindung abgewiesen (nicht aus dem Heimnetz): %@";
+"core.bridge.too_many" = "Verbindung abgewiesen (zu viele gleichzeitig offen)";
+"core.bridge.read_timeout" = "Verbindung abgebrochen (Zeitüberschreitung beim Lesen): %@";
+"core.bridge.read_failed" = "Lesefehler auf der Verbindung: %@";
+"core.bridge.request_log" = "%@ %@ → %d (%@ kB, %.2f s) von %@";
+"core.bridge.unauthorized" = "Nicht autorisiert";
+"core.bridge.method_not_allowed" = "Methode für diesen Pfad nicht erlaubt";
+"core.bridge.unknown_route" = "Unbekannter Pfad";
+"core.bridge.bad_request" = "Anfrage nicht lesbar";
+"core.bridge.no_chunked" = "Chunked-Kodierung wird nicht unterstützt — Content-Length setzen";
+"core.bridge.too_large" = "Anfrage zu groß (Grenze: %lld MB)";
+"core.bridge.text_not_utf8" = "Text muss UTF-8 sein";
+"core.bridge.text_empty" = "Kein Text übergeben";
+"core.bridge.cleanup_off" = "Die Textbereinigung ist auf diesem Mac ausgeschaltet";
+"core.bridge.audio_empty" = "Kein verwertbares Audio übergeben";
+"core.bridge.audio_unsupported" = "Audio-Format nicht lesbar: %@";
+"core.bridge.audio_format" = "Zielformat für Whisper konnte nicht eingerichtet werden";
+
 /* CLI */
-"cli.usage" = "Verwendung:\n  stillepost-cli doctor\n  stillepost-cli install-model [large-v3-turbo|large-v3] [--force]\n  stillepost-cli transcribe <datei.wav> [--raw]\n  stillepost-cli cleanup <text|->\n  stillepost-cli history list [--json]\n  stillepost-cli history clear\n  stillepost-cli set-cleanup-key   (liest den Key von stdin — NIE als Argument übergeben!)";
+"cli.usage" = "Verwendung:\n  stillepost-cli doctor\n  stillepost-cli install-model [large-v3-turbo|large-v3] [--force]\n  stillepost-cli transcribe <datei.wav> [--raw]\n  stillepost-cli cleanup <text|->\n  stillepost-cli history list [--json]\n  stillepost-cli history clear\n  stillepost-cli bridge status|token [--new] [--reveal]|serve\n  stillepost-cli set-cleanup-key   (liest den Key von stdin — NIE als Argument übergeben!)";
+"cli.bridge.enabled" = "✓ Netzwerk-Brücke eingeschaltet (Port %@)";
+"cli.bridge.disabled" = "· Netzwerk-Brücke ausgeschaltet (bridge.enabled = false)";
+"cli.bridge.token_present" = "✓ Zugangs-Token vorhanden";
+"cli.bridge.token_missing" = "✗ Kein Zugangs-Token — anlegen mit: stillepost-cli bridge token";
+"cli.bridge.url" = "  Adresse für das iPhone: %@";
+"cli.bridge.limit" = "  Größengrenze je Anfrage: %d MB";
+"cli.bridge.token_created" = "Neues Token angelegt — bereits eingerichtete Geräte müssen es neu eintragen.";
+"cli.bridge.token_reused" = "Vorhandenes Token wird verwendet (neues erzwingen mit --new).";
+"cli.bridge.token_copied" = "Token liegt in der Zwischenablage. Auf dem iPhone in den Kurzbefehl einfügen.";
+"cli.bridge.token_copy_failed" = "Token konnte nicht in die Zwischenablage gelegt werden: %@";
+"cli.bridge.serving" = "Brücke läuft: %@ — beenden mit Strg-C";
 "cli.doctor.binary_ok" = "✓ whisper-server-Binary: %@";
 "cli.doctor.binary_missing" = "✗ whisper-server-Binary fehlt: %@ (brew install whisper-cpp)";
 "cli.doctor.model_ok" = "✓ Whisper-Modell: %@ (%lld MB)";

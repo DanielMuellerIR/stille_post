@@ -10,6 +10,37 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.2] — 2026-07-29
+
+### Hinzugefügt
+
+- Diktat vom iPhone über das Heimnetz: Die App kann Aufnahmen von eigenen Geräten
+  annehmen, transkribiert sie mit dem lokalen Whisper-Modell und gibt den
+  bereinigten Text zurück. Auf dem iPhone genügt ein Kurzbefehl am Action-Button
+  (aufnehmen → senden → Text in die Zwischenablage), es braucht keine App und
+  keine eigene Tastatur. Drei Routen: `GET /v1/health`, `POST /v1/dictate`
+  (Audio → fertiger Text, `?raw=1` ohne Bereinigung) und `POST /v1/cleanup`
+  (Rohtext → bereinigter Text, für Geräte, die selbst transkribieren). Anleitung,
+  Entscheidungen und Messwerte in `docs/ios-bridge.md`.
+- Der Zugang ist standardmäßig aus, verlangt ein Token aus dem Schlüsselbund und
+  nimmt nur Verbindungen aus privaten Adressbereichen an. Einzuschalten in den
+  Einstellungen unter „Allgemein" oder in `config.json` (`bridge`); das Token legt
+  die App oder `stillepost-cli bridge token` in die Zwischenablage, angezeigt wird
+  es nie.
+- `stillepost-cli bridge status|token|serve` für Einrichtung und Diagnose ohne GUI.
+- Eingehendes Audio darf in jedem gängigen Format kommen (AAC/m4a wie vom iPhone,
+  MP3, WAV, FLAC); die App rechnet es auf die 16 kHz Mono um, die Whisper braucht.
+
+### Wichtig zu wissen
+
+- Die Verbindung im Heimnetz ist **unverschlüsselt**. Wer im gleichen WLAN
+  mitliest, kann Diktate mitlesen. Die Einstellungen sagen das ausdrücklich;
+  Verschlüsselung mit gemerktem Zertifikat braucht eine eigene iPhone-App und
+  steht im Backlog.
+- Die Datenschutzgrenze bleibt unverändert: Die App sendet weiterhin selbst nie
+  Audio irgendwohin. Die Brücke ist reiner Empfänger, und die Spracherkennung läuft
+  weiter ausschließlich über den lokalen whisper-server auf Loopback.
+
 ## [0.9.1] — 2026-07-24
 
 ### Geändert

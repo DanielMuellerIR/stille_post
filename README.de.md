@@ -243,6 +243,36 @@ fast verzögerungsfrei das lokale Ollama):
 Spracherkennung läuft immer auf dem Rechner, auf dem du diktierst. Welcher Endpoint
 zum Zug kam, zeigt `stillepost-cli cleanup` an und das Verlaufsfenster.
 
+## Diktat vom iPhone (Heimnetz)
+
+Stille Post kann Diktate von eigenen Geräten im gleichen Netz annehmen: Das iPhone
+nimmt auf, der Mac transkribiert und bereinigt, der fertige Text landet in der
+Zwischenablage des iPhones und lässt sich in jede App einsetzen — auch in ein
+Textfeld in Firefox. Auf dem iPhone genügt ein Kurzbefehl am Action-Button; es
+braucht keine App und keine eigene Tastatur.
+
+Einschalten in den Einstellungen unter „Allgemein → Diktat von eigenen Geräten
+(Heimnetz)". Dort liegt auch der Knopf, der das Zugangs-Token in die Zwischenablage
+legt; angezeigt wird es nie. Standardmäßig ist der Zugang aus.
+
+```bash
+curl -s -H "Authorization: Bearer <token>" \
+     --data-binary @aufnahme.m4a http://<mac-name>.local:8188/v1/dictate
+```
+
+Die drei Routen: `GET /v1/health`, `POST /v1/dictate` (Audio → fertiger Text,
+`?raw=1` ohne Bereinigung) und `POST /v1/cleanup` (Rohtext → bereinigter Text, für
+Geräte, die selbst transkribieren).
+
+**Datenschutz und Grenzen.** Der Mac ist hier nur Empfänger: Das Audio wird auf
+diesem Rechner verarbeitet, die Spracherkennung läuft weiter ausschließlich lokal.
+Der Zugang gilt nur für private Adressbereiche und nur mit Token. Die Verbindung
+ist allerdings **unverschlüsselt** — wer im gleichen WLAN mitliest, kann Diktate
+mitlesen. Von unterwegs ist der Zugang nicht gedacht.
+
+Anleitung für den Kurzbefehl, Messwerte und die getroffenen Entscheidungen:
+[docs/ios-bridge.md](docs/ios-bridge.md).
+
 ## Steuerbar ohne GUI
 
 Die komplette Pipeline ist mit derselben Logik und Konfiguration per CLI nutzbar:
@@ -255,6 +285,9 @@ stillepost-cli transcribe datei.wav --raw
 stillepost-cli cleanup "roher text"    # nur Bereinigung ("-" liest stdin)
 stillepost-cli history list --json
 stillepost-cli history clear
+stillepost-cli bridge status           # Netzwerkzugang: Zustand, Adresse, Grenzen
+stillepost-cli bridge token            # Zugangs-Token in die Zwischenablage
+stillepost-cli bridge serve            # Netzwerkzugang im Vordergrund betreiben
 stillepost-cli set-cleanup-key         # API-Key aus stdin in den Schlüsselbund
 ```
 

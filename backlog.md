@@ -1,5 +1,39 @@
 # Aktiver Backlog
 
+## iPhone-Diktat über das Heimnetz (Stufe 0 gebaut in 0.9.2)
+
+Entscheidungen, Aufbau, Kurzbefehl-Anleitung und Messwerte stehen in
+[docs/ios-bridge.md](docs/ios-bridge.md). Kurz: Die Brücke im Mac nimmt Audio oder
+Rohtext von eigenen Geräten an, das iPhone bedient sie über einen Kurzbefehl am
+Action-Button und fügt den Text aus der Zwischenablage ein. Keine
+Tastatur-Erweiterung, kein Fernzugriff — beides bewusst verworfen.
+
+Offen:
+
+- **Am iPhone noch nie gelaufen.** Verifiziert ist die Mac-Seite: Unit-Tests, `curl`
+  mit echtem AAC über `.local`, LAN-Adresse und IPv6, und derselbe Weg durch das
+  gebaute App-Bundle. Der Kurzbefehl selbst (Audio aufnehmen → POST → Wörterbuchwert
+  → Zwischenablage) ist beschrieben, aber nicht auf dem Gerät ausprobiert. Dabei
+  sind zwei Rückfragen zu klären: Fragt iOS die Berechtigung für das lokale Netzwerk
+  wie erwartet ab, und liefert *Audio aufnehmen* die Datei in einer Form, die der
+  Anfragetext direkt annimmt?
+- Die macOS-Firewall-Freigabe für eingehende Verbindungen ist ungeprüft (auf diesem
+  Mac ist die Firewall nicht aktiv). Auf einem Mac mit aktiver Firewall muss die
+  einmalige Freigabe erscheinen und danach bestehen bleiben.
+- Verhalten bei Ruhezustand des Macs ist nicht ausgemessen: Ob „Für Netzwerkzugriff
+  aufwachen" reicht, damit ein Diktat den Mac weckt, oder ob der Kurzbefehl dann
+  einfach scheitert.
+
+Stufe 1 (erst wenn Stufe 0 im Alltag trägt): eigene kleine iPhone-App in diesem
+Repo. Sie bringt drei Dinge, die ein Kurzbefehl nicht kann — TLS mit gemerktem
+Zertifikats-Fingerabdruck (heute läuft die Verbindung im Klartext durchs WLAN),
+eine Kopplung per QR-Code statt Token-Einfügen, und später Whisper lokal auf dem
+iPhone für unterwegs. Auf dem iPhone 16 Pro Max ist `large-v3-turbo` über WhisperKit
+realistisch (quantisiert 550–630 MB, etwa fünffache Echtzeit); Parakeet aus dem
+gleichen SDK wäre der kleinere Kandidat und passt zum Benchmark-Punkt weiter unten.
+Für App-Erweiterungen bräuchte das ein Xcode-Projekt — `*.xcodeproj` ist derzeit
+ignoriert, das wäre dann anzupassen.
+
 ## Whisper-Modell selbst beschaffen (gebaut in 0.8.0, READMEs offen)
 
 Ziel: Stille Post soll auf einem nackten Mac benutzbar sein, ohne dass man sich

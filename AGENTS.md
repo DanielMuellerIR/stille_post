@@ -56,6 +56,13 @@ Kontext, Satzgrenzen und konsistente Zeichensetzung verloren gehen.
   Vereinbarung, sondern erzwungen: `WhisperEndpoint` nimmt ausschließlich eine
   ausdrückliche Loopback-Adresse an und löst `localhost` bewusst nicht per DNS auf.
   Diese Prüfung nicht lockern, auch nicht für einen Whisper-Server im eigenen LAN.
+- Die Netzwerk-Brücke (`BridgeServer`, ab 0.9.2) ist die einzige Ausnahme in der
+  Gegenrichtung und bleibt reiner **Empfänger**: Sie nimmt Audio von eigenen
+  Geräten im Heimnetz an und verarbeitet es auf diesem Mac über den lokalen
+  whisper-server. Stille Post sendet weiterhin selbst nie Audio. Die Brücke ist
+  standardmäßig aus, verlangt ein Token aus dem Schlüsselbund und weist
+  Verbindungen ab, die nicht aus einem privaten Adressbereich kommen. Diese drei
+  Eigenschaften sind nicht verhandelbar; Details in `docs/ios-bridge.md`.
 - API-Schlüssel nur über Umgebungsvariable oder Schlüsselbund beziehen. Nie in
   Quelltext, Konfiguration, Logs, Terminalargumente, Test-Fixtures oder Git schreiben.
 - Schlüsselbundzugriff nie in einem SwiftUI-Renderpfad ausführen; nur asynchron oder
@@ -116,6 +123,10 @@ Build-Prüfungen und einen Start des resultierenden Bundles.
 - Clipboard/Screen Sharing: Viewer-Fall kopiert ohne automatisches Paste und ohne
   Wiederherstellung des alten Clipboard-Inhalts.
 - Konfiguration: Warm-up und Chat teilen `num_ctx`; `think` bleibt aus.
+- Netzwerk-Brücke: falsches oder fehlendes Token wird auf jeder Route abgewiesen;
+  eine Anfrage über der Größengrenze schon anhand von `Content-Length`; ein Diktat
+  ergibt genau einen Bereinigungsaufruf. Zusätzlich einmal echtes Audio über
+  `.local` durchschicken — das prüft die Umwandlung von AAC nach 16 kHz mono mit.
 
 ## Änderungskonventionen und Git
 
@@ -163,3 +174,5 @@ Artefakte sind nicht autoritativ und dürfen keine versteckten Projektregeln tra
 - [backlog.md](backlog.md) — einzige aktive Projektliste.
 - [CHANGELOG.md](CHANGELOG.md) — Produktgeschichte je Version; ab 0.8.2 mit dem
   Versions-Bump fortzuschreiben.
+- [docs/ios-bridge.md](docs/ios-bridge.md) — Diktat vom iPhone über das Heimnetz:
+  getroffene Entscheidungen, Aufbau der Brücke, Kurzbefehl-Anleitung, Messwerte.
