@@ -96,7 +96,7 @@ Offen:
   jetzt den Symlink nach `/usr/local/bin`, aber `build-app.sh --install` könnte das
   auch selbst anbieten. Offene Entscheidung, weil es sudo braucht.
 
-## Warm-on-Intent statt Dauer-Pin (beschlossen 2026-07-15, noch nicht umgesetzt)
+## Warm-on-Intent statt Dauer-Pin (beschlossen 2026-07-15, vollständig umgesetzt 2026-07-28)
 
 Ziel: Das Bereinigungsmodell soll nicht mehr dauerhaft im Speicher hängen, sondern
 nach einem Timeout entladen werden. Die Wartezeit wird dadurch nicht spürbar, weil
@@ -124,11 +124,12 @@ Bewusste Grenze (gilt weiter): Echte Ollama-*Daemon*-Konfiguration
 einen entfernten Host nicht setzen. Das gehört in die README-Anleitung (Teil C) und
 in `doctor`-Warnungen, nicht in einen App-Eingriff in fremde Daemons.
 
-### Teil B — Gegenstück auf der Server-Seite (außerhalb dieses Repos)
+### Teil B — Gegenstück auf der Server-Seite (außerhalb dieses Repos) — ERLEDIGT 2026-07-28
 
 Die zugehörigen Anpassungen der privaten Host-Umgebung (Chat-Defaults,
-`keep_alive`-Werte, Modell-Preload) werden außerhalb dieses Repos geführt und
-sind hier nur der Vollständigkeit halber erwähnt.
+`keep_alive`-Werte, Modell-Preload samt Aufwärm-Knopf in den Oberflächen) sind
+am 2026-07-28 umgesetzt und am echten Server verifiziert worden. Die Details
+werden weiterhin außerhalb dieses Repos geführt.
 
 ### Teil C — README (beide Sprachen)
 
@@ -136,19 +137,25 @@ ERLEDIGT. Die vorhandene Sektion „Bereinigung auf einem stärkeren Rechner" tr
 jetzt die Schritt-für-Schritt-Anleitung für beide Seiten, die keep_alive-Erklärung
 und den Hinweis auf die Hotkey-Aufnahme — in beiden Sprachen.
 
-### Beobachtung, die zu Teil B gehört
+### Beobachtung, die zu Teil B gehörte — aufgeklärt 2026-07-28
 
-Am 2026-07-15 gingen von einem Client-Mac aus rund 44 Anfragen pro Minute an das Ollama des
-starken Macs, jeweils `POST /api/generate` gefolgt von `GET /api/tags`. `/api/tags`
-ruft ausschließlich `stillepost-cli doctor` auf, die App selbst nie — es waren also
-wiederholte `doctor`-Läufe. Wer sie im Sekundentakt gestartet hat, ist ungeklärt:
-kein launchd-Job, kein Aufruf aus Number One. Der Burst endete von selbst und ist
-seither nicht wiedergekehrt (Normalrate: 1 Request/Minute vom Warmhalte-Timer).
+Am 2026-07-15 gingen von einem Client-Mac aus rund 44 Anfragen pro Minute an das
+Ollama des starken Macs, jeweils `POST /api/generate` gefolgt von `GET /api/tags`.
+Bei der Umsetzung von Teil B haben sich beide damaligen Schlussfolgerungen als
+falsch erwiesen:
 
-Relevant ist das, weil solche Anfragen ohne `keep_alive` das Modell auf Ollamas
-Default von 5 Minuten zurücksetzen. Solange das passiert, wäre eine eingestellte
-2-Stunden-Frist in der Praxis wirkungslos. Vor Teil B kurz prüfen, ob der Burst
-wiederkehrt, und die Quelle finden.
+- Der Burst kam nicht von wiederholten `doctor`-Läufen, sondern von der eigenen
+  LLM-Delegation des Client-Macs (deren Agent-Werkzeuge fragen `/api/tags` zur
+  Modellwahl ab). (Ersetzt die frühere Aussage, `/api/tags` rufe ausschließlich
+  `stillepost-cli doctor` auf und die Quelle sei ungeklärt.)
+- Anfragen ohne `keep_alive` verkürzen eine bestehende Warmhaltung NICHT —
+  Ollama behält die bereits gesetzte Ladefrist; nur eine Anfrage, die selbst ein
+  `keep_alive` mitschickt, ändert sie. Die Sorge, ein solcher Burst mache eine
+  eingestellte 2-Stunden-Frist wirkungslos, war damit unbegründet. (Ersetzt die
+  frühere Aussage, solche Anfragen setzten das Modell auf Ollamas 5-Minuten-Default
+  zurück.)
+
+Zu prüfen bleibt hier nichts mehr; der Punkt bleibt als korrigierte Historie stehen.
 
 ## GUI-Tests dieser App (Befund 2026-07-15)
 
