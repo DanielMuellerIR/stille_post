@@ -52,7 +52,10 @@ Kontext, Satzgrenzen und konsistente Zeichensetzung verloren gehen.
 ## Datenschutz und Secrets
 
 - Audio bleibt immer lokal und darf nie an einen Cloud- oder LAN-LLM-Endpunkt
-  übertragen werden. Nur Text verlässt optional den Rechner.
+  übertragen werden. Nur Text verlässt optional den Rechner. Das ist keine bloße
+  Vereinbarung, sondern erzwungen: `WhisperEndpoint` nimmt ausschließlich eine
+  ausdrückliche Loopback-Adresse an und löst `localhost` bewusst nicht per DNS auf.
+  Diese Prüfung nicht lockern, auch nicht für einen Whisper-Server im eigenen LAN.
 - API-Schlüssel nur über Umgebungsvariable oder Schlüsselbund beziehen. Nie in
   Quelltext, Konfiguration, Logs, Terminalargumente, Test-Fixtures oder Git schreiben.
 - Schlüsselbundzugriff nie in einem SwiftUI-Renderpfad ausführen; nur asynchron oder
