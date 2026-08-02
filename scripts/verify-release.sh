@@ -92,4 +92,26 @@ assert_team "$APP"
 xcrun stapler validate "$APP"
 spctl --assess --type execute --verbose=4 "$APP"
 
+echo "Prüfe eingebettete Binaries und Frameworks einzeln …"
+# build-app.sh signiert diese Ziele einzeln — hier werden sie auch einzeln
+# geprüft: `--deep` oben validiert zwar die SignaturKETTE, vergleicht aber
+# KEINE Team-IDs der verschachtelten Ziele. Ein äußerlich korrekt signiertes
+# Bundle mit fremd signiertem eingebettetem Code darf nicht als Release
+# durchgehen. Fehlt eines der erwarteten Ziele, ist das ebenfalls ein Fehler
+# (fail closed).
+NESTED_TARGETS=(
+    "$APP/Contents/MacOS/stillepost-cli"
+    "$APP/Contents/Frameworks/Sparkle.framework"
+    "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Autoupdate"
+    "$APP/Contents/Frameworks/Sparkle.framework/Versions/B/Updater.app"
+)
+for target in "${NESTED_TARGETS[@]}"; do
+    if [[ ! -e "$target" ]]; then
+        echo "FEHLER: erwartetes eingebettetes Ziel fehlt: $target" >&2
+        exit 1
+    fi
+    codesign --verify --strict --verbose=2 "$target"
+    assert_team "$target"
+done
+
 echo "Release verifiziert: $RELEASE_TAG, $bundle_id, Team $EXPECTED_TEAM_ID"

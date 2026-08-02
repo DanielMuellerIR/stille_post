@@ -53,5 +53,13 @@ hdiutil create \
     "$STAGED_DMG" >/dev/null
 hdiutil verify "$STAGED_DMG" >/dev/null
 
-mv "$STAGED_DMG" "$OUTPUT"
+# Atomar und ohne Überschreiben ans Ziel: link(2) scheitert, wenn das Ziel
+# seit der Vorabprüfung oben entstanden ist — ein bloßes mv hätte dieses
+# Zeitfenster offen gelassen. Quelle und Ziel liegen im selben Dateisystem
+# (Temp-Ordner neben dem Ziel), ein Hardlink ist daher immer möglich; der
+# Temp-Ordner samt Staging-Hardlink verschwindet über den EXIT-Trap.
+if ! ln "$STAGED_DMG" "$OUTPUT"; then
+    echo "FEHLER: Das DMG-Ziel konnte nicht atomar angelegt werden (existiert es inzwischen?): $OUTPUT" >&2
+    exit 3
+fi
 echo "DMG OK: $OUTPUT"

@@ -91,12 +91,29 @@ fi
 scripts/verify-release.sh "$STAGED_DMG" "v$VERSION" "$TEAM_ID"
 
 echo "== 5/5 veröffentlichen =="
+# Atomar und ohne Überschreiben: link(2) scheitert, wenn das Ziel INZWISCHEN
+# existiert. Die Vorabprüfung am Skriptanfang lässt zwischen Prüfung und
+# Veröffentlichung stundenlange Build-/Notary-Schritte zu — erst der Hardlink
+# schließt dieses Zeitfenster (z. B. gegen einen parallel gestarteten Lauf).
+publish_no_clobber() {
+    local source=$1 destination=$2
+    if ! ln "$source" "$destination"; then
+        echo "FEHLER: Release-Artefakt konnte nicht atomar angelegt werden (existiert es inzwischen?): $destination" >&2
+        return 1
+    fi
+    rm -f "$source"
+}
+
+# Die Prüfsumme vollständig im Staging erzeugen; im Ordner des DMG rechnen,
+# damit nur der Dateiname in der Zeile steht — und das exakte Format von
+# `shasum -c` erhalten bleibt (zwei Leerzeichen als Trenner). Der Staging-Name
+# ist bereits der finale, ein Umschreiben der Zeile entfällt.
+STAGED_CHECKSUM="$STAGED_DMG.sha256"
+( cd "$(dirname "$STAGED_DMG")" && shasum -a 256 "$(basename "$STAGED_DMG")" ) > "$STAGED_CHECKSUM"
+
 # Die Prüfsumme zuerst, das DMG zuletzt: erst mit dem DMG ist das Paar vollständig.
-# Im Ordner des DMG rechnen, damit nur der Dateiname in der Zeile steht — und das
-# exakte Format von `shasum -c` erhalten bleibt (zwei Leerzeichen als Trenner).
-# Der Staging-Name ist bereits der finale, ein Umschreiben der Zeile entfällt.
-( cd "$(dirname "$STAGED_DMG")" && shasum -a 256 "$(basename "$STAGED_DMG")" ) > "$FINAL_CHECKSUM"
-if ! mv "$STAGED_DMG" "$FINAL_DMG"; then
+publish_no_clobber "$STAGED_CHECKSUM" "$FINAL_CHECKSUM"
+if ! publish_no_clobber "$STAGED_DMG" "$FINAL_DMG"; then
     rm -f "$FINAL_CHECKSUM"
     echo "FEHLER: Das fertige DMG konnte nicht veröffentlicht werden." >&2
     exit 5
