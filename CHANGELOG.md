@@ -10,6 +10,49 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.3] — 2026-08-02
+
+### Behoben
+
+- Datenschutz: Der Whisper-Client folgt keinen HTTP-Weiterleitungen mehr. Einer
+  307/308-Antwort des lokalen whisper-servers wäre URLSession bisher samt
+  komplettem Audio-Body zum ungeprüften Host aus dem `Location`-Kopf gefolgt —
+  jetzt wird jede Weiterleitung abgelehnt und als Serverfehler gemeldet.
+- Netzwerk-Brücke: Ein falsches oder fehlendes Token wird direkt nach dem
+  HTTP-Kopf abgewiesen, bevor die Brücke den (bis zu mehrere MB großen) Body
+  puffert. Beendete Verbindungen geben Session und Puffer wieder frei (ein
+  Referenzzyklus hielt sie bisher dauerhaft im Speicher). `start()` bestätigt
+  den Start erst, wenn der Port wirklich lauscht — ein belegter Port ist jetzt
+  ein Fehler, statt dass App und CLI „gestartet“ melden, ohne erreichbar zu
+  sein. Gleichzeitige Anfragen laufen garantiert nacheinander durch Whisper und
+  Bereinigung. Die Puffer-Obergrenze zählt die vier Trennbytes zwischen Kopf
+  und Body mit (exakt maximale gültige Anfragen wurden fälschlich abgewiesen),
+  und der Router erzwingt die Größengrenze zusätzlich selbst.
+- Bereinigung: Die Worttreue-Prüfung rechnet die Wort-Ausrichtung mit linearem
+  Speicher (Hirschberg-Verfahren) statt einer vollen Tabelle — bei
+  Mehrtausend-Wort-Diktaten kostete die bisher Hunderte MB. Zurückgesetzte
+  Satzteile übernehmen wieder den Original-Wortlaut samt Binde- und
+  Schrägstrichen („CI/CD-Workflow“ zerfiel zuvor zu „CI CD Workflow“).
+- Audio-Umwandlung der Brücke: Ein Lesefehler mitten in der Datei bricht die
+  Transkription ab, statt still abgeschnittenes Audio als Erfolg zu liefern.
+  Dekodiertes Audio ist auf eine Stunde begrenzt, damit manipulierte oder
+  extrem komprimierte Dateien den Speicher nicht sprengen.
+- Whisper-Autostart bindet den Server an die konfigurierte Loopback-Adresse
+  (etwa `http://[::1]:9090` oder eine andere 127er-Adresse) statt stur an
+  `127.0.0.1` — solche gültigen Konfigurationen liefen sonst in den
+  Start-Timeout.
+- Schlüsselbund: Brücken-Token und Cleanup-API-Key werden aktualisiert statt
+  „löschen, dann neu anlegen“ — ein Fehler beim Anlegen konnte bisher den
+  alten, gültigen Wert vernichten und alle eingerichteten Geräte aussperren.
+  In den Einstellungen sind „Token kopieren“/„Neues Token“ während einer
+  laufenden Schlüsselbund-Aktion gesperrt, damit kein veraltetes Token in der
+  Zwischenablage landet.
+- Build-/Release-Skripte: `./build.sh` lehnt Argumente ab und kann damit nicht
+  mehr versehentlich notarisieren oder installieren. `verify-release.sh` prüft
+  die Team-ID aller eingebetteten Binaries und Frameworks einzeln (CLI, Sparkle
+  samt Autoupdate und Updater). DMG und Prüfsumme werden atomar und garantiert
+  ohne Überschreiben veröffentlicht.
+
 ## [0.9.2] — 2026-07-29
 
 ### Hinzugefügt
