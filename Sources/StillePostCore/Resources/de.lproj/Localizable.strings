@@ -225,6 +225,7 @@
 "core.bridge.listen_port_failed" = "Port %@ konnte nicht geöffnet werden: %@";
 "core.bridge.listening" = "Brücke lauscht auf Port %@";
 "core.bridge.listen_failed" = "Brücke fehlgeschlagen: %@";
+"core.bridge.start_timeout" = "Zeitüberschreitung beim Öffnen des Ports";
 "core.bridge.rejected_peer" = "Verbindung abgewiesen (nicht aus dem Heimnetz): %@";
 "core.bridge.too_many" = "Verbindung abgewiesen (zu viele gleichzeitig offen)";
 "core.bridge.read_timeout" = "Verbindung abgebrochen (Zeitüberschreitung beim Lesen): %@";
@@ -242,6 +243,7 @@
 "core.bridge.audio_empty" = "Kein verwertbares Audio übergeben";
 "core.bridge.audio_unsupported" = "Audio-Format nicht lesbar: %@";
 "core.bridge.audio_format" = "Zielformat für Whisper konnte nicht eingerichtet werden";
+"core.bridge.audio_too_long" = "Audio zu lang (Grenze: %@ Minuten)";
 
 /* CLI */
 "cli.usage" = "Verwendung:\n  stillepost-cli doctor\n  stillepost-cli install-model [large-v3-turbo|large-v3] [--force]\n  stillepost-cli transcribe <datei.wav> [--raw]\n  stillepost-cli cleanup <text|->\n  stillepost-cli history list [--json]\n  stillepost-cli history clear\n  stillepost-cli bridge status|token [--new] [--reveal]|serve\n  stillepost-cli set-cleanup-key   (liest den Key von stdin — NIE als Argument übergeben!)";

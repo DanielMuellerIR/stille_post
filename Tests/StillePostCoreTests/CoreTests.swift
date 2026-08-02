@@ -1,6 +1,7 @@
 import XCTest
 import AVFoundation
 import AppKit
+import Network
 @testable import StillePostCore
 
 /// Tests für WAV-Verarbeitung, Plausibilitätsprüfung, Artefakt-Filter,
@@ -135,6 +136,41 @@ final class CoreTests: XCTestCase {
             text: "Das machen wir mit dem Tool, außerdem verbinden wir die geräte.",
             revertedClauses: 1
         ))
+    }
+
+    func testReconcileRevertKeepsSeparatorsInsideRevertedClause() {
+        // Die Rücksetzung baut den Satzteil aus dem Original-Substring wieder
+        // auf — Schräg- und Bindestriche ("CI/CD-Workflow") dürfen dabei nicht
+        // zu Leerzeichen zerfallen (früherer Fehler: "CI CD Workflow").
+        let result = CleanupService.reconcile(
+            raw: "wir bauen den CI/CD-Workflow ähm morgen um außerdem testen wir alles",
+            cleaned: "Wir reparieren den CI/CD-Workflow morgen um, außerdem testen wir alles."
+        )
+        XCTAssertEqual(result, .accepted(
+            text: "wir bauen den CI/CD-Workflow ähm morgen um, außerdem testen wir alles.",
+            revertedClauses: 1
+        ))
+    }
+
+    func testReconcileHandlesLongDictationsWithLinearMemory() {
+        // Regressionstest für den Speicher-Umbau (Hirschberg statt voller
+        // LCS-Tabelle, die bei Mehrtausend-Wort-Diktaten Hunderte MB kostete):
+        // Ein langes Diktat muss zügig durchlaufen und Füllwort-Löschungen
+        // weiterhin normal akzeptieren.
+        let vocabulary = ["alpha", "beta", "gamma", "delta", "epsilon",
+                          "zeta", "eta", "theta", "iota", "kappa"]
+        var rawWords: [String] = []
+        var cleanWords: [String] = []
+        for index in 0..<2400 {
+            let word = vocabulary[index % vocabulary.count]
+            rawWords.append(word)
+            cleanWords.append(word)
+            if index % 7 == 0 { rawWords.append("ähm") }  // Füllwörter, die gelöscht werden
+        }
+        let result = CleanupService.reconcile(raw: rawWords.joined(separator: " "),
+                                              cleaned: cleanWords.joined(separator: " "))
+        XCTAssertEqual(result, .accepted(text: cleanWords.joined(separator: " "),
+                                         revertedClauses: 0))
     }
 
     func testReconcileRejectsWhenMostClausesChanged() {
@@ -369,6 +405,128 @@ final class CoreTests: XCTestCase {
         ] {
             XCTAssertThrowsError(try WhisperEndpoint(serverURL: unsafe), unsafe)
         }
+    }
+
+    func testWhisperServerLaunchArgumentsBindTheConfiguredHost() throws {
+        // Der Autostart muss GENAU die validierte Adresse binden, die auch die
+        // Erreichbarkeitsprüfung ansprechen wird — sonst läuft eine gültige
+        // Konfiguration wie "http://[::1]:9191" stur in den Start-Timeout.
+        let ipv4 = try WhisperEndpoint(serverURL: "http://127.23.4.5:9090")
+        XCTAssertEqual(
+            WhisperServerManager.launchArguments(model: "m.bin", endpoint: ipv4, threads: 4),
+            ["-m", "m.bin", "--host", "127.23.4.5", "--port", "9090", "-t", "4"]
+        )
+        let ipv6 = try WhisperEndpoint(serverURL: "http://[::1]:9191")
+        XCTAssertEqual(
+            WhisperServerManager.launchArguments(model: "m.bin", endpoint: ipv6, threads: 2),
+            ["-m", "m.bin", "--host", "::1", "--port", "9191", "-t", "2"]
+        )
+    }
+
+    /// Winziger Loopback-HTTP-Server für Redirect-Tests: antwortet auf jede
+    /// vollständige Anfrage mit einer festen Antwort und zählt die Anfragen.
+    private final class TinyHTTPServer: @unchecked Sendable {
+        private let listener: NWListener
+        private let queue = DispatchQueue(label: "de.stillepost.test.tiny-http")
+        private let lock = NSLock()
+        private var hits = 0
+        private let responseText: String
+
+        var requestCount: Int { lock.lock(); defer { lock.unlock() }; return hits }
+        var port: Int { Int(listener.port?.rawValue ?? 0) }
+
+        init(response: String) throws {
+            responseText = response
+            listener = try NWListener(using: .tcp, on: .any)
+            let ready = DispatchSemaphore(value: 0)
+            listener.stateUpdateHandler = { state in
+                switch state {
+                case .ready, .failed: ready.signal()
+                default: break
+                }
+            }
+            listener.newConnectionHandler = { [weak self] connection in
+                guard let self else { return }
+                connection.start(queue: self.queue)
+                self.read(connection, buffer: Data(), counted: false)
+            }
+            listener.start(queue: queue)
+            _ = ready.wait(timeout: .now() + 5)
+        }
+
+        deinit {
+            listener.cancel()
+        }
+
+        private func read(_ connection: NWConnection, buffer: Data, counted: Bool) {
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 1 << 20) {
+                [weak self] data, _, isComplete, error in
+                guard let self else { return }
+                var buffer = buffer
+                var counted = counted
+                if let data, !data.isEmpty {
+                    buffer += data
+                    if !counted {
+                        counted = true
+                        self.lock.lock(); self.hits += 1; self.lock.unlock()
+                    }
+                }
+                // Erst nach der VOLLSTÄNDIGEN Anfrage antworten (Content-Length
+                // abgewartet) — so verhält sich der Testserver wie ein echter.
+                switch BridgeHTTP.parse(buffer, maxBodyBytes: 64 * 1_048_576) {
+                case .complete:
+                    connection.send(content: Data(self.responseText.utf8),
+                                    contentContext: .finalMessage, isComplete: true,
+                                    completion: .contentProcessed { _ in connection.cancel() })
+                case .incomplete:
+                    if isComplete || error != nil {
+                        connection.cancel()
+                    } else {
+                        self.read(connection, buffer: buffer, counted: counted)
+                    }
+                case .failure:
+                    connection.cancel()
+                }
+            }
+        }
+    }
+
+    func testWhisperClientRefusesToFollowRedirects() throws {
+        // Szenario aus der Datenschutzregel: Der (kompromittierte oder falsch
+        // konfigurierte) lokale whisper-server antwortet mit 307. Eine
+        // 307-Weiterleitung behält den POST-Body — folgte URLSession ihr, ginge
+        // das komplette Audio an den NIE gegen die Loopback-Regel geprüften
+        // Host aus dem Location-Kopf.
+        let victim = try TinyHTTPServer(
+            response: "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}"
+        )
+        XCTAssertGreaterThan(victim.port, 0)
+        let redirector = try TinyHTTPServer(
+            response: "HTTP/1.1 307 Temporary Redirect\r\n"
+                + "Location: http://127.0.0.1:\(victim.port)/inference\r\n"
+                + "Content-Length: 0\r\nConnection: close\r\n\r\n"
+        )
+        XCTAssertGreaterThan(redirector.port, 0)
+
+        var whisper = Config.Whisper()
+        whisper.serverURL = "http://127.0.0.1:\(redirector.port)"
+        let client = WhisperClient(config: whisper)
+
+        let finished = expectation(description: "Transkription beendet")
+        Task {
+            do {
+                _ = try await client.transcribe(samples: [Float](repeating: 0, count: 1600))
+                XCTFail("Eine Weiterleitung darf kein Erfolg sein")
+            } catch {
+                // Erwartet: Die 307-Antwort wird als Serverfehler gemeldet.
+            }
+            finished.fulfill()
+        }
+        wait(for: [finished], timeout: 10)
+        XCTAssertEqual(redirector.requestCount, 1)
+        // Kurze Karenz, damit ein fälschlich doch gefolgter Redirect auffiele.
+        Thread.sleep(forTimeInterval: 0.3)
+        XCTAssertEqual(victim.requestCount, 0, "Audio darf einem Redirect NIE folgen")
     }
 
     func testWhisperServerManagerStopsOwnedProcessOnDeinit() throws {

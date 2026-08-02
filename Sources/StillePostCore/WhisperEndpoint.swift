@@ -9,6 +9,10 @@ import Foundation
 public struct WhisperEndpoint: Equatable, Sendable {
     public let baseURL: URL
     public let inferenceURL: URL
+    /// Normalisierter Loopback-Host (kleingeschrieben, ohne IPv6-Klammern),
+    /// z. B. "127.0.0.1", "127.23.4.5" oder "::1" — genau die Adresse, an die
+    /// ein Autostart den whisper-server binden muss.
+    public let host: String
     public let port: Int
 
     public init(serverURL: String) throws {
@@ -31,6 +35,7 @@ public struct WhisperEndpoint: Equatable, Sendable {
         }
         self.baseURL = baseURL
         self.inferenceURL = baseURL.appendingPathComponent("inference")
+        self.host = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]")).lowercased()
         self.port = port
     }
 

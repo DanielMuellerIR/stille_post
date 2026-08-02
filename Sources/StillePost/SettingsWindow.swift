@@ -463,6 +463,11 @@ private struct APIKeyRow: View {
 private struct BridgeRow: View {
     @Binding var bridge: Config.Bridge
     @State private var status: String?
+    /// Läuft gerade eine Schlüsselbund-Aktion? Sperrt beide Buttons und macht
+    /// die Aktionen strikt seriell: Ein langsamer älterer Kopier-Task könnte
+    /// sonst NACH einer schnelleren Regeneration noch das alte, inzwischen
+    /// ungültige Token in die Zwischenablage legen.
+    @State private var busy = false
 
     /// Adresse, die auf dem iPhone in den Kurzbefehl gehört (siehe BridgeAddress).
     private var address: String { BridgeAddress.baseURL(port: bridge.port) }
@@ -481,7 +486,9 @@ private struct BridgeRow: View {
             }
             HStack {
                 Button(L10n.text("settings.bridge.token_copy")) { copyToken(forceNew: false) }
+                    .disabled(busy)
                 Button(L10n.text("settings.bridge.token_new")) { copyToken(forceNew: true) }
+                    .disabled(busy)
             }
             Text(status ?? L10n.text("settings.bridge.token_hint"))
                 .font(.caption)
@@ -492,25 +499,39 @@ private struct BridgeRow: View {
 
     /// Legt bei Bedarf ein Token an und schiebt es in die Zwischenablage — von dort
     /// kommt es per Handoff direkt aufs iPhone. Angezeigt wird es nie.
-    private func copyToken(forceNew: Bool) {
+    ///
+    /// Ablauf strikt seriell auf dem MainActor: Schlüsselbund-Arbeit abseits des
+    /// Main-Threads, danach Zwischenablage UND Status in EINEM Schritt — und
+    /// solange `busy` gesetzt ist, startet kein zweiter Task.
+    @MainActor private func copyToken(forceNew: Bool) {
+        guard !busy else { return }
+        busy = true
         status = L10n.text("settings.bridge.token_working")
-        Task.detached {
-            let message: String
+        Task {
+            defer { busy = false }
             do {
-                let existing = forceNew ? nil : BridgeToken.load()
-                let token = try existing ?? BridgeToken.regenerate()
-                await MainActor.run {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(token, forType: .string)
-                }
-                message = forceNew || existing == nil
+                let outcome = try await Self.loadOrCreateToken(forceNew: forceNew)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(outcome.token, forType: .string)
+                status = outcome.created
                     ? L10n.text("settings.bridge.token_created")
                     : L10n.text("settings.bridge.token_copied")
             } catch {
-                message = L10n.format("settings.cleanup.api_key_error", error.localizedDescription)
+                status = L10n.format("settings.cleanup.api_key_error", error.localizedDescription)
             }
-            await MainActor.run { status = message }
         }
+    }
+
+    /// Schlüsselbundzugriff gehört nicht auf den Main-Thread (er kann einen
+    /// modalen Berechtigungsdialog auslösen) — deshalb ausgelagert.
+    private static func loadOrCreateToken(
+        forceNew: Bool
+    ) async throws -> (token: String, created: Bool) {
+        try await Task.detached { () throws -> (token: String, created: Bool) in
+            let existing = forceNew ? nil : BridgeToken.load()
+            let token = try existing ?? BridgeToken.regenerate()
+            return (token, forceNew || existing == nil)
+        }.value
     }
 }
 

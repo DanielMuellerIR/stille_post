@@ -10,11 +10,33 @@ public final class WhisperClient {
     private let config: Config.Whisper
     private let session: URLSession
 
+    /// Lehnt jede HTTP-Weiterleitung ab. Der Transkriptions-Request trägt das
+    /// komplette Audio, und die Loopback-Prüfung gilt nur für die Ausgangs-URL:
+    /// Einer 307/308-Weiterleitung (die den POST-Body BEHÄLT) würde URLSession
+    /// sonst folgen und das Audio an den ungeprüften Host aus dem
+    /// `Location`-Kopf schicken. `nil` heißt: nicht folgen — die 3xx-Antwort
+    /// selbst wird dann als Serverfehler gemeldet.
+    private final class RejectRedirects: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask,
+                        willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest,
+                        completionHandler: @escaping (URLRequest?) -> Void) {
+            completionHandler(nil)
+        }
+    }
+
     public init(config: Config.Whisper) {
         self.config = config
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.timeoutIntervalForRequest = 300  // sehr lange Aufnahmen abdecken
-        self.session = URLSession(configuration: sessionConfig)
+        self.session = URLSession(configuration: sessionConfig,
+                                  delegate: RejectRedirects(), delegateQueue: nil)
+    }
+
+    deinit {
+        // URLSession hält ihren Delegate stark, bis sie invalidiert wird —
+        // ohne diesen Aufruf blieben Session und Delegate dauerhaft liegen.
+        session.finishTasksAndInvalidate()
     }
 
     /// Transkribiert Audio-Samples (16 kHz mono Float) zu Text.

@@ -51,16 +51,12 @@ public final class WhisperServerManager: DictationServer {
         guard FileManager.default.fileExists(atPath: model) else {
             throw ServerError.modelMissing(model)
         }
-        // Server als Kindprozess starten. Er lauscht nur auf localhost —
-        // nichts ist von außen erreichbar.
+        // Server als Kindprozess starten. Er lauscht nur auf der validierten
+        // Loopback-Adresse — nichts ist von außen erreichbar.
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
-        process.arguments = [
-            "-m", model,
-            "--host", "127.0.0.1",
-            "--port", String(endpoint.port),
-            "-t", String(config.threads),
-        ]
+        process.arguments = Self.launchArguments(model: model, endpoint: endpoint,
+                                                 threads: config.threads)
         // Server-Logs nicht in unser Terminal mischen.
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
@@ -77,6 +73,21 @@ public final class WhisperServerManager: DictationServer {
             }
         }
         throw ServerError.startTimeout
+    }
+
+    /// Argumente des whisper-server-Starts. Wichtig: `--host` bekommt den
+    /// VALIDIERTEN Host aus der Konfiguration — wer `http://[::1]:9090` oder
+    /// eine andere 127er-Adresse konfiguriert hat, soll den gestarteten Prozess
+    /// auch erreichen. (Früher band der Autostart stur 127.0.0.1, und jede
+    /// andere gültige Loopback-Konfiguration lief in den Start-Timeout.)
+    static func launchArguments(model: String, endpoint: WhisperEndpoint,
+                                threads: Int) -> [String] {
+        [
+            "-m", model,
+            "--host", endpoint.host,
+            "--port", String(endpoint.port),
+            "-t", String(threads),
+        ]
     }
 
     /// Beendet den selbst gestarteten Server (fremde Server bleiben unangetastet).

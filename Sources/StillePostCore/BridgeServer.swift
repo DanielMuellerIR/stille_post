@@ -85,9 +85,15 @@ public final class BridgeServer: @unchecked Sendable {
 
     /// Öffnet den Port. Wirft, wenn er schon belegt ist oder kein Token existiert —
     /// ein lauschender Port ohne Token wäre eine Falle, die nur Fehler produziert.
+    ///
+    /// Erst `.ready` bestätigt den Start: `listener.start` meldet Bindefehler
+    /// (z. B. Port schon belegt) asynchron als `.failed`. Ohne dieses Warten
+    /// meldete `start()` Erfolg, obwohl kein Port lauscht — die CLI lief dann
+    /// dauerhaft in `dispatchMain()`, ohne je erreichbar zu sein. Nicht von
+    /// `queue` aus aufrufen (blockiert kurz bis `.ready`/`.failed`).
     public func start() throws {
-        guard listener == nil else { return }
-        guard BridgeToken.load() != nil else { throw ServeError.noToken }
+        guard self.listener == nil else { return }
+        guard router.hasToken else { throw ServeError.noToken }
         guard let port = NWEndpoint.Port(rawValue: UInt16(clamping: config.port)) else {
             throw ServeError.badPort(config.port)
         }
@@ -104,19 +110,66 @@ public final class BridgeServer: @unchecked Sendable {
         listener.newConnectionHandler = { [weak self] connection in
             self?.accept(connection)
         }
+        let outcome = StartOutcome()
         listener.stateUpdateHandler = { [weak self] state in
             guard let self else { return }
             switch state {
             case .ready:
                 self.log(L10n.format("core.bridge.listening", String(self.config.port)))
+                outcome.finish(failure: nil)
             case .failed(let error):
                 self.log(L10n.format("core.bridge.listen_failed", error.localizedDescription))
+                // Während des Starts geht der Fehler an start() zurück; ein
+                // späterer Laufzeitfehler bleibt wie bisher eine Protokollzeile.
+                outcome.finish(failure: error.localizedDescription)
             default:
                 break
             }
         }
-        self.listener = listener
         listener.start(queue: queue)
+        switch outcome.wait(seconds: 5) {
+        case .ready:
+            self.listener = listener
+        case .failed(let detail):
+            listener.cancel()
+            throw ServeError.listenFailed(config.port, detail)
+        case .timedOut:
+            listener.cancel()
+            throw ServeError.listenFailed(config.port, L10n.text("core.bridge.start_timeout"))
+        }
+    }
+
+    /// Übergibt das erste Start-Ergebnis (`.ready` oder `.failed`) vom
+    /// Listener-Callback (läuft auf `queue`) an den wartenden `start()`-Aufrufer.
+    private final class StartOutcome: @unchecked Sendable {
+        enum Result {
+            case ready
+            case failed(String)
+            case timedOut
+        }
+
+        private let semaphore = DispatchSemaphore(value: 0)
+        private let lock = NSLock()
+        private var failure: String?
+        private var finished = false
+
+        /// Nur das ERSTE Ergebnis zählt; spätere Zustandswechsel ignorieren.
+        func finish(failure: String?) {
+            lock.lock()
+            defer { lock.unlock() }
+            guard !finished else { return }
+            finished = true
+            self.failure = failure
+            semaphore.signal()
+        }
+
+        func wait(seconds: TimeInterval) -> Result {
+            guard semaphore.wait(timeout: .now() + seconds) == .success else { return .timedOut }
+            lock.lock()
+            defer { lock.unlock() }
+            if let failure { return .failed(failure) }
+            return .ready
+        }
     }
 
     public func stop() {
@@ -158,6 +211,11 @@ public final class BridgeServer: @unchecked Sendable {
             switch state {
             case .cancelled, .failed:
                 session.timeout?.cancel()
+                // Referenzzyklus lösen: Dieser Handler hält `session`, die Session
+                // hält die Verbindung, und die Verbindung hält ihren Handler.
+                // Ohne das Aufräumen bliebe jede beendete Verbindung samt
+                // gepuffertem Request-Body dauerhaft im Speicher.
+                session.connection.stateUpdateHandler = nil
                 self?.finish(session)
             default:
                 break
@@ -196,6 +254,24 @@ public final class BridgeServer: @unchecked Sendable {
                     // Gegenseite hat zugemacht, ohne fertig zu werden.
                     session.connection.cancel()
                     return
+                }
+                // Frühe Token-Prüfung, sobald der Kopf vollständig ist: Ein Gerät
+                // ohne gültiges Token darf nicht erst megabyteweise Body puffern —
+                // sonst könnte es die Brücke VOR der Authentifizierung unter
+                // Speicherdruck setzen. Für gültige Anfragen ändert sich nichts;
+                // der Router prüft das Token wie bisher noch einmal.
+                if !session.earlyAuthChecked,
+                   case .complete(let method, let path, let bearer)
+                       = BridgeHTTP.probeHeader(session.buffer) {
+                    session.earlyAuthChecked = true
+                    guard self.router.isAuthorized(bearerToken: bearer) else {
+                        self.log(L10n.format("core.bridge.request_log",
+                                             method, path, 401, "0", 0.0, session.address))
+                        self.send(.error(status: 401,
+                                         message: L10n.text("core.bridge.unauthorized")),
+                                  on: session)
+                        return
+                    }
                 }
                 self.receive(session)
             case .failure(let response):
@@ -239,25 +315,39 @@ public final class BridgeServer: @unchecked Sendable {
     /// sofortiges `cancel()` reißt die Verbindung ab, und das Gegenüber sieht eine
     /// leere Antwort. Über Loopback fällt das kaum auf, über WLAN sehr wohl.
     private func closeGracefully(_ session: Session) {
-        let overdue = DispatchWorkItem { session.connection.cancel() }
+        // Bewusst nur die Verbindung erfassen, nicht die Session: Der WorkItem
+        // liegt bis zu `closeGraceSeconds` in der Queue — er soll die Session
+        // (und deren Puffer) nicht so lange am Leben halten.
+        let connection = session.connection
+        let overdue = DispatchWorkItem { connection.cancel() }
         session.timeout = overdue
         queue.asyncAfter(deadline: .now() + closeGraceSeconds, execute: overdue)
-        session.connection.receive(minimumIncompleteLength: 1, maximumLength: 1024) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 1024) {
             _, _, isComplete, error in
             guard isComplete || error != nil else { return }
             overdue.cancel()
-            session.connection.cancel()
+            connection.cancel()
         }
     }
 
     private func finish(_ session: Session) {
         guard !session.finished else { return }
         session.finished = true
+        // Puffer sofort freigeben: Bis zur Deallokation der Session hielte er
+        // sonst noch einen kompletten Request-Body fest.
+        session.buffer = Data()
+        session.timeout = nil
         openConnections = max(0, openConnections - 1)
     }
 
-    private var maxBodyBytes: Int { config.maxRequestMegabytes * 1_048_576 }
-    private var maxBufferBytes: Int { maxBodyBytes + BridgeHTTP.maxHeaderBytes }
+    // Intern (statt private) für die Grenzwert-Tests.
+    var maxBodyBytes: Int { config.maxRequestMegabytes * 1_048_576 }
+    /// Kopf, Trennzeile und erlaubter Inhalt: Der Parser akzeptiert zwischen
+    /// Kopf und Body zusätzlich die vier Bytes `\r\n\r\n` — die zählen hier mit,
+    /// sonst würde eine exakt maximale gültige Anfrage fälschlich abgewiesen.
+    var maxBufferBytes: Int {
+        maxBodyBytes + BridgeHTTP.maxHeaderBytes + BridgeHTTP.headerSeparatorBytes
+    }
 
     private func log(_ message: String) {
         onLog?(message)
@@ -274,6 +364,11 @@ public final class BridgeServer: @unchecked Sendable {
         }
     }
 
+    /// Nur für Tests: meldet die Deallokation einer Session — der Beweis, dass
+    /// der frühere Referenzzyklus (Handler → Session → Verbindung → Handler)
+    /// gelöst ist und beendete Verbindungen wirklich freigegeben werden.
+    static var sessionDeinitHook: (@Sendable () -> Void)?
+
     /// Zustand einer einzelnen Verbindung. Wie beim Server gilt: alles wird nur
     /// auf `queue` gelesen und geschrieben.
     private final class Session: @unchecked Sendable {
@@ -282,10 +377,16 @@ public final class BridgeServer: @unchecked Sendable {
         var buffer = Data()
         var timeout: DispatchWorkItem?
         var finished = false
+        /// Wurde das Token schon nach dem Kopf geprüft? (Nur einmal nötig.)
+        var earlyAuthChecked = false
 
         init(connection: NWConnection, address: String) {
             self.connection = connection
             self.address = address
+        }
+
+        deinit {
+            BridgeServer.sessionDeinitHook?()
         }
     }
 

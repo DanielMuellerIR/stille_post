@@ -59,15 +59,11 @@ public enum BridgeToken {
             .replacingOccurrences(of: "=", with: "")
     }
 
+    /// Aktualisiert einen vorhandenen Eintrag, statt ihn vorher zu löschen —
+    /// sonst wäre bei einem Speicherfehler der alte, gültige Token schon weg
+    /// und alle eingerichteten Geräte ausgesperrt (Details: `KeychainUpsert`).
     public static func store(_ token: String) throws {
-        let baseQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-        ]
-        SecItemDelete(baseQuery as CFDictionary)
-        var addQuery = baseQuery
-        addQuery[kSecValueData as String] = Data(token.utf8)
-        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        let status = KeychainUpsert.store(service: keychainService, value: Data(token.utf8))
         guard status == errSecSuccess else {
             throw StoreError.keychain(status)
         }

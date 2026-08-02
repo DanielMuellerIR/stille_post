@@ -88,12 +88,45 @@ public enum BridgeHTTP {
     /// schickt, soll nicht unbegrenzt Speicher belegen können.
     public static let maxHeaderBytes = 8 * 1024
 
+    /// Die vier Bytes `\r\n\r\n` zwischen Kopf und Body. Wer Puffergrenzen aus
+    /// Kopf- und Body-Limit zusammensetzt, muss sie mitzählen.
+    public static let headerSeparatorBytes = 4
+
     public enum ParseResult: Equatable {
         /// Noch nicht alles da — weiterlesen.
         case incomplete
         case complete(BridgeRequest)
         /// Endgültig kaputt: mit dieser Antwort schließen.
         case failure(BridgeResponse)
+    }
+
+    /// Ergebnis der Kopf-Vorschau, bevor der Body vollständig ist.
+    public enum HeaderProbe: Equatable {
+        /// Kopf noch nicht vollständig — weiterlesen.
+        case incomplete
+        /// Kopf vollständig: Methode, Pfad und (falls gesendet) Bearer-Token.
+        case complete(method: String, path: String, bearerToken: String?)
+    }
+
+    /// Schaut nur auf den Kopfbereich: Sobald der Trenner `\r\n\r\n` da ist,
+    /// lassen sich Route und Token prüfen, ohne auf den (möglicherweise großen)
+    /// Body zu warten — die Grundlage der frühen Token-Prüfung im Server.
+    /// Kaputte Köpfe bewertet weiterhin `parse`; hier reicht `incomplete`.
+    public static func probeHeader(_ buffer: Data) -> HeaderProbe {
+        let separator = Data("\r\n\r\n".utf8)
+        guard let headerEnd = buffer.range(of: separator),
+              let headerText = String(data: buffer[buffer.startIndex..<headerEnd.lowerBound],
+                                      encoding: .utf8) else {
+            return .incomplete
+        }
+        var lines = headerText.components(separatedBy: "\r\n")
+        guard let requestLine = lines.first else { return .incomplete }
+        lines.removeFirst()
+        let parts = requestLine.split(separator: " ", omittingEmptySubsequences: true)
+        guard parts.count >= 2 else { return .incomplete }
+        let (path, _) = splitTarget(String(parts[1]))
+        return .complete(method: String(parts[0]).uppercased(), path: path,
+                         bearerToken: bearerToken(in: headerFields(lines)))
     }
 
     /// Prüft, ob die gesammelten Bytes eine vollständige Anfrage enthalten.
@@ -126,14 +159,7 @@ public enum BridgeHTTP {
         let method = String(parts[0]).uppercased()
         let target = String(parts[1])
 
-        var headers: [String: String] = [:]
-        for line in lines where !line.isEmpty {
-            guard let colon = line.firstIndex(of: ":") else { continue }
-            let name = line[line.startIndex..<colon].lowercased()
-                .trimmingCharacters(in: .whitespaces)
-            let value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
-            headers[name] = value
-        }
+        let headers = headerFields(lines)
 
         // Chunked-Kodierung ist nicht umgesetzt; ehrlich ablehnen statt still
         // falsch zu lesen. Kurzbefehle und curl schicken ohnehin Content-Length.
@@ -156,20 +182,34 @@ public enum BridgeHTTP {
         guard available >= declaredLength else { return .incomplete }
         let body = Data(buffer[bodyStart..<buffer.index(bodyStart, offsetBy: declaredLength)])
 
-        var bearer: String?
-        if let authorization = headers["authorization"] {
-            let prefix = "bearer "
-            if authorization.lowercased().hasPrefix(prefix) {
-                bearer = String(authorization.dropFirst(prefix.count))
-                    .trimmingCharacters(in: .whitespaces)
-            }
-        }
-
         let (path, query) = splitTarget(target)
         return .complete(BridgeRequest(
-            method: method, path: path, query: query, bearerToken: bearer,
+            method: method, path: path, query: query,
+            bearerToken: bearerToken(in: headers),
             contentType: headers["content-type"], body: body
         ))
+    }
+
+    /// Kopfzeilen "Name: Wert" in ein Wörterbuch (Namen kleingeschrieben).
+    private static func headerFields(_ lines: [String]) -> [String: String] {
+        var headers: [String: String] = [:]
+        for line in lines where !line.isEmpty {
+            guard let colon = line.firstIndex(of: ":") else { continue }
+            let name = line[line.startIndex..<colon].lowercased()
+                .trimmingCharacters(in: .whitespaces)
+            let value = line[line.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+            headers[name] = value
+        }
+        return headers
+    }
+
+    /// Bearer-Token aus dem Authorization-Kopf, falls vorhanden.
+    private static func bearerToken(in headers: [String: String]) -> String? {
+        guard let authorization = headers["authorization"] else { return nil }
+        let prefix = "bearer "
+        guard authorization.lowercased().hasPrefix(prefix) else { return nil }
+        return String(authorization.dropFirst(prefix.count))
+            .trimmingCharacters(in: .whitespaces)
     }
 
     /// Trennt `/v1/dictate?raw=1` in Pfad und Parameter.

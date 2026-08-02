@@ -14,8 +14,17 @@ public enum AudioDecoder {
     /// Kürzer ist garantiert kein Audio, sondern ein Bedienfehler.
     private static let minimumBytes = 64
 
-    /// Dekodiert Audio-Bytes zu 16-kHz-Mono-Samples.
-    public static func samples16kMono(from data: Data) throws -> [Float] {
+    /// Harte Obergrenze der dekodierten Länge: eine Stunde Audio (16 kHz mono).
+    /// Das Brückenlimit begrenzt nur die KOMPRIMIERTEN Request-Bytes — eine
+    /// stark komprimierte oder manipulierte Datei könnte sonst beliebig viele
+    /// Samples (und damit Speicher) erzeugen.
+    public static let maxSampleCount = 16000 * 3600
+
+    /// Dekodiert Audio-Bytes zu 16-kHz-Mono-Samples. `maxSampleCount` ist nur
+    /// für Tests übersteuerbar; Produktivpfade nutzen die Stunden-Grenze.
+    public static func samples16kMono(
+        from data: Data, maxSampleCount: Int = AudioDecoder.maxSampleCount
+    ) throws -> [Float] {
         guard data.count >= minimumBytes else { throw DecodeError.empty }
 
         // AVFoundation liest nur aus Dateien, nicht aus dem Speicher. Die
@@ -41,11 +50,21 @@ public enum AudioDecoder {
         }
 
         var samples: [Float] = []
-        // Grobe Vorausschau auf die Zielgröße, damit das Array nicht ständig wächst.
-        samples.reserveCapacity(Int(Double(file.length) * 16000 / inputFormat.sampleRate) + 16000)
+        // Grobe Vorausschau auf die Zielgröße, damit das Array nicht ständig
+        // wächst — gekappt auf die harte Obergrenze, damit eine gelogene
+        // Container-Länge keine Riesen-Reservierung auslösen kann.
+        samples.reserveCapacity(min(
+            Int(Double(file.length) * 16000 / inputFormat.sampleRate) + 16000,
+            maxSampleCount
+        ))
 
         let chunkFrames: AVAudioFrameCount = 16384
         var inputExhausted = false
+        // Lesefehler aus dem Eingabe-Closure hier festhalten: `convert` meldet
+        // sie nicht zuverlässig selbst, und ein Lesefehler darf nicht wie ein
+        // normales Dateiende aussehen — sonst würde still abgeschnittenes Audio
+        // als Erfolg transkribiert.
+        var readError: Error?
         while true {
             guard let output = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: chunkFrames) else {
                 throw DecodeError.unsupported(L10n.text("core.bridge.audio_format"))
@@ -66,6 +85,13 @@ public enum AudioDecoder {
                 do {
                     try file.read(into: input)
                 } catch {
+                    // AVAudioFile wirft am REGULÄREN Dateiende teils einen
+                    // inhaltsleeren Fehler (Code 0). Nur wenn die Leseposition
+                    // noch vor der angekündigten Länge liegt, ist es ein echter
+                    // Lesefehler — etwa eine abgeschnittene Datei.
+                    if file.framePosition < file.length {
+                        readError = error
+                    }
                     inputExhausted = true
                     inputStatus.pointee = .endOfStream
                     return nil
@@ -78,14 +104,27 @@ public enum AudioDecoder {
                 inputStatus.pointee = .haveData
                 return input
             }
+            if let readError {
+                throw DecodeError.unsupported(readError.localizedDescription)
+            }
             if let conversionError {
                 throw DecodeError.unsupported(conversionError.localizedDescription)
+            }
+            if status == .error {
+                // `.error` ohne gesetzten NSError darf trotzdem kein stiller
+                // Teilerfolg werden.
+                throw DecodeError.unsupported(L10n.text("core.bridge.audio_format"))
             }
             if let channel = output.floatChannelData?[0], output.frameLength > 0 {
                 samples.append(contentsOf: UnsafeBufferPointer(start: channel,
                                                               count: Int(output.frameLength)))
+                // Obergrenze bei jedem Häppchen erzwingen, nicht erst am Ende —
+                // sonst wäre der Speicher schon verbraucht, bevor es kracht.
+                guard samples.count <= maxSampleCount else {
+                    throw DecodeError.tooLong(seconds: maxSampleCount / 16000)
+                }
             }
-            if status == .endOfStream || status == .error { break }
+            if status == .endOfStream { break }
             if output.frameLength == 0 && inputExhausted { break }
         }
 
@@ -120,6 +159,7 @@ public enum AudioDecoder {
     public enum DecodeError: Error, LocalizedError {
         case empty
         case unsupported(String)
+        case tooLong(seconds: Int)
 
         public var errorDescription: String? {
             switch self {
@@ -127,6 +167,8 @@ public enum AudioDecoder {
                 return L10n.text("core.bridge.audio_empty")
             case .unsupported(let detail):
                 return L10n.format("core.bridge.audio_unsupported", detail)
+            case .tooLong(let seconds):
+                return L10n.format("core.bridge.audio_too_long", String(seconds / 60))
             }
         }
     }

@@ -335,17 +335,24 @@ public final class CleanupService {
         // Alles gelöscht: der Längenkorridor oben ist hier die richtige Grenze.
         if m == 0 { return .accepted(text: cleaned, revertedClauses: 0) }
 
-        // LCS-Längentabelle von hinten aufgebaut, um Anker vorwärts ablaufen zu können.
-        var lcs = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
-        if n > 0 {
-            for i in stride(from: n - 1, through: 0, by: -1) {
-                for j in stride(from: m - 1, through: 0, by: -1) {
-                    lcs[i][j] = rawTokens[i].norm == cleanTokens[j].norm
-                        ? lcs[i + 1][j + 1] + 1
-                        : max(lcs[i + 1][j], lcs[i][j + 1])
-                }
-            }
+        // Anker = Wortpaare einer längsten gemeinsamen Teilfolge (LCS). Früher
+        // stand hier eine volle (n+1)×(m+1)-Tabelle — bei Mehrtausend-Wort-
+        // Diktaten Hunderte MB Speicher, was die App unter Druck setzen oder
+        // beenden konnte. `lcsAnchors` rechnet nach Hirschberg (Teile-und-
+        // herrsche mit zwei Zeilen je Ebene): gleiche O(n·m)-Zeit, aber nur
+        // O(n+m) Speicher. Für die heißen Vergleichsschleifen werden die
+        // Wörter vorab auf Ganzzahlen abgebildet (Ganzzahl- statt
+        // String-Vergleich pro Zelle).
+        var wordIDs: [String: Int] = [:]
+        func id(for norm: String) -> Int {
+            if let existing = wordIDs[norm] { return existing }
+            wordIDs[norm] = wordIDs.count
+            return wordIDs.count - 1
         }
+        let rawIDs = rawTokens.map { id(for: $0.norm) }
+        let cleanIDs = cleanTokens.map { id(for: $0.norm) }
+        var anchors: [(raw: Int, clean: Int)] = []
+        lcsAnchors(rawIDs, cleanIDs, rawRange: 0..<n, cleanRange: 0..<m, into: &anchors)
 
         // Je Ausgabe-Wort: Deckungsbereich in Roh-Wort-Indizes (für die spätere
         // Rücksetzung) und ob es zu einer unzulässigen Änderung gehört.
@@ -368,18 +375,14 @@ public final class CleanupService {
                 rawHi[c] = re
             }
         }
-        var i = 0, j = 0, gapRawStart = 0, gapCleanStart = 0
-        while i < n, j < m {
-            if rawTokens[i].norm == cleanTokens[j].norm {
-                classifyGap(gapRawStart, i, gapCleanStart, j)
-                rawLo[j] = i
-                rawHi[j] = i + 1
-                i += 1; j += 1; gapRawStart = i; gapCleanStart = j
-            } else if lcs[i + 1][j] >= lcs[i][j + 1] {
-                i += 1  // rawTokens[i] gehört zur Lücke (Löschungs-Kandidat)
-            } else {
-                j += 1  // cleanTokens[j] gehört zur Lücke (Einfügungs-Kandidat)
-            }
+        // Anker vorwärts ablaufen: Alles zwischen zwei Ankern ist eine Lücke.
+        var gapRawStart = 0, gapCleanStart = 0
+        for anchor in anchors {
+            classifyGap(gapRawStart, anchor.raw, gapCleanStart, anchor.clean)
+            rawLo[anchor.clean] = anchor.raw
+            rawHi[anchor.clean] = anchor.raw + 1
+            gapRawStart = anchor.raw + 1
+            gapCleanStart = anchor.clean + 1
         }
         classifyGap(gapRawStart, n, gapCleanStart, m)
 
@@ -436,7 +439,12 @@ public final class CleanupService {
                 result += cleaned[cursor..<firstToken.range.lowerBound]
                 let lo = min(max(clauseRawLo[k], nextRaw), n)
                 let hi = min(max(clauseRawHi[k], lo), n)
-                result += rawTokens[lo..<hi].map { String($0.text) }.joined(separator: " ")
+                if lo < hi {
+                    // Original-Substring statt mit Leerzeichen zusammengesetzter
+                    // Einzelwörter: So überleben Binde-/Schrägstriche, Apostrophe
+                    // und die Roh-Interpunktion ("CI/CD-Workflow") die Rücksetzung.
+                    result += raw[rawTokens[lo].range.lowerBound..<rawTokens[hi - 1].range.upperBound]
+                }
                 nextRaw = hi
             } else {
                 result += cleaned[cursor..<lastToken.range.upperBound]
@@ -480,6 +488,74 @@ public final class CleanupService {
             idx = text.index(after: idx)
         }
         return result
+    }
+
+    /// Sammelt die Anker-Paare (Roh-Index, Ausgabe-Index) einer längsten
+    /// gemeinsamen Teilfolge nach Hirschberg: Die Roh-Seite wird halbiert, beide
+    /// Hälften werden nur über LCS-LÄNGEN-Zeilen bewertet (je zwei Zeilen statt
+    /// einer vollen Tabelle), und an der besten Trennstelle geht es rekursiv
+    /// weiter. Zeit O(n·m) wie die klassische Tabelle, Speicher aber nur O(n+m).
+    private static func lcsAnchors(_ raw: [Int], _ clean: [Int],
+                                   rawRange: Range<Int>, cleanRange: Range<Int>,
+                                   into anchors: inout [(raw: Int, clean: Int)]) {
+        if rawRange.isEmpty || cleanRange.isEmpty { return }
+        if rawRange.count == 1 {
+            // Basisfall: Ein einzelnes Roh-Wort ankert am ersten gleichen Ausgabe-Wort.
+            for j in cleanRange where clean[j] == raw[rawRange.lowerBound] {
+                anchors.append((rawRange.lowerBound, j))
+                return
+            }
+            return
+        }
+        // Obere Roh-Hälfte vorwärts, untere rückwärts bewerten; die Ausgabe wird
+        // dort geteilt, wo beide Hälften zusammen die längste Teilfolge ergeben.
+        let mid = (rawRange.lowerBound + rawRange.upperBound) / 2
+        let upper = lcsRow(raw, clean, rawRange: rawRange.lowerBound..<mid,
+                           cleanRange: cleanRange, reversed: false)
+        let lower = lcsRow(raw, clean, rawRange: mid..<rawRange.upperBound,
+                           cleanRange: cleanRange, reversed: true)
+        var split = cleanRange.lowerBound
+        var best = -1
+        for offset in 0...cleanRange.count where upper[offset] + lower[offset] > best {
+            best = upper[offset] + lower[offset]
+            split = cleanRange.lowerBound + offset
+        }
+        lcsAnchors(raw, clean, rawRange: rawRange.lowerBound..<mid,
+                   cleanRange: cleanRange.lowerBound..<split, into: &anchors)
+        lcsAnchors(raw, clean, rawRange: mid..<rawRange.upperBound,
+                   cleanRange: split..<cleanRange.upperBound, into: &anchors)
+    }
+
+    /// Letzte Zeile der LCS-Längentabelle für raw[rawRange] × clean[cleanRange],
+    /// gerechnet mit zwei Zeilen. Vorwärts steht an Index k die LCS-Länge gegen
+    /// das Ausgabe-PRÄFIX der Länge k, rückwärts (für die untere
+    /// Hirschberg-Hälfte) die gegen das Ausgabe-SUFFIX ab Offset k.
+    private static func lcsRow(_ raw: [Int], _ clean: [Int],
+                               rawRange: Range<Int>, cleanRange: Range<Int>,
+                               reversed: Bool) -> [Int] {
+        let width = cleanRange.count
+        var previous = [Int](repeating: 0, count: width + 1)
+        var current = previous
+        if reversed {
+            for i in stride(from: rawRange.upperBound - 1, through: rawRange.lowerBound, by: -1) {
+                for offset in stride(from: width - 1, through: 0, by: -1) {
+                    current[offset] = raw[i] == clean[cleanRange.lowerBound + offset]
+                        ? previous[offset + 1] + 1
+                        : max(previous[offset], current[offset + 1])
+                }
+                swap(&previous, &current)
+            }
+        } else {
+            for i in rawRange {
+                for offset in 0..<width {
+                    current[offset + 1] = raw[i] == clean[cleanRange.lowerBound + offset]
+                        ? previous[offset] + 1
+                        : max(previous[offset + 1], current[offset])
+                }
+                swap(&previous, &current)
+            }
+        }
+        return previous
     }
 
     /// Zählt der Text zwischen zwei Wörtern als Satzteil-Grenze? Interpunktion ja;
@@ -724,16 +800,11 @@ public final class CleanupService {
         return key
     }
 
-    /// Speichert den API-Key im macOS-Schlüsselbund (überschreibt einen vorhandenen).
+    /// Speichert den API-Key im macOS-Schlüsselbund. Ein vorhandener Eintrag
+    /// wird aktualisiert statt vorher gelöscht — sonst wäre der alte Key bei
+    /// einem Speicherfehler bereits verloren (Details: `KeychainUpsert`).
     public static func storeRemoteAPIKey(_ key: String) throws {
-        let baseQuery: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: keychainService,
-        ]
-        SecItemDelete(baseQuery as CFDictionary)  // alten Eintrag entfernen (falls vorhanden)
-        var addQuery = baseQuery
-        addQuery[kSecValueData as String] = Data(key.utf8)
-        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        let status = KeychainUpsert.store(service: keychainService, value: Data(key.utf8))
         guard status == errSecSuccess else {
             throw CleanupError.badConfig(L10n.format("core.cleanup.keychain_error", status))
         }
