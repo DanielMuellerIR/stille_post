@@ -299,6 +299,50 @@ final class CoreTests: XCTestCase {
             cleaned: "Das ist das Gemma 426b Modell."))
     }
 
+    func testReconcileRejectsNegationFlipDespiteSingleEdit() {
+        // "kein" -> "ein" ist nur EIN Buchstabe Unterschied und rutschte deshalb
+        // durch die Tippfehler-Toleranz — dreht die Aussage aber komplett um.
+        // Solche sinnumkehrenden Funktionswörter stehen jetzt auf der Sperrliste.
+        XCTAssertTrue(rejects(
+            raw: "ich habe damit kein problem",
+            cleaned: "Ich habe damit ein Problem."))
+        // Auch die Gegenrichtung: Eine Verneinung darf nicht neu entstehen.
+        XCTAssertTrue(rejects(
+            raw: "wir haben da ein problem",
+            cleaned: "Wir haben da kein Problem."))
+        // Gleichklang schützt nicht davor: "ohne" und "ahne" haben denselben
+        // Kölner Lautcode und wären sonst als Hörvariante durchgegangen.
+        XCTAssertTrue(rejects(
+            raw: "das läuft ohne fehler",
+            cleaned: "Das läuft ahne Fehler."))
+    }
+
+    func testReconcileRevertsOnlyTheNegationClause() {
+        // Die Sperrliste wirkt wie jede andere unzulässige Ersetzung: Nur der
+        // betroffene Satzteil geht auf den Rohtext zurück, der Rest bleibt geputzt.
+        let result = CleanupService.reconcile(
+            raw: "das ist kein problem, wir machen das ähm morgen",
+            cleaned: "Das ist ein Problem, wir machen das morgen."
+        )
+        XCTAssertEqual(result, .accepted(
+            text: "das ist kein problem, wir machen das morgen.",
+            revertedClauses: 1
+        ))
+    }
+
+    func testReconcileStillAllowsInflectionOfNegations() {
+        // Die Sperrliste darf die gewollte Rettung nicht kaputtmachen: Innerhalb
+        // derselben Wortfamilie bleibt die reine Beugung erlaubt ("kein" -> "keinen").
+        XCTAssertTrue(acceptsUnchanged(
+            raw: "ich habe da kein bock drauf",
+            cleaned: "Ich habe da keinen Bock drauf."))
+        // Und ein Wort, das nur zufällig neben einer Verneinung steht, bleibt
+        // ganz normal korrigierbar (Tippfehler-Toleranz unverändert).
+        XCTAssertTrue(acceptsUnchanged(
+            raw: "ich nutze kein olama modell",
+            cleaned: "Ich nutze kein Ollama-Modell."))
+    }
+
     func testReconcileRejectsManyMicroEditsAsRewrite() {
         // Jede Einzeländerung wäre klein, aber in Summe ist es ein Umschreiben:
         // Das Gesamtbudget muss greifen.

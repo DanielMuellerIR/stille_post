@@ -587,6 +587,10 @@ public final class CleanupService {
     ///   3. Editierabstand <= 1     -> ein Tippfehler/Verhörer ("olama"->"ollama")
     ///   4. Präfix + Endung <= 2    -> kurze Flexion ("ein"->"einen", "...ung"->"...ungen")
     ///   5. gleicher Lautcode       -> klingt identisch (Kölner Phonetik, "rack"->"rag")
+    ///
+    /// Über allem (außer Regel 1) steht die Sperrliste `meaningCriticalWords`:
+    /// Wörter, deren Austausch die Aussage umdreht, dürfen von diesen Toleranzen
+    /// nicht angefasst werden ("kein" -> "ein" ist nur ein Buchstabe).
     private static func isAllowedReplacement(
         rawSpan: [String], cleanedSpan: [String], dictionary: Set<String>
     ) -> Bool {
@@ -595,6 +599,11 @@ public final class CleanupService {
         let a = Array(joinedRaw)
         let b = Array(joinedCleaned)
         if a == b { return true }  // reine Wort-Trennung/-Fusion: Buchstaben identisch
+        // Sperrliste ZUERST (nur die buchstabengleiche Trennung/Fusion oben darf
+        // vorbei, die ändert nichts an der Aussage): Verschwindet ein
+        // sinnumkehrendes Wort auf einer Seite oder taucht es neu auf, ist das
+        // keine Rettung mehr, sondern eine andere Aussage -> zurück auf den Rohtext.
+        if meaningKeys(rawSpan) != meaningKeys(cleanedSpan) { return false }
         // Wörterbuch: Ein konfigurierter Fachbegriff darf einen ähnlich klingenden
         // Verhörer ersetzen — Ähnlichkeit über den Lautcode (Abstand <= 1), damit
         // nicht jedes beliebige Wort zum Fachbegriff "korrigiert" werden darf.
@@ -620,6 +629,61 @@ public final class CleanupService {
             }
         }
         return false
+    }
+
+    /// Sperrliste: Wörter, deren Austausch den Sinn eines Diktats umdreht.
+    ///
+    /// Warum es sie braucht: Die Toleranzen oben sind als Verhörer-Rettung gedacht
+    /// und messen nur ÄHNLICHKEIT, nicht Bedeutung. Genau bei den kurzen
+    /// Funktionswörtern fällt beides auseinander — "kein" und "ein" trennt ein
+    /// einziger Buchstabe, die Aussage aber das Gegenteil. Ein Diktat, in dem aus
+    /// "ich habe kein Problem" ein "ich habe ein Problem" wird, ist schlimmer als
+    /// ein ungeputzter Satz.
+    ///
+    /// Aufnahmekriterium (beides muss zutreffen, sonst bläht die Liste nur auf):
+    ///  1. Das Wort verneint die Aussage oder begrenzt ihre Reichweite.
+    ///  2. Es liegt unter den Toleranzen oben tatsächlich in Reichweite eines
+    ///     gebräuchlichen anderen Wortes — sonst kann gar nichts passieren.
+    ///     Belege: kein/ein, keine/eine, keinen/einen … (Editierabstand 1),
+    ///     nicht/nichts (Flexionsregel), nie/wie/sie/die, nein/ein/neun,
+    ///     nur/nun, immer/nimmer, weder/jeder, nirgendwo/irgendwo (Abstand 1),
+    ///     ohne/ahne (gleicher Kölner Lautcode "06").
+    ///
+    /// Schlüssel: die normalisierte Wortform (kleingeschrieben, nur Buchstaben) —
+    /// genau die Form, in der die Ausrichtung Wörter vergleicht.
+    /// Wert: der gemeinsame Bedeutungsschlüssel der Wortfamilie. Alle "kein"-Formen
+    /// teilen ihn, damit die reine BEUGUNG erlaubt bleibt ("kein" -> "keinen"),
+    /// während der Wegfall der Verneinung ("kein" -> "ein") gesperrt ist.
+    ///
+    /// Bewusst NICHT auf der Liste stehen die harmlosen Gegenstücke ("ein", "wie",
+    /// "nun"): Der Vergleich unten ist seitenweise, deshalb schlägt er auch an,
+    /// wenn die Verneinung nur auf EINER Seite steht. Stünde "ein" mit drauf,
+    /// wäre die gewollte Flexionsrettung "ein" -> "einen" mit gesperrt.
+    private static let meaningCriticalWords: [String: String] = [
+        // Verneinung
+        "kein": "kein", "keine": "kein", "keinen": "kein", "keinem": "kein",
+        "keiner": "kein", "keines": "kein", "keins": "kein", "keinerlei": "kein",
+        "nicht": "nicht",
+        "nichts": "nichts",
+        "nie": "nie", "niemals": "nie", "nimmer": "nie",
+        "niemand": "niemand", "niemandem": "niemand", "niemanden": "niemand",
+        "niemandes": "niemand",
+        "nirgends": "nirgend", "nirgendwo": "nirgend", "nirgendwohin": "nirgend",
+        "nein": "nein",
+        "ohne": "ohne",
+        "weder": "weder",
+        // Reichweite und Menge: kehren die Aussage zwar nicht um, behaupten aber
+        // etwas anderes ("nur zwei" ist keine Aussage über alle, "nicht mehr" ist
+        // kein "nicht sehr").
+        "nur": "nur",
+        "mehr": "mehr",
+        "immer": "immer",
+    ]
+
+    /// Die Bedeutungsschlüssel der Sperrliste in dieser Wortfolge — in Reihenfolge,
+    /// damit auch ein Vertauschen auffällt. Wörter außerhalb der Liste zählen nicht.
+    private static func meaningKeys(_ span: [String]) -> [String] {
+        span.compactMap { meaningCriticalWords[$0] }
     }
 
     /// Levenshtein-Editierabstand auf Zeichenebene (zwei Zeilen, O(min·max) Zeit).
