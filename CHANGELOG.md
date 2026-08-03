@@ -10,6 +10,23 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.4] — 2026-08-03
+
+### Behoben
+
+- Bereinigung: Verneinungen und andere sinntragende Funktionswörter dürfen nicht
+  mehr „korrigiert“ werden. Die Toleranz für einen einzelnen Verhörer ist so
+  weit, dass „ich habe kein Problem“ zu „ich habe ein Problem“ werden konnte —
+  ein Buchstabe Unterschied, aber die gegenteilige Aussage. Für eine Liste von
+  Verneinungs- und Reichweitenwörtern (kein, nicht, nie, niemand, nirgends,
+  nein, ohne, weder, nur, mehr, immer samt Formen) fällt der betroffene Satzteil
+  jetzt auf das Diktierte zurück. Die reine Beugung bleibt erlaubt („kein“ →
+  „keinen“), ebenso alle übrigen Verhörer-Korrekturen.
+- Rohtext-Reparatur: Gängige deutsche Abkürzungen behalten ihren Punkt. Fällt
+  die Bereinigung aus, macht die deterministische Nachstufe den Text lesbar —
+  aus „Das gilt ggf. auch“ wurde dabei bisher „Das gilt ggf, auch“. Kürzel wie
+  ggf., bzw., usw., inkl., vgl. oder evtl. sind jetzt geschützt.
+
 ## [0.9.3] — 2026-08-02
 
 ### Behoben
