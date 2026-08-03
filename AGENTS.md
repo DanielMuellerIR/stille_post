@@ -43,8 +43,11 @@ Kontext, Satzgrenzen und konsistente Zeichensetzung verloren gehen.
   sofortiger Versuch in einer frischen Sitzung, danach die geordnete Fallback-Kette.
   Fallback-Probes bleiben non-streaming; keine parallelen oder gehedgten Requests.
 - Fallback-Semantik: Netzwerk-/Dienstfehler → nächster Endpunkt. Plausibilitätsfehler
-  des bereinigten Textes → unveränderten Rohtext liefern, nicht den nächsten Dienst
-  ausprobieren. Die Längenkorridor-Prüfung ist eine Sicherheitsgrenze.
+  des bereinigten Textes → den Rohtext liefern, nicht den nächsten Dienst
+  ausprobieren. „Rohtext“ heißt dabei: keine Wortänderung und nichts aus der
+  LLM-Ausgabe, aber die deterministische Nachstufe `TranscriptPolish.repairPunctuation`
+  läuft darauf (Satzzeichen/Großschreibung, damit ein Diktat ohne Bereinigung lesbar
+  ankommt). Die Längenkorridor-Prüfung ist eine Sicherheitsgrenze.
 - Keep-alive: primäres Modell standardmäßig `2h`, Fallbacks `30m`. `-1` bleibt
   optional für dauerhaftes Laden; nur dann darf der periodische Warm-up laufen.
 - Erfolg löscht die temporäre WAV-Datei. Jeder Fehler behält sie zur Diagnose.

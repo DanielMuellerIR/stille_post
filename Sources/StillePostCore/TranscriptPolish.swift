@@ -56,7 +56,8 @@ public enum TranscriptPolish {
     /// deshalb wird NIE etwas kleingeschrieben):
     ///  - "wort. kleinwort" -> "wort, kleinwort": Ein Punkt vor einem kleinen
     ///    Wortanfang ist ein Segmentgrenzen-Artefakt, kein Satzende. Geschützt
-    ///    bleiben Abkürzungen ("z. B.", Wort vor dem Punkt kürzer als 3 Buchstaben),
+    ///    bleiben kurze Abkürzungen ("z. B.", Wort vor dem Punkt kürzer als 3
+    ///    Buchstaben), die längeren aus `protectedAbbreviations` ("ggf.", "bzw."),
     ///    Zahlen/Datumsangaben ("27.07.") und Auslassungspunkte ("...").
     ///  - Nach "!" und "?" wird der nächste Buchstabe großgeschrieben.
     ///  - Der erste Buchstabe des Texts wird großgeschrieben.
@@ -86,7 +87,8 @@ public enum TranscriptPolish {
                 }
                 if isSingleDot, sawWhitespace, next < chars.count,
                    chars[next].isLetter, chars[next].isLowercase,
-                   wordBeforeDot.count >= 3, wordBeforeDot.allSatisfy(\.isLetter) {
+                   wordBeforeDot.count >= 3, wordBeforeDot.allSatisfy(\.isLetter),
+                   !protectedAbbreviations.contains(String(wordBeforeDot).lowercased()) {
                     chars[index] = ","
                 }
             }
@@ -116,6 +118,31 @@ public enum TranscriptPolish {
         }
         return String(chars)
     }
+
+    /// Deutsche Abkürzungen, deren Punkt ein Abkürzungspunkt ist und kein Satzende.
+    ///
+    /// Die Längenregel oben (Wort vor dem Punkt kürzer als 3 Buchstaben) fängt nur
+    /// die einbuchstabigen Kürzel ab ("z. B.", "d. h.", "u. a."). Alles ab drei
+    /// Buchstaben lief bisher in die Komma-Ersetzung: Aus "Das gilt ggf. auch"
+    /// wurde "Das gilt ggf, auch" — ein sichtbarer Schaden am Rohtext.
+    ///
+    /// Aufnahmekriterium: mindestens drei Buchstaben (kürzere sind schon
+    /// geschützt) UND im diktierten Deutsch regelmäßig vor einem KLEIN
+    /// geschriebenen Wort ("ggf. auch", "bzw. der", "inkl. aller"). Nur dann
+    /// greift die Regel überhaupt. Deshalb fehlen hier Kürzel, auf die praktisch
+    /// immer eine Zahl oder ein Eigenname folgt ("Abb. 3", "Nr. 7", "Dr. Meier") —
+    /// dort löst die Regel gar nicht erst aus.
+    ///
+    /// Der Vergleich läuft kleingeschrieben, "Ggf." und "ggf." sind also gleich.
+    private static let protectedAbbreviations: Set<String> = [
+        // Aufzählen und Verweisen
+        "usw", "usf", "etc", "vgl", "bzw", "bzgl", "insb", "bspw", "sog",
+        // Einschränken und Rechnen
+        "ggf", "ggfs", "evtl", "inkl", "exkl", "zzgl", "abzgl", "einschl",
+        "ausschl", "gem", "mind", "max", "min", "zzt",
+        // Größenordnungen und Titel/Quellenangaben
+        "mio", "mrd", "tsd", "prof", "dipl", "ing", "hrsg", "anm",
+    ]
 
     /// Fasst gedoppelte Trennzeichen zusammen ("Wort, , dass" -> "Wort, dass").
     /// Solche Doppel entstehen, wenn die Worttreue-Prüfung einen Satzteil auf leer

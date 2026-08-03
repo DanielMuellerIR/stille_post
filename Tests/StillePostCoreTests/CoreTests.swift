@@ -390,6 +390,21 @@ final class CoreTests: XCTestCase {
                        "Moment... dann eben nicht")
     }
 
+    func testRepairKeepsGermanAbbreviationsLongerThanTwoLetters() {
+        // Die Längenregel (Wort vor dem Punkt kürzer als 3 Buchstaben) schützt nur
+        // "z. B."-artige Kürzel. Gängige längere Abkürzungen stehen deshalb auf
+        // einer eigenen Schutzliste — sonst wird aus "ggf." ein "ggf,".
+        XCTAssertEqual(TranscriptPolish.repairPunctuation("Das gilt ggf. auch für uns"),
+                       "Das gilt ggf. auch für uns")
+        XCTAssertEqual(TranscriptPolish.repairPunctuation("Wir liefern Schrauben bzw. dazu passende Muttern"),
+                       "Wir liefern Schrauben bzw. dazu passende Muttern")
+        XCTAssertEqual(TranscriptPolish.repairPunctuation("Der Preis gilt inkl. aller Kosten usw. und bleibt"),
+                       "Der Preis gilt inkl. aller Kosten usw. und bleibt")
+        // Ein normales Wort vor dem Punkt bleibt dagegen ein Segment-Artefakt.
+        XCTAssertEqual(TranscriptPolish.repairPunctuation("Das war der Bericht. und zwar komplett"),
+                       "Das war der Bericht, und zwar komplett")
+    }
+
     func testRepairCollapsesDoubledPunctuation() {
         // Entsteht, wenn ein leer zurückgesetzter Satzteil seine Rand-Interpunktion
         // hinterlässt ("Wort, , dass").
