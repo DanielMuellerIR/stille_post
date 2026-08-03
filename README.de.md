@@ -106,7 +106,9 @@ bereits beim Start der Aufnahme vorgewärmt.
    Ergänzen, Ersetzen, Übersetzen oder Umstellen. Erlaubt sind Löschungen (Füllwörter),
    Satzzeichen und Groß-/Kleinschreibung sowie eng begrenzte Reparaturen von
    Whisper-Artefakten (an Sprechpausen zerhackte Komposita, ein einzelner Verhörer,
-   eine kurze Flexionsendung); Modell- und Versionskennungen bleiben unantastbar.
+   eine kurze Flexionsendung); Modell- und Versionskennungen bleiben unantastbar,
+   ebenso Verneinungen und andere sinntragende Funktionswörter („kein" wird nie zu
+   „ein").
    Zusätzlich bleibt die Längenprüfung aktiv.
 3. Schlägt die Bereinigung fehl, wird ebenfalls der Rohtext eingefügt.
 4. Overlay und Verlauf kennzeichnen Ausweich-Endpunkte und Rohtext-Rückfälle.

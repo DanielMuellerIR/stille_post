@@ -103,8 +103,9 @@ and sentence boundaries. The cleanup model is warmed when recording begins.
    replacing, translating, or reordering. Allowed are deletions (filler words),
    punctuation, and capitalization, plus tightly bounded repairs of Whisper artifacts
    (compounds split at speech pauses, a single mishearing, a short inflection ending);
-   model and version identifiers stay untouchable. The length check remains active as
-   an additional safeguard.
+   model and version identifiers stay untouchable, as do negations and other
+   meaning-critical function words (German "kein" never becomes "ein"). The length
+   check remains active as an additional safeguard.
 3. A failed cleanup also falls back to the raw text.
 4. The overlay and history identify backup endpoints and raw-text fallbacks.
 
