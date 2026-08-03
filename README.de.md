@@ -108,7 +108,8 @@ bereits beim Start der Aufnahme vorgewärmt.
    Whisper-Artefakten (an Sprechpausen zerhackte Komposita, ein einzelner Verhörer,
    eine kurze Flexionsendung); Modell- und Versionskennungen bleiben unantastbar,
    ebenso Verneinungen und andere sinntragende Funktionswörter („kein" wird nie zu
-   „ein").
+   „ein"). Das gilt auch fürs Weglassen: Verschluckt die Bereinigung eine
+   Verneinung, geht der betroffene Satzteil auf das Diktierte zurück.
    Zusätzlich bleibt die Längenprüfung aktiv.
 3. Schlägt die Bereinigung fehl, wird ebenfalls der Rohtext eingefügt.
 4. Overlay und Verlauf kennzeichnen Ausweich-Endpunkte und Rohtext-Rückfälle.

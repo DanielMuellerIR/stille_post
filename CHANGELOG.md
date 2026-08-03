@@ -10,6 +10,21 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.5] — 2026-08-03
+
+### Behoben
+
+- Bereinigung: Eine verschluckte Verneinung zählt jetzt genauso wie eine
+  ersetzte. Der Schutz aus 0.9.4 griff nur, wenn das Modell ein sinntragendes
+  Wort AUSTAUSCHTE. Ließ es das Wort ersatzlos weg, sah der Abgleich nur eine
+  Löschung — und Löschungen sind als Füllwort-Entfernung erlaubt. Aus „ich habe
+  das nicht gemacht“ konnte so „Ich habe das gemacht.“ werden. Fällt eines der
+  geschützten Wörter (kein, nicht, nie, niemand, nirgends, nein, ohne, weder,
+  nur, mehr, immer samt Formen) weg, geht der betroffene Satzteil jetzt auf das
+  Diktierte zurück. Füllwörter dürfen weiterhin verschwinden, und eine
+  gestotterte Verneinung („nicht nicht“) darf weiterhin entdoppelt werden, weil
+  das Wort daneben stehen bleibt.
+
 ## [0.9.4] — 2026-08-03
 
 ### Behoben

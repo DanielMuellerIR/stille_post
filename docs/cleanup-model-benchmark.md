@@ -120,7 +120,9 @@ und beurteilt jede Lücke einzeln:
   Dasselbe gilt für Verneinungen und andere sinntragende Funktionswörter (`kein`,
   `nicht`, `nie`, `ohne`, `nur` …): Sie liegen zwar oft nur einen Buchstaben
   auseinander, drehen die Aussage aber um. Die reine Beugung (`kein` → `keinen`)
-  bleibt erlaubt.
+  bleibt erlaubt. Seit 0.9.5 zählt auch das ersatzlose Weglassen: Eine verschluckte
+  Verneinung setzt den Satzteil genauso zurück wie eine ersetzte, während gewöhnliche
+  Füllwörter weiter verschwinden dürfen.
 
 Wirkung auf dem realen Set: Die Treue-Passrate des besten Modells stieg von 22/35 auf
 30/35, auf den harten Langfällen von 2/12 auf 8/12 — und der Umbau half jedem Modell.

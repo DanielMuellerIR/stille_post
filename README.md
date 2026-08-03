@@ -104,7 +104,9 @@ and sentence boundaries. The cleanup model is warmed when recording begins.
    punctuation, and capitalization, plus tightly bounded repairs of Whisper artifacts
    (compounds split at speech pauses, a single mishearing, a short inflection ending);
    model and version identifiers stay untouchable, as do negations and other
-   meaning-critical function words (German "kein" never becomes "ein"). The length
+   meaning-critical function words (German "kein" never becomes "ein"). The same
+   applies to dropping them: if cleanup swallows a negation, the affected clause
+   reverts to what was dictated. The length
    check remains active as an additional safeguard.
 3. A failed cleanup also falls back to the raw text.
 4. The overlay and history identify backup endpoints and raw-text fallbacks.
