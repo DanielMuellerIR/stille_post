@@ -292,6 +292,9 @@ public final class CleanupService {
     ///
     /// Erlaubte Abweichungen je Ausrichtungslücke (via LCS-Anker):
     ///  - Löschungen (Füllwörter) und reine Wort-Trennung/-Fusion ("dauer haft").
+    ///    Ausnahme: Fällt ein Wort der Sperrliste `meaningCriticalWords` weg, wird
+    ///    der umgebende Satzteil zurückgesetzt — eine verschluckte Verneinung ist
+    ///    so sinnverkehrend wie eine ersetzte.
     ///  - Ein Tippfehler/Verhörer (Editierabstand 1) und kurze Flexionsendungen.
     ///  - NEU: gleich klingende Wörter (Kölner Phonetik, "Rack" -> "RAG").
     ///  - NEU: Wörterbuch-Fachbegriffe, wenn sie ähnlich klingen ("Mini Macs" ->
@@ -360,9 +363,33 @@ public final class CleanupService {
         var rawLo = [Int](repeating: 0, count: m)
         var rawHi = [Int](repeating: 0, count: m)
         var corrections = 0
+        // Weggelassene Sperrlisten-Wörter, gesammelt für die Nachbewertung unten:
+        // (gelöschter Roh-Bereich, Ausgabe-Index direkt HINTER der Lücke).
+        var droppedMeaning: [(rawStart: Int, rawEnd: Int, cleanIndex: Int)] = []
+        // Bedeutungsschlüssel der Ausgabe-Wörter unmittelbar vor und hinter einer
+        // Lücke. Steht die Verneinung dort noch, war die Löschung nur eine
+        // Entdoppelung ("nicht nicht" -> "nicht") und ändert die Aussage nicht.
+        func neighborMeaningKeys(atCleanIndex cs: Int) -> Set<String> {
+            var keys: Set<String> = []
+            for j in [cs - 1, cs] where j >= 0 && j < m {
+                if let key = meaningCriticalWords[cleanTokens[j].norm] { keys.insert(key) }
+            }
+            return keys
+        }
         // Bewertet die Lücke rawTokens[rs..<re] / cleanTokens[cs..<ce] vor einem Anker.
         func classifyGap(_ rs: Int, _ re: Int, _ cs: Int, _ ce: Int) {
-            guard ce > cs else { return }  // reine Löschung (Füllwörter): ok
+            guard ce > cs else {
+                // Reine Löschung: als Füllwort-Entfernung erlaubt — außer es
+                // verschwindet ein Wort der Sperrliste. Eine verschluckte
+                // Verneinung dreht den Sinn genauso um wie eine ersetzte
+                // ("ich habe das nicht gemacht" -> "Ich habe das gemacht").
+                guard rs < re else { return }
+                let lost = Set(meaningKeys(rawTokens[rs..<re].map(\.norm)))
+                if !lost.isEmpty, !lost.isSubset(of: neighborMeaningKeys(atCleanIndex: cs)) {
+                    droppedMeaning.append((rs, re, cs))
+                }
+                return
+            }
             let allowed = rs < re && isAllowedReplacement(
                 rawSpan: rawTokens[rs..<re].map(\.norm),
                 cleanedSpan: cleanTokens[cs..<ce].map(\.norm),
@@ -385,6 +412,24 @@ public final class CleanupService {
             gapCleanStart = anchor.clean + 1
         }
         classifyGap(gapRawStart, n, gapCleanStart, m)
+
+        // Weggelassene Sperrlisten-Wörter nachtragen. Eine reine Löschung hat kein
+        // eigenes Ausgabe-Wort, an dem die Rücksetzung hängen könnte — deshalb
+        // erbt sie das Ausgabe-Wort direkt VOR der Lücke (steht die Lücke ganz am
+        // Anfang, das erste Wort dahinter). Genau dessen Satzteil ist der, aus dem
+        // die Verneinung verschwunden ist. Sein Roh-Deckungsbereich wächst um die
+        // gelöschten Roh-Wörter, damit der Wiederaufbau sie wieder einsetzt.
+        // Erst hier und nicht in `classifyGap`, weil der Ankerlauf oben rawLo/rawHi
+        // der Anker-Wörter nach dem Lückenaufruf noch überschreibt.
+        // Mehrfach dasselbe Wort zu markieren ist harmlos: `tainted` ist ein
+        // Ja/Nein-Merker, und der Wiederaufbau setzt jeden Satzteil genau einmal
+        // zurück (`nextRaw` verhindert doppelt eingefügte Roh-Wörter).
+        for drop in droppedMeaning {
+            let neighbor = max(drop.cleanIndex - 1, 0)  // m > 0 ist oben sichergestellt
+            tainted[neighbor] = true
+            rawLo[neighbor] = min(rawLo[neighbor], drop.rawStart)
+            rawHi[neighbor] = max(rawHi[neighbor], drop.rawEnd)
+        }
 
         // Backstop gegen schleichendes Umschreiben: viele erlaubte Mini-Korrekturen.
         let budget = max(4, Int((0.25 * Double(n)).rounded(.up)))
@@ -631,7 +676,7 @@ public final class CleanupService {
         return false
     }
 
-    /// Sperrliste: Wörter, deren Austausch den Sinn eines Diktats umdreht.
+    /// Sperrliste: Wörter, deren Austausch oder Wegfall den Sinn eines Diktats umdreht.
     ///
     /// Warum es sie braucht: Die Toleranzen oben sind als Verhörer-Rettung gedacht
     /// und messen nur ÄHNLICHKEIT, nicht Bedeutung. Genau bei den kurzen
@@ -648,6 +693,10 @@ public final class CleanupService {
     ///     nicht/nichts (Flexionsregel), nie/wie/sie/die, nein/ein/neun,
     ///     nur/nun, immer/nimmer, weder/jeder, nirgendwo/irgendwo (Abstand 1),
     ///     ohne/ahne (gleicher Kölner Lautcode "06").
+    ///
+    /// Kriterium 2 begründet nur den ERSETZUNGS-Pfad. Beim Wegfall eines Wortes
+    /// (siehe `reconcile`, reine Löschung) zählt allein Kriterium 1: Dafür braucht
+    /// es kein ähnliches Nachbarwort, das Wort verschwindet ja ersatzlos.
     ///
     /// Schlüssel: die normalisierte Wortform (kleingeschrieben, nur Buchstaben) —
     /// genau die Form, in der die Ausrichtung Wörter vergleicht.

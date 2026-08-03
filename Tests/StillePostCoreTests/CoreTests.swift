@@ -343,6 +343,47 @@ final class CoreTests: XCTestCase {
             cleaned: "Ich nutze kein Ollama-Modell."))
     }
 
+    func testReconcileCatchesSwallowedNegation() {
+        // Die Sperrliste griff anfangs nur bei ERSETZUNGEN. Verschluckt das Modell
+        // die Verneinung ganz, sah der Abgleich nur eine Löschung — und Löschungen
+        // sind als Füllwort-Entfernung erlaubt. Für ein Diktat ist eine
+        // weggelassene Verneinung aber genauso sinnverkehrend wie eine ersetzte.
+        XCTAssertTrue(rejects(
+            raw: "ich habe das nicht gemacht",
+            cleaned: "Ich habe das gemacht."))
+        // Auch die Reichweite-Wörter der Liste zählen, nicht nur die Verneinung.
+        XCTAssertTrue(rejects(
+            raw: "das war nur ein test",
+            cleaned: "Das war ein Test."))
+    }
+
+    func testReconcileRevertsOnlyTheClauseWithTheSwallowedNegation() {
+        // Die verschluckte Verneinung hat keinen eigenen Ausgabe-Index; trotzdem
+        // muss die Rücksetzung chirurgisch bleiben: nur der Satzteil, aus dem sie
+        // verschwunden ist, geht auf den Rohtext zurück — der zweite bleibt geputzt
+        // (dort wird das Füllwort "ähm" weiterhin entfernt).
+        let result = CleanupService.reconcile(
+            raw: "das geht so nicht, wir machen das ähm morgen",
+            cleaned: "Das geht so, wir machen das morgen."
+        )
+        XCTAssertEqual(result, .accepted(
+            text: "das geht so nicht, wir machen das morgen.",
+            revertedClauses: 1
+        ))
+    }
+
+    func testReconcileStillAllowsDeletingFillersAndStutteredNegations() {
+        // Kernbedingung der Erweiterung: Gewöhnliche Löschungen bleiben erlaubt.
+        XCTAssertTrue(acceptsUnchanged(
+            raw: "also ähm das ist halt quasi fertig",
+            cleaned: "Das ist fertig."))
+        // Und eine gestotterte Verneinung darf entdoppelt werden: Die Aussage
+        // ändert sich nicht, weil dasselbe Wort direkt daneben stehen bleibt.
+        XCTAssertTrue(acceptsUnchanged(
+            raw: "ich habe das nicht nicht gemacht",
+            cleaned: "Ich habe das nicht gemacht."))
+    }
+
     func testReconcileRejectsManyMicroEditsAsRewrite() {
         // Jede Einzeländerung wäre klein, aber in Summe ist es ein Umschreiben:
         // Das Gesamtbudget muss greifen.
