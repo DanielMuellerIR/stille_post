@@ -88,6 +88,17 @@ Kontext, Satzgrenzen und konsistente Zeichensetzung verloren gehen.
   beiläufig wechseln. Eine Developer-ID-Signatur stabilisiert Freigaben.
 - Notarisierte Builds benötigen das Audio-Entitlement. Alle eingebetteten Binaries,
   einschließlich CLI, einzeln und von innen nach außen signieren.
+- **Der `.build`-Pfad in `StillePost` und `stillepost-cli` bleibt bewusst stehen.**
+  SwiftPM kompiliert in den Zugriff auf `Bundle.module` den Build-Zeit-Pfad des
+  Ressourcen-Bundles als Zeichenkette ein. Das ist kein Debug-Symbol, das
+  `strip -S` in `scripts/build-app.sh` erwischt es deshalb nicht. Folgenlos: Das
+  Bundle liegt in `Contents/Resources` und wird von dort gefunden, der Pfad ist
+  ein nie erreichter Rückfall. Wegzubekommen wäre er nur, indem `swift build` mit
+  `--scratch-path` außerhalb des Repos baut — das kostet einen zweiten
+  Build-Cache. Daniel hat das am 2026-08-04 abgelehnt: für Kosmetik lohnt der
+  Aufwand nicht. Nicht „reparieren“; der Fund steht in theplans
+  known-findings-Liste und soll auch von Code-Reviews nicht erneut gemeldet
+  werden.
 - Notarisierungs-/Signaturarbeit kann unter SSH am gesperrten Login-Schlüsselbund
   scheitern; dafür ist eine angemeldete GUI-Sitzung erforderlich. Keine Secrets in
   Argumente schreiben.
