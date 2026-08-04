@@ -150,6 +150,24 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
+# Debug-Symbole aus den selbst gebauten Binaries entfernen, BEVOR signiert wird
+# (strip macht eine vorhandene Signatur ungültig). `swift build -c release` legt
+# eine Debug-Map in jede Binärdatei: für jede übersetzte Quelldatei einen Eintrag
+# mit dem vollen Pfad ihrer .o-Datei auf DIESEM Mac. Die App braucht das nicht,
+# es verrät nur Benutzernamen und Projektaufbau (gefunden am 2026-08-04).
+# `strip -S` nimmt genau diese Debug-Symbole und lässt die normale Symboltabelle
+# stehen, damit Absturzberichte lesbar bleiben. Xcode tut das bei Release-Builds
+# von sich aus (STRIP_STYLE=debugging), SwiftPM nicht.
+#
+# Nur Contents/MacOS, also StillePost und stillepost-cli: Sparkle kommt fertig
+# gebaut von außen, enthält keinen Pfad dieses Macs und wird nicht angefasst.
+echo "Entferne Debug-Symbole aus den eigenen Binaries…"
+for macho in "$APP/Contents/MacOS/"*; do
+    case "$(file -b "$macho")" in
+        Mach-O*) strip -S "$macho" ;;
+    esac
+done
+
 # Signatur-Identität wählen: erzwungene, sonst automatisch erkannte Developer ID,
 # sonst Ad-hoc ("-").
 IDENTITY="${CODESIGN_IDENTITY:-}"
