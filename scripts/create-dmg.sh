@@ -58,7 +58,10 @@ hdiutil verify "$STAGED_DMG" >/dev/null
 # Zeitfenster offen gelassen. Quelle und Ziel liegen im selben Dateisystem
 # (Temp-Ordner neben dem Ziel), ein Hardlink ist daher immer möglich; der
 # Temp-Ordner samt Staging-Hardlink verschwindet über den EXIT-Trap.
-if ! ln "$STAGED_DMG" "$OUTPUT"; then
+# `link` statt `ln`: Steht am Zielpfad inzwischen ein Verzeichnis (oder ein
+# Symlink darauf), legt `ln` das DMG kommentarlos DARIN ab und meldet Erfolg.
+# `link` ruft link(2) direkt auf und scheitert auch in diesem Fall.
+if ! link "$STAGED_DMG" "$OUTPUT"; then
     echo "FEHLER: Das DMG-Ziel konnte nicht atomar angelegt werden (existiert es inzwischen?): $OUTPUT" >&2
     exit 3
 fi

@@ -39,9 +39,12 @@ Kontext, Satzgrenzen und konsistente Zeichensetzung verloren gehen.
   diszipliniertes kleines Modell schlägt hier die großen — Wechsel nur evidenzbasiert.
 - `num_ctx` explizit auf 16384 setzen. Warm-up und Chat müssen denselben Wert
   verwenden; unterschiedliche Kontextgrößen können getrennte Modellinstanzen laden.
-- Primärer Endpunkt: direkter Streaming-Request. Bei Verbindungsfehler genau ein
-  sofortiger Versuch in einer frischen Sitzung, danach die geordnete Fallback-Kette.
-  Fallback-Probes bleiben non-streaming; keine parallelen oder gehedgten Requests.
+- Primärer Endpunkt: direkter Streaming-Request. Scheitert er, folgt genau ein
+  sofortiger Versuch in einer frischen Sitzung — nicht nur bei Verbindungsfehlern,
+  sondern auch bei abgebrochenem Stream, ungültigem Frame und Providerfehler
+  („Modell wird neu geladen“ ist der häufigste und geht beim zweiten Versuch
+  durch). Danach die geordnete Fallback-Kette. Fallback-Probes bleiben
+  non-streaming; keine parallelen oder gehedgten Requests.
 - Fallback-Semantik: Netzwerk-/Dienstfehler → nächster Endpunkt. Plausibilitätsfehler
   des bereinigten Textes → den Rohtext liefern, nicht den nächsten Dienst
   ausprobieren. „Rohtext“ heißt dabei: keine Wortänderung und nichts aus der

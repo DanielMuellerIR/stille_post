@@ -112,6 +112,25 @@ final class CoreTests: XCTestCase {
         XCTAssertTrue(rejects(raw: raw, cleaned: "Okay."))
     }
 
+    func testReconcileRejectsShorteningHiddenByLateAnchors() {
+        // Bei Gleichstand muss die Anker-Suche die FRÜHESTE Rohtext-Ausrichtung
+        // wählen. Sonst ankert „Wir machen“ an den SPÄTEN Vorkommen: Der ganze
+        // Anfang gälte dann als erlaubte Löschung und „morgen“ -> „sorgen“ als
+        // Tippfehler — eine stark gekürzte und inhaltlich veränderte Ausgabe
+        // käme durch.
+        XCTAssertTrue(rejects(
+            raw: "wir machen heute wir testen jetzt wir machen morgen",
+            cleaned: "Wir machen Sorgen."))
+    }
+
+    func testReconcileRejectsOutputWithoutASingleWord() {
+        // Verliert die Ausgabe jedes Wort, ist das keine Bereinigung, sondern
+        // der Totalverlust des Diktats. Der Längenkorridor allein lässt es bei
+        // kurzen Eingaben durch („kein“ -> „.“ sind 25 %).
+        XCTAssertTrue(rejects(raw: "kein", cleaned: "."))
+        XCTAssertTrue(rejects(raw: "nur", cleaned: "."))
+    }
+
     func testReconcileRejectsAnswering() {
         // Simuliert: Modell "beantwortet" das Diktat statt zu putzen (Ausgabe wächst stark).
         let raw = "welche lokalen modelle empfiehlst du für textbereinigung"
@@ -370,6 +389,38 @@ final class CoreTests: XCTestCase {
             text: "das geht so nicht, wir machen das morgen.",
             revertedClauses: 1
         ))
+    }
+
+    func testReconcileRevertsTheClauseTheNegationBelongedTo() {
+        // Die verschluckte Verneinung stand HINTER einer Satzteil-Grenze. Sie
+        // trotzdem dem Ausgabe-Wort DAVOR zuzuschlagen setzte den falschen —
+        // nämlich unveränderten — ersten Satz zurück, und die Verneinung hing
+        // als Rest an dessen Ende („erster satz. nicht Machen wir das.“).
+        let result = CleanupService.reconcile(
+            raw: "erster satz. nicht machen wir das",
+            cleaned: "Erster Satz. Machen wir das."
+        )
+        XCTAssertEqual(result, .accepted(
+            text: "Erster Satz. nicht machen wir das.",
+            revertedClauses: 1
+        ))
+    }
+
+    func testReconcileCatchesSwallowedEnglishNegation() {
+        // `whisper.language` ist standardmäßig „auto“, Englisch ist ausdrücklich
+        // unterstützt: Eine weggelassene englische Verneinung dreht die Aussage
+        // genauso um wie eine deutsche.
+        XCTAssertTrue(rejects(raw: "i did not approve this",
+                              cleaned: "I did approve this."))
+        // Verkürzte Form: Der Apostroph trennt die Wörter, im Diktat steht
+        // deshalb „didn“ + „t“.
+        XCTAssertTrue(rejects(raw: "i didn't approve this",
+                              cleaned: "I did approve this."))
+        XCTAssertTrue(rejects(raw: "we have no time for that",
+                              cleaned: "We have time for that."))
+        // Ohne Verneinung bleibt die englische Bereinigung ganz normal erlaubt.
+        XCTAssertTrue(acceptsUnchanged(raw: "so i did approve this yesterday",
+                                       cleaned: "I did approve this yesterday."))
     }
 
     func testReconcileStillAllowsDeletingFillersAndStutteredNegations() {

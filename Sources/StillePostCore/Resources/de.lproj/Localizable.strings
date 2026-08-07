@@ -190,6 +190,7 @@
 "core.model.incomplete" = "Download unvollständig (%lld von %lld Bytes). Die Teildatei bleibt liegen, ein erneuter Versuch setzt dort fort: %@";
 "core.cleanup.failed" = "Bereinigung fehlgeschlagen — %@";
 "core.cleanup.empty" = "Bereinigung lieferte leeren Text";
+"core.cleanup.no_words" = "Bereinigte Fassung enthält kein einziges Wort mehr";
 "core.cleanup.markdown" = "Bereinigte Fassung enthält Markdown-Strukturen (%@) — Modell hat vermutlich geantwortet statt bereinigt";
 "core.cleanup.words_changed" = "Bereinigte Fassung hat Wörter ergänzt, ersetzt oder umgestellt";
 "core.cleanup.partially_reverted" = "%d Satzteil(e) auf Rohtext zurückgesetzt (Wörter verändert)";
@@ -240,6 +241,7 @@
 "core.bridge.text_not_utf8" = "Text muss UTF-8 sein";
 "core.bridge.text_empty" = "Kein Text übergeben";
 "core.bridge.cleanup_off" = "Die Textbereinigung ist auf diesem Mac ausgeschaltet";
+"core.bridge.busy" = "Brücke ausgelastet — bitte gleich noch einmal senden";
 "core.bridge.audio_empty" = "Kein verwertbares Audio übergeben";
 "core.bridge.audio_unsupported" = "Audio-Format nicht lesbar: %@";
 "core.bridge.audio_format" = "Zielformat für Whisper konnte nicht eingerichtet werden";

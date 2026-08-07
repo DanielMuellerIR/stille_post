@@ -335,8 +335,16 @@ public final class CleanupService {
         let rawTokens = tokens(in: raw)
         let cleanTokens = tokens(in: cleaned)
         let n = rawTokens.count, m = cleanTokens.count
-        // Alles gelöscht: der Längenkorridor oben ist hier die richtige Grenze.
-        if m == 0 { return .accepted(text: cleaned, revertedClauses: 0) }
+        // Enthält die Ausgabe kein einziges Wort mehr, der Rohtext aber schon,
+        // ist das keine Bereinigung: Der Längenkorridor allein lässt so etwas
+        // durch (aus „kein“ wird „.“ — 25 % Länge liegt bei kurzen Eingaben im
+        // erlaubten Bereich), und die Sperrlisten-Prüfung käme nie zum Zug.
+        // Nur wenn auch der Rohtext wortlos war (reine Satzzeichen), darf die
+        // wortlose Ausgabe stehen bleiben.
+        if m == 0 {
+            if n > 0 { return .rejected(reason: L10n.text("core.cleanup.no_words")) }
+            return .accepted(text: cleaned, revertedClauses: 0)
+        }
 
         // Anker = Wortpaare einer längsten gemeinsamen Teilfolge (LCS). Früher
         // stand hier eine volle (n+1)×(m+1)-Tabelle — bei Mehrtausend-Wort-
@@ -413,19 +421,42 @@ public final class CleanupService {
         }
         classifyGap(gapRawStart, n, gapCleanStart, m)
 
+        // Steht im ROHTEXT direkt vor dem Wort mit diesem Index eine
+        // Satzteil-Grenze? (`index == n` heißt „hinter dem letzten Wort“ — dort
+        // folgt nichts mehr, also auch keine Grenze.)
+        func rawClauseBoundary(before index: Int) -> Bool {
+            guard index > 0, index < n else { return false }
+            return isClauseBoundary(raw[rawTokens[index - 1].range.upperBound
+                                          ..< rawTokens[index].range.lowerBound])
+        }
         // Weggelassene Sperrlisten-Wörter nachtragen. Eine reine Löschung hat kein
         // eigenes Ausgabe-Wort, an dem die Rücksetzung hängen könnte — deshalb
-        // erbt sie das Ausgabe-Wort direkt VOR der Lücke (steht die Lücke ganz am
-        // Anfang, das erste Wort dahinter). Genau dessen Satzteil ist der, aus dem
-        // die Verneinung verschwunden ist. Sein Roh-Deckungsbereich wächst um die
-        // gelöschten Roh-Wörter, damit der Wiederaufbau sie wieder einsetzt.
+        // erbt sie normalerweise das Ausgabe-Wort direkt VOR der Lücke (steht die
+        // Lücke ganz am Anfang, das erste Wort dahinter; die Ausnahme an der
+        // Satzteil-Grenze steht in der Schleife). Genau dessen Satzteil ist der,
+        // aus dem die Verneinung verschwunden ist. Sein Roh-Deckungsbereich wächst
+        // um die gelöschten Roh-Wörter, damit der Wiederaufbau sie wieder einsetzt.
         // Erst hier und nicht in `classifyGap`, weil der Ankerlauf oben rawLo/rawHi
         // der Anker-Wörter nach dem Lückenaufruf noch überschreibt.
         // Mehrfach dasselbe Wort zu markieren ist harmlos: `tainted` ist ein
         // Ja/Nein-Merker, und der Wiederaufbau setzt jeden Satzteil genau einmal
         // zurück (`nextRaw` verhindert doppelt eingefügte Roh-Wörter).
         for drop in droppedMeaning {
-            let neighbor = max(drop.cleanIndex - 1, 0)  // m > 0 ist oben sichergestellt
+            var neighbor = max(drop.cleanIndex - 1, 0)  // m > 0 ist oben sichergestellt
+            // Zu welchem Satzteil das verschluckte Wort gehörte, steht im
+            // Rohtext: Eröffnete es dort einen neuen Satzteil — direkt davor ein
+            // Punkt/Komma, direkt dahinter keiner —, gehört es zum FOLGENDEN
+            // Ausgabe-Wort. Ohne diese Unterscheidung wurde bei
+            // „erster satz. nicht machen wir das“ -> „Erster Satz. Machen wir
+            // das.“ der unveränderte erste Satz zurückgesetzt, und die
+            // Verneinung hing als Rest an dessen Ende. Umgekehrt schließt
+            // „das geht so nicht, wir machen …“ den ERSTEN Satzteil ab — dort
+            // bleibt es beim Wort davor.
+            if drop.cleanIndex < m,
+               rawClauseBoundary(before: drop.rawStart),
+               !rawClauseBoundary(before: drop.rawEnd) {
+                neighbor = drop.cleanIndex
+            }
             tainted[neighbor] = true
             rawLo[neighbor] = min(rawLo[neighbor], drop.rawStart)
             rawHi[neighbor] = max(rawHi[neighbor], drop.rawEnd)
@@ -502,9 +533,12 @@ public final class CleanupService {
     }
 
     /// Ein Wort des Originaltexts samt Fundstelle und normalisierter Form.
+    ///
+    /// Die Original-Schreibweise steht bewusst NICHT hier: Der Wiederaufbau
+    /// schneidet zurückgesetzte Satzteile am Stück über `range` aus dem Rohtext
+    /// aus. Ein zusätzlicher `Substring` je Wort wäre nur Ballast — und gerade
+    /// lange Diktate sollen wenig Speicher kosten.
     private struct Token {
-        /// Original-Schreibweise (für die Rücksetzung auf Roh-Wörter).
-        let text: Substring
         /// Vergleichsform: Unicode-normalisiert und kleingeschrieben — Satzzeichen
         /// und Groß-/Kleinschreibung sind für die Treueprüfung egal.
         let norm: String
@@ -523,7 +557,6 @@ public final class CleanupService {
             if !isWordChar, let s = start {
                 let piece = text[s..<idx]
                 result.append(Token(
-                    text: piece,
                     norm: String(piece).precomposedStringWithCanonicalMapping.lowercased(),
                     range: s..<idx
                 ))
@@ -561,7 +594,16 @@ public final class CleanupService {
                            cleanRange: cleanRange, reversed: true)
         var split = cleanRange.lowerBound
         var best = -1
-        for offset in 0...cleanRange.count where upper[offset] + lower[offset] > best {
+        // Gleichstand bewusst zugunsten der SPÄTEN Trennstelle auflösen (`>=`):
+        // Je weiter rechts geteilt wird, desto mehr Ausgabe-Wörter bekommt die
+        // frühe Roh-Hälfte — die Anker liegen dann so früh wie möglich im
+        // Rohtext. Mit `>` gewann die früheste Trennstelle, und die frühe
+        // Roh-Hälfte ging leer aus: Aus „wir machen heute wir testen jetzt wir
+        // machen morgen“ -> „Wir machen Sorgen.“ wurden die SPÄTEN Vorkommen
+        // von „wir machen“ zu Ankern. Der lange Anfang galt dadurch als reine
+        // (erlaubte) Löschung und „morgen“ -> „sorgen“ als Tippfehler — eine
+        // stark gekürzte und inhaltlich veränderte Ausgabe bestand die Prüfung.
+        for offset in 0...cleanRange.count where upper[offset] + lower[offset] >= best {
             best = upper[offset] + lower[offset]
             split = cleanRange.lowerBound + offset
         }
@@ -708,6 +750,15 @@ public final class CleanupService {
     /// "nun"): Der Vergleich unten ist seitenweise, deshalb schlägt er auch an,
     /// wenn die Verneinung nur auf EINER Seite steht. Stünde "ein" mit drauf,
     /// wäre die gewollte Flexionsrettung "ein" -> "einen" mit gesperrt.
+    ///
+    /// Englisch steht mit auf der Liste, weil `whisper.language` standardmäßig
+    /// `auto` ist und `en` ausdrücklich unterstützt wird: Ohne die englischen
+    /// Einträge galt "I did not approve this" -> "I did approve this." als
+    /// gewöhnliche Füllwort-Löschung. Die verkürzten Formen sind im Diktat als
+    /// eigene Wörter zu finden, weil der Apostroph die Wörter trennt
+    /// ("didn't" -> "didn" + "t") — deshalb steht der Stamm "didn" auf der Liste
+    /// und nicht "didnt". Weitere Diktatsprachen sind noch nicht abgedeckt; der
+    /// offene Punkt steht im Backlog.
     private static let meaningCriticalWords: [String: String] = [
         // Verneinung
         "kein": "kein", "keine": "kein", "keinen": "kein", "keinem": "kein",
@@ -727,6 +778,21 @@ public final class CleanupService {
         "nur": "nur",
         "mehr": "mehr",
         "immer": "immer",
+        // Englisch — dieselben zwei Kriterien. "not"/"note", "no"/"know",
+        // "only"/"once" liegen unter den Toleranzen in Reichweite voneinander.
+        "not": "not", "cannot": "not",
+        "didn": "not", "doesn": "not", "don": "not", "isn": "not", "aren": "not",
+        "wasn": "not", "weren": "not", "hasn": "not", "haven": "not", "hadn": "not",
+        "shouldn": "not", "couldn": "not", "wouldn": "not", "ain": "not",
+        "no": "no", "none": "no",
+        "never": "never",
+        "nothing": "nothing",
+        "nobody": "nobody",
+        "nowhere": "nowhere",
+        "neither": "neither",
+        "nor": "nor",
+        "without": "without",
+        "only": "only",
     ]
 
     /// Die Bedeutungsschlüssel der Sperrliste in dieser Wortfolge — in Reihenfolge,

@@ -26,6 +26,9 @@
 #                      xcrun notarytool store-credentials <name> \
 #                        --apple-id <apple-id> --team-id <team-id>
 #                    (Das App-Passwort wird verdeckt abgefragt — nie als Argument.)
+#   DEVELOPER_TEAM_ID  Erwartete Developer-Team-ID der Signatur. Fehlt die
+#                    Variable, greift `git config stillePost.teamId`. Einmalig
+#                    pro Clone: `git config --local stillePost.teamId <id>`.
 #
 # Aufruf:  ./release.sh
 # Letzte Zeile bei Erfolg (maschinenlesbar): RELEASE OK: <pfad-zum-dmg> (<version>)
@@ -44,6 +47,23 @@ if [[ -z "$NOTARY_PROFILE" ]]; then
     exit 2
 fi
 export NOTARY_PROFILE
+
+# Erwartete Developer-Team-ID: Umgebung schlägt clone-lokale Git-Konfiguration.
+# Bewusst NICHT aus der gerade gebauten App gelesen — dann prüfte das Release
+# sich selbst gegen sich selbst, und eine vollständig mit der falschen
+# Developer-ID signierte App samt DMG bestünde den Vergleich. Der
+# GitHub-Workflow reicht dafür die Repo-Variable DEVELOPER_TEAM_ID durch.
+# Hier oben und nicht erst in Schritt 4, damit ein fehlender Wert vor den
+# teuren Build- und Notary-Schritten auffällt.
+if [[ -z "${DEVELOPER_TEAM_ID:-}" ]]; then
+    DEVELOPER_TEAM_ID="$(git config --local --get stillePost.teamId 2>/dev/null || true)"
+fi
+if [[ -z "$DEVELOPER_TEAM_ID" ]]; then
+    echo "FEHLER: Keine erwartete Developer-Team-ID bekannt." >&2
+    echo "Entweder DEVELOPER_TEAM_ID setzen oder einmalig für diesen Clone:" >&2
+    echo "  git config --local stillePost.teamId <team-id>" >&2
+    exit 2
+fi
 
 VERSION="$(cat VERSION)"
 APP="build/StillePost.app"
@@ -83,21 +103,21 @@ xcrun notarytool submit "$STAGED_DMG" --keychain-profile "$NOTARY_PROFILE" --wai
 xcrun stapler staple "$STAGED_DMG"
 
 echo "== 4/5 DMG prüfen =="
-TEAM_ID="$(codesign -dvv "$APP" 2>&1 | sed -n 's/^TeamIdentifier=\(.*\)$/\1/p' | head -1)"
-if [[ -z "$TEAM_ID" || "$TEAM_ID" == "not set" ]]; then
-    echo "FEHLER: Team-ID der App nicht lesbar." >&2
-    exit 4
-fi
-scripts/verify-release.sh "$STAGED_DMG" "v$VERSION" "$TEAM_ID"
+scripts/verify-release.sh "$STAGED_DMG" "v$VERSION" "$DEVELOPER_TEAM_ID"
 
 echo "== 5/5 veröffentlichen =="
 # Atomar und ohne Überschreiben: link(2) scheitert, wenn das Ziel INZWISCHEN
 # existiert. Die Vorabprüfung am Skriptanfang lässt zwischen Prüfung und
 # Veröffentlichung stundenlange Build-/Notary-Schritte zu — erst der Hardlink
 # schließt dieses Zeitfenster (z. B. gegen einen parallel gestarteten Lauf).
+#
+# `link` statt `ln`: `ln quelle ziel` legt den Link IN das Ziel, wenn dort
+# inzwischen ein Verzeichnis (oder ein Symlink auf eines) steht — das Skript
+# meldete dann RELEASE OK, obwohl unter dem angekündigten Namen kein DMG liegt.
+# `link` ruft link(2) direkt auf und scheitert in genau diesem Fall.
 publish_no_clobber() {
     local source=$1 destination=$2
-    if ! ln "$source" "$destination"; then
+    if ! link "$source" "$destination"; then
         echo "FEHLER: Release-Artefakt konnte nicht atomar angelegt werden (existiert es inzwischen?): $destination" >&2
         return 1
     fi
@@ -109,14 +129,34 @@ publish_no_clobber() {
 # `shasum -c` erhalten bleibt (zwei Leerzeichen als Trenner). Der Staging-Name
 # ist bereits der finale, ein Umschreiben der Zeile entfällt.
 STAGED_CHECKSUM="$STAGED_DMG.sha256"
+# Erst wegräumen, dann schreiben: `>` folgt einem vorhandenen Symlink und würde
+# dessen Ziel kürzen — `build/` ist git-ignoriert, dort kann alles Mögliche
+# liegen. `rm -f` entfernt den Symlink selbst, die Umleitung legt danach eine
+# frische reguläre Datei an (genau wie oben beim Staging-DMG).
+rm -f "$STAGED_CHECKSUM"
 ( cd "$(dirname "$STAGED_DMG")" && shasum -a 256 "$(basename "$STAGED_DMG")" ) > "$STAGED_CHECKSUM"
 
-# Die Prüfsumme zuerst, das DMG zuletzt: erst mit dem DMG ist das Paar vollständig.
+# Die Prüfsumme zuerst, das DMG zuletzt: erst mit dem DMG ist das Paar
+# vollständig. Zwischen beiden Schritten hängt die veröffentlichte Prüfsumme an
+# einem Trap: Bricht der Lauf hier ab (Ctrl-C, Abschuss, Fehler), bliebe sonst
+# eine einzelne .sha256 im Repo-Root liegen — und die Vorabprüfung am
+# Skriptanfang würde jeden Wiederholungsversuch blockieren, bis jemand von Hand
+# aufräumt.
+published_checksum=""
+rollback_checksum() {
+    if [[ -n "$published_checksum" ]]; then
+        rm -f "$published_checksum"
+    fi
+}
+trap rollback_checksum EXIT INT TERM
 publish_no_clobber "$STAGED_CHECKSUM" "$FINAL_CHECKSUM"
+published_checksum="$FINAL_CHECKSUM"
 if ! publish_no_clobber "$STAGED_DMG" "$FINAL_DMG"; then
-    rm -f "$FINAL_CHECKSUM"
     echo "FEHLER: Das fertige DMG konnte nicht veröffentlicht werden." >&2
-    exit 5
+    exit 5  # der Trap nimmt die Prüfsumme wieder zurück
 fi
+# Paar vollständig: ab hier darf nichts mehr zurückgerollt werden.
+published_checksum=""
+trap - EXIT INT TERM
 
 echo "RELEASE OK: $PWD/$FINAL_DMG ($VERSION)"

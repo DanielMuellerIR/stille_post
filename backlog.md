@@ -233,6 +233,35 @@ Weiterhin offen:
   beiläufig ergänzt, weil die Icon-Änderung sonst in die READMEs ausgefranst wäre.
   Relevant nur für den, der die Zeichnung ändert — das `.icns` liegt fertig im Repo.
 
+## Offen aus dem Code-Review vom 2026-08-06
+
+Der Rest des Reviews ist in 0.9.6 behoben; diese drei Punkte sind zu groß für
+einen chirurgischen Fix und stehen deshalb hier.
+
+- **`BridgeServer.start()` blockiert den Hauptthread.** Der Aufruf wartet
+  synchron bis zu fünf Sekunden auf das Start-Ergebnis des Listeners
+  (`StartOutcome.wait`). `AppDelegate.startBridgeIfEnabled()` ruft ihn beim
+  App-Start und beim Übernehmen der Einstellungen auf dem Hauptthread auf;
+  bleibt der Listener in `.waiting` (kein Netzpfad), steht die Oberfläche bis
+  zum Timeout. Richtig wäre ein asynchroner Start über Callback oder
+  Continuation, mit nur der Ergebnisverarbeitung zurück auf dem MainActor; die
+  CLI kann denselben Weg abwarten. Das ändert eine öffentliche Signatur und
+  betrifft App und CLI gleichzeitig.
+- **Abbruch angefangener Brücken-Arbeit.** Die Warteschlangengrenze in
+  `BridgeRouter.serialized` ist seit 0.9.6 da: Überlast wird mit 503 abgelehnt
+  statt gepuffert. Was fehlt, ist der zweite Teil der Regel in `AGENTS.md`:
+  Bricht die Verbindung ab, während die Anfrage noch wartet oder läuft, wird
+  die Arbeit trotzdem zu Ende gebracht. Dafür müsste `BridgeServer` die Task je
+  Session halten und abbrechen, und Transkription wie Bereinigung bräuchten
+  echte Abbruchpunkte — beide sind heute nicht abbruchfähig.
+- **Sperrliste der Worttreue-Prüfung kennt nur Deutsch und Englisch.**
+  `CleanupService.meaningCriticalWords` deckt seit 0.9.6 beide Sprachen ab.
+  `whisper.language` steht aber standardmäßig auf `auto`: Bei einem
+  französischen, spanischen oder italienischen Diktat kann eine verschluckte
+  Verneinung weiterhin als gewöhnliche Füllwort-Löschung durchgehen. Sauberer
+  als jede Sprache einzeln nachzupflegen wäre, Löschungen nur über eine
+  sprachabhängige Positivliste sicherer Füllwörter zu erlauben.
+
 ## Weitere offene Arbeit
 
 - GitHub-Push eingefroren (Daniel, 2026-07-29): kein Push nach GitHub, bis die

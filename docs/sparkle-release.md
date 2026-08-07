@@ -49,6 +49,13 @@ im App-Bundle eingecheckt.
    der clone-lokalen `git config stillePost.notaryProfile` — der Profilname bleibt
    damit außerhalb des öffentlichen Repos.
 
+   Genauso kommt die erwartete Developer-Team-ID aus `DEVELOPER_TEAM_ID` oder aus
+   `git config stillePost.teamId`; ohne sie bricht der Lauf gleich zu Beginn ab.
+   Sie muss aus einer vom Build unabhängigen Quelle stammen — läse `release.sh`
+   sie aus der App, die `verify-release.sh` prüfen soll, bestünde auch eine
+   vollständig mit der falschen Developer-ID signierte App den Vergleich. Die CI
+   nutzt dafür die Repo-Variable `DEVELOPER_TEAM_ID`.
+
    Eine Installation nach `/Applications` macht `release.sh` bewusst **nicht**;
    dafür gibt es `./install.sh` (baut, notarisiert und tauscht den geprüften Build
    dort atomar aus). `./build.sh` baut nur.

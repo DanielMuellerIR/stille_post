@@ -190,6 +190,7 @@
 "core.model.incomplete" = "Download incomplete (%lld of %lld bytes). The partial file remains in place; another attempt will resume it: %@";
 "core.cleanup.failed" = "Cleanup failed — %@";
 "core.cleanup.empty" = "Cleanup returned empty text";
+"core.cleanup.no_words" = "The cleaned version no longer contains a single word";
 "core.cleanup.markdown" = "The cleaned version contains Markdown structures (%@) — the model probably answered instead of cleaning";
 "core.cleanup.words_changed" = "The cleaned version added, replaced, or reordered words";
 "core.cleanup.partially_reverted" = "%d clause(s) reverted to raw text (words were changed)";
@@ -240,6 +241,7 @@
 "core.bridge.text_not_utf8" = "Text must be UTF-8";
 "core.bridge.text_empty" = "No text supplied";
 "core.bridge.cleanup_off" = "Text cleanup is switched off on this Mac";
+"core.bridge.busy" = "Bridge is busy — please send again in a moment";
 "core.bridge.audio_empty" = "No usable audio supplied";
 "core.bridge.audio_unsupported" = "Audio format could not be read: %@";
 "core.bridge.audio_format" = "The target format for Whisper could not be configured";

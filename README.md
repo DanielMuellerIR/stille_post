@@ -310,6 +310,10 @@ scripts/e2e-test.sh   # end to end: say voice -> Whisper -> cleanup -> assertion
 
 `install.sh` and `release.sh` need a notarytool keychain profile, taken from
 `NOTARY_PROFILE` or from `git config stillePost.notaryProfile` in your clone.
+`release.sh` additionally needs the expected Developer Team ID, from
+`DEVELOPER_TEAM_ID` or `git config stillePost.teamId`. The release check
+compares the signature against that value on purpose — reading it from the very
+app it is about to verify would let a build signed with the wrong identity pass.
 
 `scripts/build-icon.sh` turns the SVG sources in `Resources/icon/` into the
 finished `Resources/AppIcon.icns`. The result is committed, and `build.sh` only

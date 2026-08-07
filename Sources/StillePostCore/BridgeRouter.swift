@@ -43,6 +43,15 @@ public actor BridgeRouter {
     /// Ende der Warteschlange der schweren Routen: Jede neue Anfrage wartet auf
     /// die Task hier hinten, bevor sie selbst startet.
     private var pipelineTail: Task<BridgeResponse, Never>?
+    /// Wie viele schwere Anfragen höchstens gleichzeitig in der Warteschlange
+    /// stehen dürfen — die gerade laufende eingerechnet. Ohne diese Grenze hält
+    /// jede wartende Task ihren vollständigen `BridgeRequest` samt Audio-Body im
+    /// Speicher; die Größengrenze pro Anfrage deckt das nicht ab, weil sie nichts
+    /// über die ANZAHL sagt. Ein Heimnetz braucht mehr als „eine läuft, zwei
+    /// warten“ nicht.
+    private let maxPipelineDepth = 3
+    /// Aktuell eingereihte schwere Anfragen (laufende plus wartende).
+    private var pipelineDepth = 0
 
     public init(handlers: BridgeHandlers, maxBodyBytes: Int,
                 tokenProvider: @escaping @Sendable () -> String? = { BridgeToken.load() }) {
@@ -93,16 +102,27 @@ public actor BridgeRouter {
     /// erst, wenn alle zuvor angenommenen fertig sind — Transkription und
     /// Bereinigung überlappen so nie, egal wie viele Verbindungen gleichzeitig
     /// offen sind.
+    ///
+    /// Ist die Warteschlange voll, wird die Anfrage sofort mit 503 abgelehnt,
+    /// statt sie samt Body zu puffern: Ein abgewiesener Client kann es gleich
+    /// noch einmal versuchen, aufgestauter Speicher lässt sich nicht
+    /// zurücknehmen.
     private func serialized(
         _ work: @escaping @Sendable () async -> BridgeResponse
     ) async -> BridgeResponse {
+        guard pipelineDepth < maxPipelineDepth else {
+            return .error(status: 503, message: L10n.text("core.bridge.busy"))
+        }
+        pipelineDepth += 1
         let previous = pipelineTail
         let task = Task { () -> BridgeResponse in
             _ = await previous?.value  // Ergebnis egal — nur die Reihenfolge zählt
             return await work()
         }
         pipelineTail = task
-        return await task.value
+        let response = await task.value
+        pipelineDepth -= 1
+        return response
     }
 
     // MARK: - Routen

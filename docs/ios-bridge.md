@@ -83,6 +83,10 @@ Stille wird gar kein Modell bemüht.
   damit eine versehentliche Portweiterleitung die Brücke nicht ins Netz stellt.
 - Größengrenze je Anfrage (Standard 25 MB), Kopfzeilen-Grenze, Lesefrist von 30 s,
   höchstens acht gleichzeitige Verbindungen.
+- Begrenzte Warteschlange für Diktat und Bereinigung: höchstens drei Anfragen
+  gleichzeitig (eine läuft, zwei warten). Alles darüber beantwortet die Brücke
+  sofort mit `503`, statt es samt Audio im Speicher zu puffern — die
+  Größengrenze je Anfrage sagt nichts über deren Anzahl.
 - Protokollzeilen enthalten Methode, Pfad, Status, Größe, Dauer und Gegenstelle —
   **nie** Diktattext und nie das Token.
 

@@ -10,6 +10,48 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.6] — 2026-08-07
+
+### Behoben
+
+- Bereinigung, Worttreue: Eine stark gekürzte Ausgabe kann sich nicht mehr an
+  späten Wortwiederholungen festhalten. Kamen dieselben Wörter mehrfach im
+  Diktat vor, richtete die Prüfung die Ausgabe unter Umständen an den SPÄTEN
+  Vorkommen aus; der ganze Anfang galt dann als erlaubte Löschung. Jetzt gewinnt
+  bei Gleichstand die früheste Ausrichtung.
+- Bereinigung, Worttreue: Eine wortlose Ausgabe („kein“ → „.“) wird verworfen,
+  solange der Rohtext überhaupt Wörter enthielt. Bisher rutschte sie durch, weil
+  für kurze Eingaben ein weiter Längenkorridor gilt.
+- Bereinigung, Verneinungen: Lässt das Modell eine Verneinung weg, geht jetzt
+  der Satzteil zurück, zu dem sie im Diktat gehörte. Stand sie hinter einem
+  Punkt oder Komma, wurde bisher der davorstehende — unveränderte — Satz
+  zurückgesetzt, und die Verneinung hing als Rest an dessen Ende.
+- Bereinigung, Verneinungen: Die Liste geschützter Wörter kennt jetzt auch
+  Englisch (not, no, none, never, nothing, nobody, nowhere, neither, nor,
+  without, only, cannot samt verkürzten Formen wie „didn’t“). Bei englischem
+  Diktat konnte aus „I did not approve this“ bisher „I did approve this.“
+  werden.
+- Netzwerk-Brücke: Die Warteschlange der schweren Routen hat eine Obergrenze.
+  Mehr gleichzeitige Diktate als die Grenze werden mit 503 abgelehnt, statt
+  samt Audio-Body im Speicher zu warten.
+- Netzwerk-Brücke: Der Lese-Timeout wird mit jeder Antwort storniert. Nach einer
+  abgewiesenen Anfrage (401) hielt sein Zeitgeber die Verbindung bisher noch bis
+  zu 30 Sekunden fest und protokollierte am Ende einen Lese-Timeout, den es nie
+  gab.
+- Audio-Decoder: Eine gelogene Container-Länge kann die Vorausschau auf die
+  Zielgröße nicht mehr überlaufen lassen. Die Kappung passiert jetzt vor der
+  Umwandlung in eine Ganzzahl; zu langes Audio wird wie vorgesehen als „zu lang“
+  gemeldet, statt den Prozess zu beenden.
+- Release-Skripte: Die Veröffentlichung nutzt `link` statt `ln` — steht am
+  Zielpfad inzwischen ein Verzeichnis, scheitert sie jetzt, statt die Datei
+  darin abzulegen und Erfolg zu melden. Die Prüfsumme wird nicht mehr in einen
+  vorgefundenen Symlink geschrieben, und ein Abbruch zwischen Prüfsumme und DMG
+  lässt keine verwaiste `.sha256` zurück.
+- Release-Prüfung: Die erwartete Developer-Team-ID kommt aus `DEVELOPER_TEAM_ID`
+  oder `git config stillePost.teamId` statt aus der gerade gebauten App. Vorher
+  prüfte das Release sich gegen sich selbst — eine vollständig mit der falschen
+  Identität signierte App wäre durchgegangen.
+
 ## [0.9.5] — 2026-08-03
 
 ### Behoben

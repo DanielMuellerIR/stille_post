@@ -53,10 +53,15 @@ public enum AudioDecoder {
         // Grobe Vorausschau auf die Zielgröße, damit das Array nicht ständig
         // wächst — gekappt auf die harte Obergrenze, damit eine gelogene
         // Container-Länge keine Riesen-Reservierung auslösen kann.
-        samples.reserveCapacity(min(
-            Int(Double(file.length) * 16000 / inputFormat.sampleRate) + 16000,
-            maxSampleCount
-        ))
+        //
+        // Die Kappung passiert bewusst NOCH IN `Double`: `file.length` kommt aus
+        // dem Container und darf gelogen sein. Bei einer absurden Länge (oder
+        // einer Abtastrate 0, die `inf` ergibt) würde `Int(...)` abstürzen,
+        // bevor `min` überhaupt greift — der Prozess wäre weg, statt sauber
+        // `tooLong` zu melden.
+        let estimated = Double(file.length) * 16000 / inputFormat.sampleRate + 16000
+        let capped = estimated.isFinite ? min(max(estimated, 0), Double(maxSampleCount)) : 0
+        samples.reserveCapacity(Int(capped))
 
         let chunkFrames: AVAudioFrameCount = 16384
         var inputExhausted = false

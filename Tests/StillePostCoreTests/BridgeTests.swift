@@ -274,6 +274,34 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(probe.maxActive, 1, "Transkriptionen dürfen nie überlappen")
     }
 
+    func testQueueLimitRejectsOverloadInsteadOfBufferingIt() async throws {
+        // Die Serialisierung allein reicht nicht: Ohne Obergrenze hält jede
+        // wartende Anfrage ihren vollständigen Body im Speicher, und ein
+        // authentifizierter Client könnte beliebig viel Arbeit aufstauen (die
+        // Größengrenze pro Anfrage sagt nichts über deren ANZAHL). Über der
+        // Grenze muss die Brücke klar mit 503 ablehnen statt anzunehmen.
+        let router = makeRouter(transcribe: { _ in
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            return "roher text"
+        })
+        @Sendable func dictate() async -> BridgeResponse {
+            await router.respond(to: BridgeRequest(
+                method: "POST", path: "/v1/dictate", bearerToken: "richtig",
+                body: Data("audio".utf8)
+            ))
+        }
+        async let first = dictate()
+        async let second = dictate()
+        async let third = dictate()
+        async let fourth = dictate()
+        async let fifth = dictate()
+        let statuses = await [first, second, third, fourth, fifth].map(\.status)
+        XCTAssertEqual(statuses.filter { $0 == 200 }.count, 3,
+                       "genau die Warteschlangentiefe darf durchlaufen")
+        XCTAssertEqual(statuses.filter { $0 == 503 }.count, 2,
+                       "der Rest wird abgelehnt, nicht gepuffert")
+    }
+
     func testUnknownPathAndWrongMethod() async {
         let router = makeRouter()
         let unknown = await router.respond(to: BridgeRequest(
@@ -293,6 +321,7 @@ final class BridgeTests: XCTestCase {
     /// falls der gewürfelte Port belegt ist).
     private func startServer(router: BridgeRouter,
                              maxRequestMegabytes: Int = 1) throws -> (BridgeServer, Int) {
+        var lastFailure: Error?
         for _ in 0..<10 {
             let port = Int.random(in: 30000..<60000)
             var bridge = Config.Bridge()
@@ -303,11 +332,18 @@ final class BridgeTests: XCTestCase {
             do {
                 try server.start()
                 return (server, port)
-            } catch {
-                continue  // Port belegt: nächsten würfeln
+            } catch let error as BridgeServer.ServeError {
+                // Nur ein fehlgeschlagenes Binden rechtfertigt einen neuen Port.
+                // Ein fehlendes Token oder ein ungültiger Port ist eine echte
+                // Regression und darf nicht als „Port belegt“ durchrutschen.
+                guard case .listenFailed = error else { throw error }
+                lastFailure = error
             }
         }
-        throw XCTSkip("kein freier Testport gefunden")
+        // Zehnmal daneben ist kein Grund zum Überspringen: Dann ist der Start
+        // kaputt (z. B. Listener meldet nie .ready) — der Test muss scheitern,
+        // sonst sieht eine Regression aus wie „kein freier Port da“.
+        throw lastFailure ?? XCTSkip("kein freier Testport gefunden")
     }
 
     /// Schickt rohe Bytes an die Brücke und sammelt die Antwort bis zum
@@ -600,14 +636,35 @@ final class BridgeTests: XCTestCase {
         convert.waitUntilExit()
         try XCTSkipUnless(convert.terminationStatus == 0, "afconvert fehlgeschlagen")
 
-        // Hinteres Drittel der Audiodaten (mdat) zerstören; die Pakettabelle im
-        // moov-Atom verspricht weiterhin die volle Länge.
-        var m4a = try Data(contentsOf: m4aURL)
-        let mdat = try XCTUnwrap(m4a.range(of: Data("mdat".utf8))).lowerBound
-        let start = mdat + 4
-        for index in (start + (m4a.count - start) * 2 / 3)..<m4a.count { m4a[index] = 0xAA }
+        // Erst der Gegenbeweis: Die unveränderte Datei muss sauber dekodieren.
+        // Ohne ihn belegt der Test unten nur, dass irgendetwas an der Datei
+        // kaputt ist — nicht, dass der Lesefehler-Pfad greift.
+        let intact = try Data(contentsOf: m4aURL)
+        XCTAssertFalse(try AudioDecoder.samples16kMono(from: intact).isEmpty)
 
-        XCTAssertThrowsError(try AudioDecoder.samples16kMono(from: m4a))
+        // Hinteres Drittel der Audiodaten zerstören — aber nur INNERHALB des
+        // mdat-Atoms. Bis ans Dateiende zu schreiben träfe auch das dahinter
+        // liegende moov-Atom mit der Pakettabelle; dann scheiterte schon das
+        // Öffnen, und der zu prüfende Fehlerpfad MITTEN im Lesen käme nie dran.
+        var m4a = intact
+        let tag = try XCTUnwrap(m4a.range(of: Data("mdat".utf8)))
+        try XCTSkipUnless(tag.lowerBound >= 4, "mdat ohne vorangestelltes Größenfeld")
+        // Vor dem Atomnamen stehen vier Bytes Atomgröße (Big Endian).
+        let sizeField = tag.lowerBound - 4
+        let atomSize = Int(m4a[sizeField..<tag.lowerBound]
+            .reduce(UInt32(0)) { ($0 << 8) | UInt32($1) })
+        try XCTSkipUnless(atomSize > 8 && sizeField + atomSize <= m4a.count,
+                          "unerwartete mdat-Größe (64-Bit-Variante?)")
+        let payload = tag.upperBound..<(sizeField + atomSize)
+        for index in (payload.lowerBound + payload.count * 2 / 3)..<payload.upperBound {
+            m4a[index] = 0xAA
+        }
+
+        XCTAssertThrowsError(try AudioDecoder.samples16kMono(from: m4a)) { error in
+            guard case AudioDecoder.DecodeError.unsupported = error else {
+                return XCTFail("erwartet unsupported, war: \(error)")
+            }
+        }
     }
 
     func testDecoderRejectsGarbageAndEmptyInput() {

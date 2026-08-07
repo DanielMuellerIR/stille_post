@@ -298,6 +298,16 @@ public final class BridgeServer: @unchecked Sendable {
     }
 
     private func send(_ response: BridgeResponse, on session: Session) {
+        // Sobald eine Antwort rausgeht, hat der Lese-Timeout seine Aufgabe
+        // erledigt — zentral hier und nicht an jeder Antwortstelle einzeln.
+        // Ohne das Stornieren bliebe sein WorkItem die volle Frist in der Queue
+        // liegen, hielte die Verbindung fest (er erfasst sie stark) und
+        // protokollierte am Ende einen Lese-Timeout, den es nie gab. Sichtbar
+        // wurde das bei der frühen 401-Antwort: `closeGracefully` überschreibt
+        // `session.timeout` gleich darauf mit seinem eigenen WorkItem, der alte
+        // war danach nicht mehr erreichbar.
+        session.timeout?.cancel()
+        session.timeout = nil
         // `.finalMessage` schließt die Senderichtung ordentlich (TCP-FIN), sobald die
         // Antwort draußen ist — genau das verspricht `Connection: close`.
         session.connection.send(
