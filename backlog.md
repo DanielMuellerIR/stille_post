@@ -235,8 +235,10 @@ Weiterhin offen:
 
 ## Offen aus dem Code-Review vom 2026-08-06
 
-Der Rest des Reviews ist in 0.9.6 behoben; diese drei Punkte sind zu groß für
-einen chirurgischen Fix und stehen deshalb hier.
+Der Report ist abgearbeitet: vierzehn der sechzehn Funde sind in 0.9.6 behoben,
+einer war ein Fehlbefund (die Retry-Regel in `AGENTS.md` war zu eng formuliert,
+nicht der Code falsch). Hier steht, was offen blieb — ein Fund, der zu groß für
+einen chirurgischen Fix ist, und die Reste zweier Fixes.
 
 - **`BridgeServer.start()` blockiert den Hauptthread.** Der Aufruf wartet
   synchron bis zu fünf Sekunden auf das Start-Ergebnis des Listeners
