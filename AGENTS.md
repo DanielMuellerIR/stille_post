@@ -66,6 +66,14 @@ Kontext, Satzgrenzen und konsistente Zeichensetzung verloren gehen.
   standardmäßig aus, verlangt ein Token aus dem Schlüsselbund und weist
   Verbindungen ab, die nicht aus einem privaten Adressbereich kommen. Diese drei
   Eigenschaften sind nicht verhandelbar; Details in `docs/ios-bridge.md`.
+- Serielle Serverarbeit braucht zusätzlich eine begrenzte Warteschlange. Die
+  Verkettung in `BridgeRouter.serialized` reiht Anfragen zwar sauber
+  hintereinander, hält aber pro wartender Task den vollständigen
+  `BridgeRequest` samt Audio-Body im Speicher — ohne Kapazitätsgrenze ist das
+  eine Speicher- und CPU-Angriffsfläche, die die Größengrenze pro Anfrage nicht
+  abdeckt. Die Warteschlange muss eine Obergrenze haben, Überlast mit einem
+  klaren Fehler ablehnen (statt unbegrenzt anzunehmen) und angefangene Arbeit
+  bei Verbindungsabbruch stornieren.
 - API-Schlüssel nur über Umgebungsvariable oder Schlüsselbund beziehen. Nie in
   Quelltext, Konfiguration, Logs, Terminalargumente, Test-Fixtures oder Git schreiben.
 - Schlüsselbundzugriff nie in einem SwiftUI-Renderpfad ausführen; nur asynchron oder
@@ -139,8 +147,10 @@ Build-Prüfungen und einen Start des resultierenden Bundles.
 - Konfiguration: Warm-up und Chat teilen `num_ctx`; `think` bleibt aus.
 - Netzwerk-Brücke: falsches oder fehlendes Token wird auf jeder Route abgewiesen;
   eine Anfrage über der Größengrenze schon anhand von `Content-Length`; ein Diktat
-  ergibt genau einen Bereinigungsaufruf. Zusätzlich einmal echtes Audio über
-  `.local` durchschicken — das prüft die Umwandlung von AAC nach 16 kHz mono mit.
+  ergibt genau einen Bereinigungsaufruf; mehr gleichzeitige Anfragen als die
+  Warteschlangengrenze werden abgelehnt statt gepuffert. Zusätzlich einmal echtes
+  Audio über `.local` durchschicken — das prüft die Umwandlung von AAC nach
+  16 kHz mono mit.
 
 ## Änderungskonventionen und Git
 
