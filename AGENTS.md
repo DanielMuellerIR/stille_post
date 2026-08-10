@@ -67,8 +67,12 @@ Kontext, Satzgrenzen und konsistente Zeichensetzung verloren gehen.
   Geräten im Heimnetz an und verarbeitet es auf diesem Mac über den lokalen
   whisper-server. Stille Post sendet weiterhin selbst nie Audio. Die Brücke ist
   standardmäßig aus, verlangt ein Token aus dem Schlüsselbund und weist
-  Verbindungen ab, die nicht aus einem privaten Adressbereich kommen. Diese drei
+  Verbindungen ab, die nicht aus dem eigenen Netz kommen. Diese drei
   Eigenschaften sind nicht verhandelbar; Details in `docs/ios-bridge.md`.
+  „Eigenes Netz“ heißt seit 0.9.8: private IPv4-Bereiche, Link-Local, IPv6-ULA
+  und eine globale IPv6-Adresse im selben Netzbereich wie eine Adresse dieses
+  Macs. Die frühere Fassung nannte nur „privater Adressbereich“ und sperrte damit
+  das iPhone aus, sobald es über das globale IPv6-Präfix der FRITZ!Box kam.
 - Serielle Serverarbeit braucht zusätzlich eine begrenzte Warteschlange. Die
   Verkettung in `BridgeRouter.serialized` reiht Anfragen zwar sauber
   hintereinander, hält aber pro wartender Task den vollständigen

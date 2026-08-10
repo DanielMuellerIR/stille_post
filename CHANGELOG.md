@@ -10,6 +10,19 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.8] — 2026-08-10
+
+### Behoben
+
+- Netzwerk-Brücke: Ein iPhone, das über IPv6 ankommt, wird nicht mehr abgewiesen.
+  Die FRITZ!Box gibt allen Geräten im Haus Adressen aus demselben globalen
+  Präfix; solche Adressen sehen öffentlich aus, gehören aber zum eigenen Netz.
+  Bisher galt nur ein privater Adressbereich als Heimnetz, und die Verbindung
+  wurde noch vor der Token-Prüfung lautlos abgeschnitten — auf dem iPhone kam
+  einfach nichts zurück. Jetzt zählt eine globale IPv6-Adresse als Heimnetz, wenn
+  sie im selben Netzbereich liegt wie eine Adresse dieses Macs. Ein Gegenüber aus
+  dem Internet hat ein anderes Präfix und fällt weiterhin durch.
+
 ## [0.9.7] — 2026-08-10
 
 ### Behoben

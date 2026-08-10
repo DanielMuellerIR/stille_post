@@ -78,9 +78,15 @@ Stille wird gar kein Modell bemüht.
   angezeigt, nie in `config.json` geschrieben und nie als Kommandozeilenargument
   übergeben — es geht über die Zwischenablage aufs iPhone.
 - Verbindungen aus dem öffentlichen Internet werden **vor** der Token-Prüfung
-  abgewiesen: Nur private IPv4-Bereiche, Link-Local und IPv6-ULA gelten als
-  Heimnetz. Ein global geroutetes IPv6-Präfix der FRITZ!Box zählt bewusst nicht,
-  damit eine versehentliche Portweiterleitung die Brücke nicht ins Netz stellt.
+  abgewiesen. Als Heimnetz gelten die privaten IPv4-Bereiche, Link-Local, IPv6-ULA
+  — und eine globale IPv6-Adresse genau dann, wenn sie im selben Netzbereich liegt
+  wie eine Adresse dieses Macs. Letzteres ist nötig, weil die FRITZ!Box allen
+  Geräten im Haus Adressen aus demselben globalen Präfix gibt: Das iPhone kommt
+  über IPv6 mit einer Adresse an, die öffentlich aussieht, aber zum eigenen Netz
+  gehört. Bis 0.9.7 wurde genau die abgewiesen — und zwar lautlos, weil die
+  Verbindung vor jeder Antwort abgeschnitten wird. Ein Gegenüber aus dem Internet
+  hat ein anderes Präfix und fällt weiterhin durch; eine versehentliche
+  Portweiterleitung stellt die Brücke also nach wie vor nicht ins Netz.
 - Größengrenze je Anfrage (Standard 25 MB), Kopfzeilen-Grenze, Lesefrist von 30 s,
   höchstens acht gleichzeitige Verbindungen.
 - Begrenzte Warteschlange für Diktat und Bereinigung: höchstens drei Anfragen

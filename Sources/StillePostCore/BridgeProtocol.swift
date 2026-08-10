@@ -233,6 +233,13 @@ public enum BridgeHTTP {
 public enum BridgePeer {
 
     public static func isLocalNetwork(_ address: String) -> Bool {
+        isLocalNetwork(address, ownPrefixes: LocalNetworkInterfaces.ipv6Prefixes)
+    }
+
+    /// `ownPrefixes` ist eine Funktion und keine fertige Liste, damit die
+    /// Schnittstellen des Macs nur dann abgefragt werden, wenn es wirklich darauf
+    /// ankommt — und damit Tests eigene Netze vorgeben können.
+    static func isLocalNetwork(_ address: String, ownPrefixes: () -> [IPv6Prefix]) -> Bool {
         // Zonen-Zusatz von Link-Local-Adressen abschneiden ("fe80::1%en0").
         var host = address.lowercased()
         if let percent = host.firstIndex(of: "%") { host = String(host[host.startIndex..<percent]) }
@@ -243,7 +250,15 @@ public enum BridgePeer {
         }
 
         if host.contains(".") { return isPrivateIPv4(host) }
-        return isPrivateIPv6(host)
+        if isPrivateIPv6(host) { return true }
+
+        // Bleibt eine öffentlich aussehende IPv6-Adresse. Sie zählt genau dann zum
+        // Heimnetz, wenn sie im selben Netzbereich liegt wie eine Adresse dieses
+        // Macs: Die FRITZ!Box gibt allen Geräten im Haus Adressen aus demselben
+        // globalen Präfix, dem iPhone genauso wie diesem Mac. Ein Gegenüber aus
+        // dem Internet hat ein anderes Präfix und fällt weiterhin durch.
+        guard let peer = IPv6Prefix.parse(host) else { return false }
+        return ownPrefixes().contains { $0.contains(peer) }
     }
 
     static func isPrivateIPv4(_ host: String) -> Bool {
@@ -267,9 +282,10 @@ public enum BridgePeer {
 
     static func isPrivateIPv6(_ host: String) -> Bool {
         if host == "::1" { return true }
-        // fc00::/7 sind eindeutige lokale Adressen, fe80::/10 Link-Local.
-        // Die FRITZ!Box verteilt zusätzlich globale IPv6-Präfixe; die zählen hier
-        // NICHT als Heimnetz, weil sie aus dem Internet erreichbar wären.
+        // fc00::/7 sind eindeutige lokale Adressen, fe80::/10 Link-Local. Beide
+        // sind schon an der Adresse als heimnetz-intern erkennbar. Globale
+        // Präfixe sind das nicht — die entscheidet `isLocalNetwork` anhand der
+        // eigenen Schnittstellen.
         let firstGroup = host.split(separator: ":").first.map(String.init) ?? ""
         guard !firstGroup.isEmpty, let value = Int(firstGroup, radix: 16) else { return false }
         if (0xFC00...0xFDFF).contains(value) { return true }   // fc00::/7
