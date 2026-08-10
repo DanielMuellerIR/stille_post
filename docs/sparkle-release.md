@@ -4,9 +4,10 @@ Stille Post bindet Sparkle 2.9.4 per SwiftPM ein. Die App prüft den Feed unter
 `https://danielmuellerir.github.io/stille_post/appcast.xml`, lädt das DMG weiterhin
 aus dem zugehörigen GitHub Release und installiert ausschließlich nach Zustimmung.
 
-Version 0.8.9 ist der einmalige Bootstrap: 0.8.4 enthält noch keinen Sparkle-Code und
-kann 0.8.9 deshalb nicht selbst finden. Bestehende Installationen müssen 0.8.9 noch
-einmal manuell per DMG installieren; erst danach funktionieren automatische Updates.
+Der einmalige Bootstrap ist erledigt: Ab 0.8.9 ist der Updater eingebaut, und
+veröffentlichte Fassungen finden neuere Versionen selbst über den Feed. Nur wer noch
+eine Version vor 0.8.9 einsetzt, muss einmal manuell per DMG aktualisieren — diese
+Fassungen enthalten keinen Sparkle-Code und können den Feed deshalb nicht kennen.
 
 Zwei voneinander unabhängige Prüfungen bleiben Pflicht:
 
@@ -19,6 +20,9 @@ Account `io.github.danielmuellerir.stillepost`. Nur sein öffentlicher Gegenpart
 im App-Bundle eingecheckt.
 
 ## Einmalige GitHub-Einrichtung
+
+Diese Schritte sind für dieses Repository erledigt — die Anleitung bleibt für eine
+Neueinrichtung und als Beschreibung der erwarteten Konfiguration stehen.
 
 1. In den Repository-Einstellungen unter **Pages** als Quelle **GitHub Actions**
    wählen.

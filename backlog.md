@@ -266,17 +266,14 @@ einen chirurgischen Fix ist, und die Reste zweier Fixes.
 
 ## Weitere offene Arbeit
 
-- GitHub-Push eingefroren (Daniel, 2026-07-29): kein Push nach GitHub, bis die
-  App sinnvoll nutzbar ist. Bis dahin bleibt `main` nur lokal und auf dem
-  privaten Fleet-Remote; der Rückstand von `github/main` ist Absicht.
-- Sparkle-Erstveröffentlichung für 0.8.5 vorbereiten: GitHub Pages auf „GitHub
-  Actions“ stellen, `SPARKLE_PRIVATE_KEY` über stdin als Actions-Secret hinterlegen,
-  den privaten Schlüssel verschlüsselt sichern, 0.8.5 als einmalig manuell zu
-  installierenden Bootstrap kennzeichnen und anschließend den echten Updatepfad von
-  einer älteren, aber bereits Sparkle-fähigen notarisierten Testversion bis zum
-  Neustart prüfen. Die echte 0.8.4 kann das nicht, weil sie noch keinen Updater
-  enthält. Diese externen Schritte wurden bei der Code-Integration bewusst nicht auf
-  GitHub ausgeführt.
+- GitHub-Push-Stopp aufgehoben (2026-08-10). Die Bedingung „bis die App
+  sinnvoll nutzbar ist" ist erfüllt: Lokales Diktat läuft, und das Diktat vom
+  iPhone ist über die vollständige Kette einmal am Gerät bestätigt.
+- Sparkle-Erstveröffentlichung: ERLEDIGT (geprüft 2026-08-10). Pages liefert den
+  Feed, die Team-ID steht als Actions-Variable, der private Schlüssel als
+  Actions-Secret, und der Appcast-Workflow lief bei allen Releases bis
+  einschließlich 0.9.0 erfolgreich. Offen bleibt allein die Probe am Gerät: einen
+  echten Updatelauf von einer älteren Fassung bis zum Neustart durchspielen.
 - Mehrtägigen Realbetrieb auf beiden vorgesehenen Macs durchführen und Befunde mit
   Datum, Build und Konfiguration notieren.
 - Cleanup-Modell-Benchmark: ERLEDIGT (2026-07-23). Evidenzbasierter Default ist jetzt
