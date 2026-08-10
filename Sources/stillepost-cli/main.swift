@@ -312,9 +312,16 @@ case "bridge":
         print(config.bridge.enabled
             ? L10n.format("cli.bridge.enabled", String(config.bridge.port))
             : L10n.text("cli.bridge.disabled"))
-        print(BridgeToken.load() != nil
-            ? L10n.text("cli.bridge.token_present")
-            : L10n.text("cli.bridge.token_missing"))
+        switch BridgeToken.loadOutcome() {
+        case .token:
+            print(L10n.text("cli.bridge.token_present"))
+        case .missing:
+            print(L10n.text("cli.bridge.token_missing"))
+        case .failed(let status):
+            // Nicht als „kein Token“ ausgeben: Der Eintrag kann existieren und
+            // nur gerade unlesbar sein.
+            print(L10n.format("cli.bridge.token_error", String(status)))
+        }
         print(L10n.format("cli.bridge.url", bridgeBaseURL()))
         print(L10n.format("cli.bridge.limit", config.bridge.maxRequestMegabytes))
 
@@ -324,6 +331,12 @@ case "bridge":
         // versehentlich passieren.
         let wantsNew = arguments.contains("--new")
         let token: String
+        // Ein Lesefehler bricht ab, statt ersatzweise ein neues Token anzulegen:
+        // Solange unklar ist, ob schon eines im Schlüsselbund liegt, würde das
+        // Überschreiben still alle eingerichteten Geräte aussperren.
+        if case .failed(let status) = BridgeToken.loadOutcome(), !wantsNew {
+            fail(L10n.format("cli.bridge.token_error", String(status)))
+        }
         if let existing = BridgeToken.load(), !wantsNew {
             token = existing
             log(L10n.text("cli.bridge.token_reused"))

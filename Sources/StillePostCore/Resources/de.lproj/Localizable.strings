@@ -220,7 +220,8 @@
 "core.history.unsafe_audio_name" = "Unsicherer Aufnahme-Dateiname im Verlauf.";
 
 /* Netzwerk-Brücke (Diktat von eigenen Geräten im Heimnetz) */
-"core.bridge.keychain_error" = "Token konnte nicht im Schlüsselbund gespeichert werden (OSStatus %d)";
+"core.bridge.keychain_error" = "Token konnte nicht im Schlüsselbund gespeichert werden (OSStatus %@)";
+"core.bridge.keychain_read_error" = "Brücken-Token nicht lesbar — Schlüsselbund entsperrt und Zugriff erlaubt? (OSStatus %@)";
 "core.bridge.no_token" = "Kein Brücken-Token vorhanden — anlegen mit: stillepost-cli bridge token";
 "core.bridge.bad_port" = "Unzulässiger Brücken-Port: %@";
 "core.bridge.listen_port_failed" = "Port %@ konnte nicht geöffnet werden: %@";
@@ -253,6 +254,7 @@
 "cli.bridge.disabled" = "· Netzwerk-Brücke ausgeschaltet (bridge.enabled = false)";
 "cli.bridge.token_present" = "✓ Zugangs-Token vorhanden";
 "cli.bridge.token_missing" = "✗ Kein Zugangs-Token — anlegen mit: stillepost-cli bridge token";
+"cli.bridge.token_error" = "✗ Zugangs-Token nicht lesbar — Schlüsselbund entsperrt und Zugriff erlaubt? (OSStatus %@)";
 "cli.bridge.url" = "  Adresse für das iPhone: %@";
 "cli.bridge.limit" = "  Größengrenze je Anfrage: %d MB";
 "cli.bridge.token_created" = "Neues Token angelegt — bereits eingerichtete Geräte müssen es neu eintragen.";

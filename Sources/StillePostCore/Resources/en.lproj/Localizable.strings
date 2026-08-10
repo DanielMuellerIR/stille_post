@@ -220,7 +220,8 @@
 "core.history.unsafe_audio_name" = "Unsafe recording file name in history.";
 
 /* Network bridge (dictation from your own devices on the home network) */
-"core.bridge.keychain_error" = "The token could not be stored in the keychain (OSStatus %d)";
+"core.bridge.keychain_error" = "The token could not be stored in the keychain (OSStatus %@)";
+"core.bridge.keychain_read_error" = "The bridge token could not be read — is the keychain unlocked and access allowed? (OSStatus %@)";
 "core.bridge.no_token" = "No bridge token yet — create one with: stillepost-cli bridge token";
 "core.bridge.bad_port" = "Invalid bridge port: %@";
 "core.bridge.listen_port_failed" = "Port %@ could not be opened: %@";
@@ -253,6 +254,7 @@
 "cli.bridge.disabled" = "· Network bridge disabled (bridge.enabled = false)";
 "cli.bridge.token_present" = "✓ Access token present";
 "cli.bridge.token_missing" = "✗ No access token — create one with: stillepost-cli bridge token";
+"cli.bridge.token_error" = "✗ Access token could not be read — is the keychain unlocked and access allowed? (OSStatus %@)";
 "cli.bridge.url" = "  Address for the iPhone: %@";
 "cli.bridge.limit" = "  Size limit per request: %d MB";
 "cli.bridge.token_created" = "New token created — devices you already set up must be updated.";

@@ -15,12 +15,38 @@ public enum BridgeToken {
     /// ein Testlauf nie den persönlichen Schlüsselbund anfassen muss.
     public static let environmentVariable = "STILLEPOST_BRIDGE_TOKEN"
 
+    /// Ergebnis eines Leseversuchs.
+    ///
+    /// Die Unterscheidung ist wichtig: „noch keins angelegt“ ist der normale
+    /// Anfangszustand, für den der Hinweis zum Anlegen genau richtig ist. Ein
+    /// Schlüsselbund-Fehler dagegen (gesperrter Schlüsselbund, verweigerter
+    /// Zugriff) ist eine Störung — dort existiert das Token möglicherweise sehr
+    /// wohl, und derselbe Hinweis würde in die Irre führen.
+    public enum LoadOutcome: Equatable {
+        case token(String)
+        case missing
+        case failed(OSStatus)
+    }
+
+    /// Nur für Tests einspeisbar; produktiv läuft die echte Security-Funktion.
+    typealias CopyMatchingFunction = (
+        _ query: CFDictionary, _ result: UnsafeMutablePointer<CFTypeRef?>?
+    ) -> OSStatus
+
     /// Liest das Token: zuerst Umgebungsvariable, dann Schlüsselbund.
-    /// `nil` bedeutet „noch keins angelegt“ — die Brücke lehnt dann alles ab.
-    public static func load() -> String? {
-        if let fromEnv = ProcessInfo.processInfo.environment[environmentVariable],
-           !fromEnv.isEmpty {
-            return fromEnv
+    public static func loadOutcome() -> LoadOutcome {
+        loadOutcome(
+            environment: ProcessInfo.processInfo.environment,
+            copyMatching: { SecItemCopyMatching($0, $1) }
+        )
+    }
+
+    static func loadOutcome(
+        environment: [String: String],
+        copyMatching: CopyMatchingFunction
+    ) -> LoadOutcome {
+        if let fromEnv = environment[environmentVariable], !fromEnv.isEmpty {
+            return .token(fromEnv)
         }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
@@ -29,12 +55,25 @@ public enum BridgeToken {
             kSecMatchLimit as String: kSecMatchLimitOne,
         ]
         var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data,
+        let status = copyMatching(query as CFDictionary, &item)
+        if status == errSecItemNotFound { return .missing }
+        guard status == errSecSuccess else { return .failed(status) }
+        guard let data = item as? Data,
               let token = String(data: data, encoding: .utf8), !token.isEmpty else {
-            return nil
+            // Eintrag da, aber unbrauchbar (leer oder kein UTF-8). Das ist kein
+            // „noch keins angelegt“, sondern ein kaputter Eintrag — deshalb als
+            // Fehler melden statt zum Anlegen aufzufordern.
+            return .failed(errSecDecode)
         }
-        return token
+        return .token(token)
+    }
+
+    /// Bequeme Kurzform für alle Stellen, die nur „gültiges Token oder nicht“
+    /// wissen müssen (Token-Prüfung je Anfrage). Wer dem Nutzer einen Grund
+    /// nennen will, nimmt `loadOutcome()`.
+    public static func load() -> String? {
+        if case .token(let token) = loadOutcome() { return token }
+        return nil
     }
 
     /// Erzeugt ein neues Token und speichert es (überschreibt ein vorhandenes).
@@ -100,7 +139,21 @@ public enum BridgeToken {
         public var errorDescription: String? {
             switch self {
             case .keychain(let status):
-                return L10n.format("core.bridge.keychain_error", status)
+                return L10n.format("core.bridge.keychain_error", String(status))
+            }
+        }
+    }
+
+    /// Der Schlüsselbund war nicht lesbar. Bewusst eine eigene Fehlerart neben
+    /// `StoreError`: „nicht lesbar“ und „nicht speicherbar“ haben verschiedene
+    /// Ursachen und brauchen verschiedene Hinweise.
+    public enum LoadError: Error, LocalizedError {
+        case keychain(OSStatus)
+
+        public var errorDescription: String? {
+            switch self {
+            case .keychain(let status):
+                return L10n.format("core.bridge.keychain_read_error", String(status))
             }
         }
     }

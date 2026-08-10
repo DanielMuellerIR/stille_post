@@ -528,9 +528,20 @@ private struct BridgeRow: View {
         forceNew: Bool
     ) async throws -> (token: String, created: Bool) {
         try await Task.detached { () throws -> (token: String, created: Bool) in
-            let existing = forceNew ? nil : BridgeToken.load()
-            let token = try existing ?? BridgeToken.regenerate()
-            return (token, forceNew || existing == nil)
+            if forceNew {
+                return (try BridgeToken.regenerate(), true)
+            }
+            switch BridgeToken.loadOutcome() {
+            case .token(let existing):
+                return (existing, false)
+            case .missing:
+                return (try BridgeToken.regenerate(), true)
+            case .failed(let status):
+                // Bewusst kein Ersatz-Token: Vielleicht liegt ein gültiges da und
+                // der Schlüsselbund ist nur gesperrt — ein neues würde es
+                // überschreiben und alle eingerichteten Geräte aussperren.
+                throw BridgeToken.LoadError.keychain(status)
+            }
         }.value
     }
 }

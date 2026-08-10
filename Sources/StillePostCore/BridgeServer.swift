@@ -64,9 +64,16 @@ public final class BridgeServer: @unchecked Sendable {
     /// das Token — nur Methode, Pfad, Status, Größe und Dauer.
     public var onLog: (@Sendable (String) -> Void)?
 
-    public init(config: Config.Bridge, router: BridgeRouter) {
+    /// Woher der Grund kommt, wenn kein gültiges Token vorliegt. Nur für Tests
+    /// einspeisbar; produktiv liest es denselben Schlüsselbund wie der Router.
+    private let tokenStatus: @Sendable () -> BridgeToken.LoadOutcome
+
+    public init(config: Config.Bridge, router: BridgeRouter,
+                tokenStatus: @escaping @Sendable () -> BridgeToken.LoadOutcome
+                    = { BridgeToken.loadOutcome() }) {
         self.config = config
         self.router = router
+        self.tokenStatus = tokenStatus
     }
 
     public convenience init(config: Config, version: String = AppVersion.current) {
@@ -93,7 +100,18 @@ public final class BridgeServer: @unchecked Sendable {
     /// `queue` aus aufrufen (blockiert kurz bis `.ready`/`.failed`).
     public func start() throws {
         guard self.listener == nil else { return }
-        guard router.hasToken else { throw ServeError.noToken }
+        if !router.hasToken {
+            // Erst hier den Grund holen: Im Normalfall kostet das keinen
+            // zusätzlichen Schlüsselbundzugriff. Ein Lesefehler darf nicht als
+            // „noch kein Token angelegt“ durchgehen — sonst schickt die Meldung
+            // den Nutzer zum Anlegen eines neuen Tokens, obwohl das alte nur
+            // gerade nicht lesbar ist (gesperrter Schlüsselbund) und ein neues
+            // alle eingerichteten Geräte aussperren würde.
+            if case .failed(let status) = tokenStatus() {
+                throw ServeError.keychainUnavailable(status)
+            }
+            throw ServeError.noToken
+        }
         guard let port = NWEndpoint.Port(rawValue: UInt16(clamping: config.port)) else {
             throw ServeError.badPort(config.port)
         }
@@ -402,6 +420,7 @@ public final class BridgeServer: @unchecked Sendable {
 
     public enum ServeError: Error, LocalizedError {
         case noToken
+        case keychainUnavailable(OSStatus)
         case badPort(Int)
         case listenFailed(Int, String)
 
@@ -409,6 +428,8 @@ public final class BridgeServer: @unchecked Sendable {
             switch self {
             case .noToken:
                 return L10n.text("core.bridge.no_token")
+            case .keychainUnavailable(let status):
+                return L10n.format("core.bridge.keychain_read_error", String(status))
             case .badPort(let port):
                 return L10n.format("core.bridge.bad_port", String(port))
             case .listenFailed(let port, let detail):

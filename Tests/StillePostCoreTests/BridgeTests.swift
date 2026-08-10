@@ -419,8 +419,15 @@ final class BridgeTests: XCTestCase {
     func testStartRequiresATokenBeforeOpeningThePort() {
         var bridge = Config.Bridge()
         bridge.port = 39999
-        let server = BridgeServer(config: bridge, router: makeRouter(token: nil))
-        XCTAssertThrowsError(try server.start())
+        // `tokenStatus` fest vorgeben, damit der Test nicht vom echten
+        // Schlüsselbund des ausführenden Macs abhängt.
+        let server = BridgeServer(config: bridge, router: makeRouter(token: nil),
+                                  tokenStatus: { .missing })
+        XCTAssertThrowsError(try server.start()) { error in
+            guard case BridgeServer.ServeError.noToken = error else {
+                return XCTFail("fehlendes Token muss als solches gemeldet werden: \(error)")
+            }
+        }
         XCTAssertFalse(server.isRunning)
     }
 
@@ -490,6 +497,62 @@ final class BridgeTests: XCTestCase {
         XCTAssertFalse(BridgeToken.matches(token + "x", expected: token))
         XCTAssertFalse(BridgeToken.matches("", expected: token))
         XCTAssertFalse(BridgeToken.matches(token, expected: ""))
+    }
+
+    func testTokenReadSeparatesMissingEntryFromKeychainFailure() {
+        // Beides ergab früher `nil` und damit dieselbe Meldung „kein Token
+        // vorhanden“. Ein gesperrter oder verweigernder Schlüsselbund schickte
+        // den Nutzer damit zum Anlegen eines neuen Tokens — obwohl das alte
+        // vielleicht noch da ist und ein neues alle Geräte aussperren würde.
+        let missing = BridgeToken.loadOutcome(
+            environment: [:], copyMatching: { _, _ in errSecItemNotFound }
+        )
+        XCTAssertEqual(missing, .missing)
+
+        let locked = BridgeToken.loadOutcome(
+            environment: [:], copyMatching: { _, _ in errSecInteractionNotAllowed }
+        )
+        XCTAssertEqual(locked, .failed(errSecInteractionNotAllowed))
+
+        // Eintrag vorhanden, aber leer: kaputt, nicht „noch keins angelegt“.
+        let empty = BridgeToken.loadOutcome(environment: [:], copyMatching: { _, result in
+            result?.pointee = Data() as CFTypeRef
+            return errSecSuccess
+        })
+        XCTAssertEqual(empty, .failed(errSecDecode))
+
+        let found = BridgeToken.loadOutcome(environment: [:], copyMatching: { _, result in
+            result?.pointee = Data("geheim".utf8) as CFTypeRef
+            return errSecSuccess
+        })
+        XCTAssertEqual(found, .token("geheim"))
+
+        // Die Umgebungsvariable hat weiterhin Vorrang und fasst den
+        // Schlüsselbund gar nicht erst an.
+        let fromEnv = BridgeToken.loadOutcome(
+            environment: [BridgeToken.environmentVariable: "aus-der-umgebung"],
+            copyMatching: { _, _ in XCTFail("Schlüsselbund darf hier nicht gelesen werden")
+                            return errSecItemNotFound }
+        )
+        XCTAssertEqual(fromEnv, .token("aus-der-umgebung"))
+    }
+
+    func testStartNamesKeychainFailureInsteadOfSuggestingANewToken() {
+        var bridge = Config.Bridge()
+        bridge.port = 39998
+        let server = BridgeServer(config: bridge, router: makeRouter(token: nil),
+                                  tokenStatus: { .failed(errSecInteractionNotAllowed) })
+        XCTAssertThrowsError(try server.start()) { error in
+            guard case BridgeServer.ServeError.keychainUnavailable(let status) = error else {
+                return XCTFail("Lesefehler muss als solcher gemeldet werden: \(error)")
+            }
+            XCTAssertEqual(status, errSecInteractionNotAllowed)
+            let message = error.localizedDescription
+            XCTAssertNotEqual(message, L10n.text("core.bridge.no_token"))
+            XCTAssertTrue(message.contains(String(errSecInteractionNotAllowed)),
+                          "Der Schlüsselbund-Status gehört in die Meldung: \(message)")
+        }
+        XCTAssertFalse(server.isRunning)
     }
 
     func testKeychainStoreUpdatesInsteadOfDeleteThenAdd() {

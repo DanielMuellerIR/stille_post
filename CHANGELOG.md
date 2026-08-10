@@ -10,6 +10,23 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.7] — 2026-08-10
+
+### Behoben
+
+- Netzwerk-Brücke: Ein Schlüsselbund-Fehler wird nicht mehr als „Kein
+  Brücken-Token vorhanden“ gemeldet. Bisher ergaben „noch keins angelegt“ und
+  „nicht lesbar“ (gesperrter Schlüsselbund, verweigerter Zugriff, kaputter
+  Eintrag) dieselbe Meldung — der Hinweis schickte den Nutzer dann zum Anlegen
+  eines neuen Tokens, obwohl das alte womöglich noch da ist und ein neues alle
+  eingerichteten Geräte aussperren würde. App, Startmeldung und
+  `stillepost-cli bridge status` nennen jetzt den Schlüsselbund-Status.
+- Netzwerk-Brücke: `stillepost-cli bridge token` und der Token-Knopf in den
+  Einstellungen brechen bei einem Lesefehler ab, statt ersatzweise ein neues
+  Token anzulegen und damit ein möglicherweise vorhandenes zu überschreiben.
+- Fehlermeldungen mit OSStatus zeigen den Code wieder unverfälscht: Mit
+  deutscher Sprache machte die Formatierung aus `-25308` die Zahl „-25.308“.
+
 ## [0.9.6] — 2026-08-07
 
 ### Behoben
