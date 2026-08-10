@@ -531,6 +531,53 @@ final class BridgeTests: XCTestCase {
         }
     }
 
+    // MARK: - Protokoll
+
+    func testAuthorizationFailureNamesTheReason() {
+        // Im Protokoll stand früher nur „401“. Damit war nicht zu erkennen, ob der
+        // Kurzbefehl auf dem iPhone überhaupt einen Authorization-Kopf schickt
+        // oder ob bloß das Token nicht passt — genau diese Frage kostete bei der
+        // Einrichtung die meiste Zeit.
+        let router = makeRouter(token: "richtig")
+        XCTAssertNil(router.authorizationFailure(bearerToken: "richtig"))
+        XCTAssertEqual(router.authorizationFailure(bearerToken: nil), .noTokenSent)
+        XCTAssertEqual(router.authorizationFailure(bearerToken: "falsch"), .tokenMismatch)
+
+        let ohneToken = makeRouter(token: nil)
+        XCTAssertEqual(ohneToken.authorizationFailure(bearerToken: "egal"), .noTokenOnThisMac)
+
+        // Die HTTP-Antwort bleibt in allen Fällen dieselbe knappe 401 — die
+        // Gegenseite soll aus ihr nichts über den Zustand des Macs lernen.
+        for failure in [BridgeRouter.AuthFailure.noTokenSent, .tokenMismatch, .noTokenOnThisMac] {
+            XCTAssertFalse(failure.logDescription.isEmpty)
+        }
+    }
+
+    func testBridgeLogFileAppendsWithTimestampAndRotates() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("stillepost-log-test-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("bridge.log")
+
+        // Kleine Grenze, damit der Test das Wegräumen ohne Megabyte auslöst.
+        let log = BridgeLogFile(url: url, maxBytes: 120)
+        log.append("POST /v1/dictate → 200")
+        log.flush()
+
+        let firstLine = try XCTUnwrap(String(contentsOf: url, encoding: .utf8))
+        XCTAssertTrue(firstLine.contains("POST /v1/dictate → 200"))
+        XCTAssertTrue(firstLine.hasPrefix("20"), "Zeile muss mit dem Datum beginnen: \(firstLine)")
+
+        // Genug schreiben, dass die Grenze überschritten wird.
+        for index in 0..<10 { log.append("Zeile \(index) mit etwas Fülltext für die Größe") }
+        log.flush()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.appendingPathExtension("1").path),
+                      "die volle Datei muss als .1 erhalten bleiben")
+        let size = try XCTUnwrap(
+            FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int)
+        XCTAssertLessThanOrEqual(size, 120 * 2, "die aktive Datei darf nicht unbegrenzt wachsen")
+    }
+
     // MARK: - Token-Vergleich
 
     func testTokenComparisonRejectsPrefixesAndEmptyValues() {

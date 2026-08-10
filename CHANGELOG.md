@@ -10,6 +10,24 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.9] — 2026-08-10
+
+### Hinzugefügt
+
+- Netzwerk-Brücke: Die Protokollzeilen stehen jetzt in `bridge.log` neben
+  `config.json` — mit Zeitstempel, und ein fehlgeschlagener Start samt Grund
+  gehört dazu. Bisher gingen sie nur nach stderr, und das landet bei einer aus
+  dem Finder gestarteten App nirgends: „Vom iPhone kommt nichts an“ war damit
+  von außen nicht nachvollziehbar. Ab 1 MB wird einmal nach `bridge.log.1`
+  weggeräumt. Diktattext und Token stehen weiterhin nicht darin.
+
+### Behoben
+
+- Netzwerk-Brücke: Eine abgewiesene Anfrage nennt im lokalen Protokoll den
+  Grund — kein Token geschickt, Token stimmt nicht, oder auf diesem Mac ist
+  keins angelegt. Bisher stand dort nur „401“, obwohl der Code das Gegenteil
+  behauptete. Die HTTP-Antwort bleibt unverändert dieselbe knappe `401`.
+
 ## [0.9.8] — 2026-08-10
 
 ### Behoben

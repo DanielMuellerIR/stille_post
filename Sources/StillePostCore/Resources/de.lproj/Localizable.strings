@@ -234,6 +234,9 @@
 "core.bridge.read_failed" = "Lesefehler auf der Verbindung: %@";
 "core.bridge.request_log" = "%@ %@ → %d (%@ kB, %.2f s) von %@";
 "core.bridge.unauthorized" = "Nicht autorisiert";
+"core.bridge.auth_no_local_token" = "auf diesem Mac ist kein Token angelegt";
+"core.bridge.auth_no_token_sent" = "Anfrage kam ohne Token an";
+"core.bridge.auth_token_mismatch" = "Token stimmt nicht mit dem hinterlegten überein";
 "core.bridge.method_not_allowed" = "Methode für diesen Pfad nicht erlaubt";
 "core.bridge.unknown_route" = "Unbekannter Pfad";
 "core.bridge.bad_request" = "Anfrage nicht lesbar";

@@ -23,6 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: SettingsWindowController!
     /// Netzwerkzugang für eigene Geräte im Heimnetz; nil = ausgeschaltet.
     private var bridge: BridgeServer?
+    /// Protokoll der Brücke, das einen Neustart überlebt: `bridge.log` neben
+    /// `config.json`. Absichtlich unabhängig vom Server-Objekt, damit auch ein
+    /// fehlgeschlagener Start hineinschreiben kann.
+    private let bridgeLog = BridgeLogFile()
     /// Pinnt das primäre Bereinigungs-Modell jede Minute neu — läuft nur im Modus
     /// "dauerhaft geladen" (siehe buildComponents); bei befristetem keep_alive nil.
     private var warmUpTimer: Timer?
@@ -164,14 +168,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bridge = nil
         guard config.bridge.enabled else { return }
         let server = BridgeServer(config: config)
+        // Zusätzlich zur Datei: stderr bleibt für `swift run` und Diagnoseläufe.
+        // Bei der aus dem Finder gestarteten App landet stderr nirgends — deshalb
+        // ist die Datei neben config.json der eigentliche Ort zum Nachsehen.
+        let logFile = bridgeLog
         server.onLog = { message in
             FileHandle.standardError.write(Data("StillePost bridge: \(message)\n".utf8))
+            logFile.append(message)
         }
         do {
             try server.start()
             bridge = server
         } catch {
-            overlay.show(.failure(L10n.format("app.bridge_start_failed", error.localizedDescription)))
+            // Auch der Startfehler gehört ins Protokoll. Genau er („kein Token“,
+            // „Port belegt“) verschwand bisher mit dem Overlay, sobald es ausblendete.
+            let message = L10n.format("app.bridge_start_failed", error.localizedDescription)
+            logFile.append(message)
+            overlay.show(.failure(message))
         }
     }
 

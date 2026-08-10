@@ -234,6 +234,9 @@
 "core.bridge.read_failed" = "Read error on the connection: %@";
 "core.bridge.request_log" = "%@ %@ → %d (%@ kB, %.2f s) from %@";
 "core.bridge.unauthorized" = "Unauthorized";
+"core.bridge.auth_no_local_token" = "no token is stored on this Mac";
+"core.bridge.auth_no_token_sent" = "the request arrived without a token";
+"core.bridge.auth_token_mismatch" = "the token does not match the stored one";
 "core.bridge.method_not_allowed" = "Method not allowed for this path";
 "core.bridge.unknown_route" = "Unknown path";
 "core.bridge.bad_request" = "Request could not be read";

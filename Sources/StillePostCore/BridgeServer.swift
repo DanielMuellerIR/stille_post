@@ -282,9 +282,10 @@ public final class BridgeServer: @unchecked Sendable {
                    case .complete(let method, let path, let bearer)
                        = BridgeHTTP.probeHeader(session.buffer) {
                     session.earlyAuthChecked = true
-                    guard self.router.isAuthorized(bearerToken: bearer) else {
+                    if let failure = self.router.authorizationFailure(bearerToken: bearer) {
                         self.log(L10n.format("core.bridge.request_log",
-                                             method, path, 401, "0", 0.0, session.address))
+                                             method, path, 401, "0", 0.0, session.address)
+                                 + " — " + failure.logDescription)
                         self.send(.error(status: 401,
                                          message: L10n.text("core.bridge.unauthorized")),
                                   on: session)
@@ -304,13 +305,22 @@ public final class BridgeServer: @unchecked Sendable {
     private func handle(_ request: BridgeRequest, on session: Session) {
         let started = Date()
         let bodyBytes = request.body.count
+        // Grund einer Abweisung schon hier festhalten: Die frühe Prüfung oben
+        // greift nur, wenn der Inhalt noch nicht vollständig da war. Kleine
+        // Anfragen kommen oft in einem Rutsch an und landen direkt hier — ohne
+        // diese Zeile stünde für sie wieder nur ein nacktes „401“ im Protokoll.
+        let authFailure = router.authorizationFailure(bearerToken: request.bearerToken)
         Task { [router] in
             let response = await router.respond(to: request)
-            self.log(L10n.format(
+            var line = L10n.format(
                 "core.bridge.request_log",
                 request.method, request.path, response.status,
                 String(bodyBytes / 1024), Date().timeIntervalSince(started), session.address
-            ))
+            )
+            if response.status == 401, let authFailure {
+                line += " — " + authFailure.logDescription
+            }
+            self.log(line)
             self.queue.async { self.send(response, on: session) }
         }
     }

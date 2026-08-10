@@ -197,9 +197,38 @@ public actor BridgeRouter {
     /// schon nach dem vollständigen Kopf prüfen kann — BEVOR sie den
     /// (möglicherweise großen) Body puffert.
     public nonisolated func isAuthorized(bearerToken: String?) -> Bool {
-        guard let expected = tokenProvider(), !expected.isEmpty,
-              let presented = bearerToken else { return false }
-        return BridgeToken.matches(presented, expected: expected)
+        authorizationFailure(bearerToken: bearerToken) == nil
+    }
+
+    /// Warum eine Anfrage abgewiesen wurde — ausschließlich für das lokale
+    /// Protokoll. Die HTTP-Antwort bleibt in allen drei Fällen dieselbe knappe
+    /// 401, damit die Gegenseite nichts über den Zustand des Macs lernt.
+    ///
+    /// Ohne diese Unterscheidung sah man im Protokoll nur „401“ und konnte nicht
+    /// erkennen, ob der Kurzbefehl auf dem iPhone überhaupt einen
+    /// `Authorization`-Kopf schickt oder ob nur das Token nicht stimmt.
+    public nonisolated func authorizationFailure(bearerToken: String?) -> AuthFailure? {
+        guard let expected = tokenProvider(), !expected.isEmpty else { return .noTokenOnThisMac }
+        guard let presented = bearerToken else { return .noTokenSent }
+        return BridgeToken.matches(presented, expected: expected) ? nil : .tokenMismatch
+    }
+
+    public enum AuthFailure: Equatable, Sendable {
+        /// Auf diesem Mac ist gar kein Token angelegt.
+        case noTokenOnThisMac
+        /// Die Anfrage kam ohne `Authorization: Bearer …` an.
+        case noTokenSent
+        /// Token geschickt, aber es passt nicht zum hinterlegten.
+        case tokenMismatch
+
+        /// Klartext fürs lokale Protokoll.
+        public var logDescription: String {
+            switch self {
+            case .noTokenOnThisMac: return L10n.text("core.bridge.auth_no_local_token")
+            case .noTokenSent: return L10n.text("core.bridge.auth_no_token_sent")
+            case .tokenMismatch: return L10n.text("core.bridge.auth_token_mismatch")
+            }
+        }
     }
 
     /// Gemeinsame Antwortform für beide Text-Routen. `text` ist das Ergebnis,

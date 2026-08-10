@@ -94,7 +94,13 @@ Stille wird gar kein Modell bemüht.
   sofort mit `503`, statt es samt Audio im Speicher zu puffern — die
   Größengrenze je Anfrage sagt nichts über deren Anzahl.
 - Protokollzeilen enthalten Methode, Pfad, Status, Größe, Dauer und Gegenstelle —
-  **nie** Diktattext und nie das Token.
+  **nie** Diktattext und nie das Token. Sie stehen in `bridge.log` neben
+  `config.json` (ab 1 MB wird einmal nach `bridge.log.1` weggeräumt) und
+  zusätzlich auf stderr. Auch ein fehlgeschlagener Start steht dort, samt Grund.
+  Bei einer abgewiesenen Anfrage nennt die Zeile, woran es lag: kein Token
+  geschickt, Token stimmt nicht, oder auf diesem Mac ist keins angelegt. Die
+  HTTP-Antwort bleibt in allen drei Fällen dieselbe knappe `401`, damit die
+  Gegenseite daraus nichts über den Zustand des Macs lernt.
 
 ### Bekannte Grenze: die Verbindung ist unverschlüsselt
 
