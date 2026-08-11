@@ -331,22 +331,19 @@ case "bridge":
         // versehentlich passieren.
         let wantsNew = arguments.contains("--new")
         let token: String
-        // Ein Lesefehler bricht ab, statt ersatzweise ein neues Token anzulegen:
-        // Solange unklar ist, ob schon eines im Schlüsselbund liegt, würde das
-        // Überschreiben still alle eingerichteten Geräte aussperren.
-        if case .failed(let status) = BridgeToken.loadOutcome(), !wantsNew {
+        do {
+            let resolved = try BridgeToken.resolveForCommand(wantsNew: wantsNew)
+            token = resolved.token
+            log(L10n.text(resolved.reused
+                ? "cli.bridge.token_reused"
+                : "cli.bridge.token_created"))
+        } catch BridgeToken.LoadError.keychain(let status) {
+            // Ein Lesefehler bricht ab, statt ersatzweise ein neues Token
+            // anzulegen: Solange unklar ist, ob schon eines im Schlüsselbund
+            // liegt, würde das Überschreiben alle Geräte aussperren.
             fail(L10n.format("cli.bridge.token_error", String(status)))
-        }
-        if let existing = BridgeToken.load(), !wantsNew {
-            token = existing
-            log(L10n.text("cli.bridge.token_reused"))
-        } else {
-            do {
-                token = try BridgeToken.regenerate()
-            } catch {
-                fail(L10n.format("cli.error", error.localizedDescription))
-            }
-            log(L10n.text("cli.bridge.token_created"))
+        } catch {
+            fail(L10n.format("cli.error", error.localizedDescription))
         }
         if arguments.contains("--reveal") {
             // Ausdrücklich verlangt (für Skripte). Sonst geht das Geheimnis NICHT

@@ -284,7 +284,10 @@ public final class BridgeServer: @unchecked Sendable {
                     session.earlyAuthChecked = true
                     if let failure = self.router.authorizationFailure(bearerToken: bearer) {
                         self.log(L10n.format("core.bridge.request_log",
-                                             method, path, 401, "0", 0.0, session.address)
+                                             Self.singleLineLogField(method),
+                                             Self.singleLineLogField(path),
+                                             401, "0", 0.0,
+                                             Self.singleLineLogField(session.address))
                                  + " — " + failure.logDescription)
                         self.send(.error(status: 401,
                                          message: L10n.text("core.bridge.unauthorized")),
@@ -314,8 +317,10 @@ public final class BridgeServer: @unchecked Sendable {
             let response = await router.respond(to: request)
             var line = L10n.format(
                 "core.bridge.request_log",
-                request.method, request.path, response.status,
-                String(bodyBytes / 1024), Date().timeIntervalSince(started), session.address
+                Self.singleLineLogField(request.method),
+                Self.singleLineLogField(request.path), response.status,
+                String(bodyBytes / 1024), Date().timeIntervalSince(started),
+                Self.singleLineLogField(session.address)
             )
             if response.status == 401, let authFailure {
                 line += " — " + authFailure.logDescription
@@ -389,6 +394,18 @@ public final class BridgeServer: @unchecked Sendable {
 
     private func log(_ message: String) {
         onLog?(message)
+    }
+
+    /// Macht ein fremdes Feld für genau eine Protokollzeile sicher. Der Parser
+    /// lehnt Steuerzeichen bereits ab; diese zweite Schranke schützt auch
+    /// direkt konstruierte Requests und künftige Aufrufwege.
+    static func singleLineLogField(_ value: String) -> String {
+        value.unicodeScalars.map { scalar in
+            if scalar.value < 0x20 || scalar.value == 0x7F {
+                return String(format: "\\u{%04X}", scalar.value)
+            }
+            return String(scalar)
+        }.joined()
     }
 
     /// Textuelle Gegenstellen-Adresse einer Verbindung.

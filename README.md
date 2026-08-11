@@ -259,9 +259,10 @@ that transcribe on their own).
 
 **Privacy and limits.** The Mac is only a receiver here: audio is processed on this
 machine, and speech recognition still runs exclusively on loopback. Access is
-restricted to private address ranges and requires the token. The connection is
-**unencrypted**, though - anyone listening on the same Wi-Fi can read your
-dictations. It is not meant for use away from home.
+restricted to private/link-local ranges and to global IPv6 addresses inside a
+prefix currently used by one of this Mac's active interfaces; every request also
+requires the token. The connection is **unencrypted**, though - anyone listening
+on the same Wi-Fi can read your dictations. It is not meant for use away from home.
 
 Shortcut instructions, measurements, and the decisions behind this are in
 [docs/ios-bridge.md](docs/ios-bridge.md) (German).

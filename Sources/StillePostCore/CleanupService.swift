@@ -371,8 +371,10 @@ public final class CleanupService {
         var rawLo = [Int](repeating: 0, count: m)
         var rawHi = [Int](repeating: 0, count: m)
         var corrections = 0
-        // Weggelassene Sperrlisten-Wörter, gesammelt für die Nachbewertung unten:
-        // (gelöschter Roh-Bereich, Ausgabe-Index direkt HINTER der Lücke).
+        // Weggelassene Sperrlisten-Wörter, einzeln für die Nachbewertung unten:
+        // (genau dieses Roh-Wort, Ausgabe-Index direkt HINTER der ganzen Lücke).
+        // Die Einzelzuordnung ist wichtig, wenn vor der Verneinung in derselben
+        // Lücke noch ein Füllwort und eine Satzgrenze stehen.
         var droppedMeaning: [(rawStart: Int, rawEnd: Int, cleanIndex: Int)] = []
         // Bedeutungsschlüssel der Ausgabe-Wörter unmittelbar vor und hinter einer
         // Lücke. Steht die Verneinung dort noch, war die Löschung nur eine
@@ -392,9 +394,16 @@ public final class CleanupService {
                 // Verneinung dreht den Sinn genauso um wie eine ersetzte
                 // ("ich habe das nicht gemacht" -> "Ich habe das gemacht").
                 guard rs < re else { return }
-                let lost = Set(meaningKeys(rawTokens[rs..<re].map(\.norm)))
-                if !lost.isEmpty, !lost.isSubset(of: neighborMeaningKeys(atCleanIndex: cs)) {
-                    droppedMeaning.append((rs, re, cs))
+                let neighboring = neighborMeaningKeys(atCleanIndex: cs)
+                let unrepresented = Set(meaningKeys(rawTokens[rs..<re].map(\.norm)))
+                    .subtracting(neighboring)
+                if !unrepresented.isEmpty {
+                    for rawIndex in rs..<re {
+                        if let key = meaningCriticalWords[rawTokens[rawIndex].norm],
+                           unrepresented.contains(key) {
+                            droppedMeaning.append((rawIndex, rawIndex + 1, cs))
+                        }
+                    }
                 }
                 return
             }
@@ -556,8 +565,23 @@ public final class CleanupService {
             if isWordChar, start == nil { start = idx }
             if !isWordChar, let s = start {
                 let piece = text[s..<idx]
+                var normalized = String(piece)
+                    .precomposedStringWithCanonicalMapping.lowercased()
+                // Apostrophe gehören sonst nicht zum Token. Bei englischen
+                // Verneinungen ist das einzelne Schluss-`t` aber gerade der
+                // Bedeutungsträger: `can't` -> `can` darf nicht als harmlose
+                // Löschung dieses einen Buchstabens durchgehen. Gerade und
+                // typografische Apostrophe werden gleich behandelt.
+                if normalized == "t", s > text.startIndex {
+                    let apostropheIndex = text.index(before: s)
+                    let apostrophe = text[apostropheIndex]
+                    if (apostrophe == "'" || apostrophe == "’"),
+                       result.last?.range.upperBound == apostropheIndex {
+                        normalized = "contractednot"
+                    }
+                }
                 result.append(Token(
-                    norm: String(piece).precomposedStringWithCanonicalMapping.lowercased(),
+                    norm: normalized,
                     range: s..<idx
                 ))
                 start = nil
@@ -780,7 +804,7 @@ public final class CleanupService {
         "immer": "immer",
         // Englisch — dieselben zwei Kriterien. "not"/"note", "no"/"know",
         // "only"/"once" liegen unter den Toleranzen in Reichweite voneinander.
-        "not": "not", "cannot": "not",
+        "not": "not", "cannot": "not", "contractednot": "not",
         "didn": "not", "doesn": "not", "don": "not", "isn": "not", "aren": "not",
         "wasn": "not", "weren": "not", "hasn": "not", "haven": "not", "hadn": "not",
         "shouldn": "not", "couldn": "not", "wouldn": "not", "ain": "not",

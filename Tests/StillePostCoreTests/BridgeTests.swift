@@ -69,6 +69,18 @@ final class BridgeTests: XCTestCase {
                        .incomplete)
     }
 
+    func testRejectsControlCharactersInRequestLine() {
+        for control in ["\n", "\u{001B}", "\u{007F}"] {
+            let raw = "GET /v1/health\(control)FAKE HTTP/1.1\r\nContent-Length: 0\r\n\r\n"
+            guard case .failure(let response) = BridgeHTTP.parse(
+                Data(raw.utf8), maxBodyBytes: 1024
+            ) else {
+                return XCTFail("Steuerzeichen in der Request-Line muss abgelehnt werden")
+            }
+            XCTAssertEqual(response.status, 400)
+        }
+    }
+
     // MARK: - Herkunft der Verbindung
 
     func testAcceptsOnlyHomeNetworkAddresses() {
@@ -553,6 +565,13 @@ final class BridgeTests: XCTestCase {
         }
     }
 
+    func testUntrustedLogFieldsStayOnOneLine() {
+        XCTAssertEqual(
+            BridgeServer.singleLineLogField("/ok\n\u{001B}[31m\u{007F}"),
+            "/ok\\u{000A}\\u{001B}[31m\\u{007F}"
+        )
+    }
+
     func testBridgeLogFileAppendsWithTimestampAndRotates() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("stillepost-log-test-\(UUID().uuidString)")
@@ -643,6 +662,37 @@ final class BridgeTests: XCTestCase {
                           "Der Schlüsselbund-Status gehört in die Meldung: \(message)")
         }
         XCTAssertFalse(server.isRunning)
+    }
+
+    func testTokenCommandUsesOneLoadOutcomeAndNeverRegeneratesAfterReadFailure() throws {
+        var loads = 0
+        var regenerations = 0
+        let reused = try BridgeToken.resolveForCommand(
+            wantsNew: false,
+            loadOutcome: { loads += 1; return .token("bestehend") },
+            regenerate: { regenerations += 1; return "neu" }
+        )
+        XCTAssertEqual(reused.token, "bestehend")
+        XCTAssertTrue(reused.reused)
+        XCTAssertEqual(loads, 1)
+        XCTAssertEqual(regenerations, 0)
+
+        XCTAssertThrowsError(try BridgeToken.resolveForCommand(
+            wantsNew: false,
+            loadOutcome: { loads += 1; return .failed(errSecInteractionNotAllowed) },
+            regenerate: { regenerations += 1; return "darf-nicht-entstehen" }
+        ))
+        XCTAssertEqual(loads, 2, "auch der Fehlerfall liest genau einmal")
+        XCTAssertEqual(regenerations, 0, "Lesefehler darf kein Token ersetzen")
+
+        let forced = try BridgeToken.resolveForCommand(
+            wantsNew: true,
+            loadOutcome: { XCTFail("--new braucht keinen vorherigen Lesezugriff"); return .missing },
+            regenerate: { regenerations += 1; return "bewusst-neu" }
+        )
+        XCTAssertEqual(forced.token, "bewusst-neu")
+        XCTAssertFalse(forced.reused)
+        XCTAssertEqual(regenerations, 1)
     }
 
     func testKeychainStoreUpdatesInsteadOfDeleteThenAdd() {

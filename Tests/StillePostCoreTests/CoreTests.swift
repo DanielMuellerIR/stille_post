@@ -406,6 +406,20 @@ final class CoreTests: XCTestCase {
         ))
     }
 
+    func testReconcileFindsNegationBehindFillerAndInternalBoundary() {
+        // Die Löschungslücke enthält mehr als die Verneinung. Entscheidend ist
+        // die Satzgrenze INNERHALB der Lücke: `nicht` gehört zum zweiten Satz,
+        // das Füllwort davor darf trotzdem verschwinden.
+        let result = CleanupService.reconcile(
+            raw: "erster satz ähm. nicht machen wir das",
+            cleaned: "Erster Satz. Machen wir das."
+        )
+        XCTAssertEqual(result, .accepted(
+            text: "Erster Satz. nicht machen wir das.",
+            revertedClauses: 1
+        ))
+    }
+
     func testReconcileCatchesSwallowedEnglishNegation() {
         // `whisper.language` ist standardmäßig „auto“, Englisch ist ausdrücklich
         // unterstützt: Eine weggelassene englische Verneinung dreht die Aussage
@@ -416,6 +430,11 @@ final class CoreTests: XCTestCase {
         // deshalb „didn“ + „t“.
         XCTAssertTrue(rejects(raw: "i didn't approve this",
                               cleaned: "I did approve this."))
+        // Bei `can't` bleibt der Stamm `can` in beiden Fassungen als Anker
+        // stehen. Das einzelne `t` hinter dem Apostroph trägt die Verneinung.
+        for raw in ["i can't approve this", "i can’t approve this"] {
+            XCTAssertTrue(rejects(raw: raw, cleaned: "I can approve this."), raw)
+        }
         XCTAssertTrue(rejects(raw: "we have no time for that",
                               cleaned: "We have time for that."))
         // Ohne Verneinung bleibt die englische Bereinigung ganz normal erlaubt.

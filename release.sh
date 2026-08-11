@@ -142,20 +142,46 @@ rm -f "$STAGED_CHECKSUM"
 # eine einzelne .sha256 im Repo-Root liegen — und die Vorabprüfung am
 # Skriptanfang würde jeden Wiederholungsversuch blockieren, bis jemand von Hand
 # aufräumt.
+# BEGIN RELEASE_PUBLICATION_HELPERS
 published_checksum=""
+release_pair_complete=0
 rollback_checksum() {
     if [[ -n "$published_checksum" ]]; then
+        # Ein Signal kann genau nach dem erfolgreichen DMG-link(2), aber vor
+        # der nächsten Shell-Zuweisung ankommen. Solange das Staging-DMG noch
+        # existiert, beweist die gemeinsame Inode-Identität, dass das finale
+        # DMG wirklich unser gerade veröffentlichtes Artefakt ist. Dann ist das
+        # Paar vollständig und die Prüfsumme darf nicht einzeln verschwinden.
+        if [[ "$release_pair_complete" -eq 1 ]] \
+           || [[ -f "$STAGED_DMG" && -f "$FINAL_DMG" && ! -L "$FINAL_DMG" \
+                 && "$STAGED_DMG" -ef "$FINAL_DMG" ]]; then
+            return
+        fi
         rm -f "$published_checksum"
     fi
 }
-trap rollback_checksum EXIT INT TERM
+abort_release() {
+    local status=$1
+    rollback_checksum
+    trap - EXIT INT TERM
+    exit "$status"
+}
+# END RELEASE_PUBLICATION_HELPERS
+
+trap rollback_checksum EXIT
+trap 'abort_release 130' INT
+trap 'abort_release 143' TERM
 publish_no_clobber "$STAGED_CHECKSUM" "$FINAL_CHECKSUM"
 published_checksum="$FINAL_CHECKSUM"
-if ! publish_no_clobber "$STAGED_DMG" "$FINAL_DMG"; then
+if ! link "$STAGED_DMG" "$FINAL_DMG"; then
     echo "FEHLER: Das fertige DMG konnte nicht veröffentlicht werden." >&2
     exit 5  # der Trap nimmt die Prüfsumme wieder zurück
 fi
-# Paar vollständig: ab hier darf nichts mehr zurückgerollt werden.
+# Ab dem erfolgreichen Hardlink ist das Paar vollständig. Die Markierung steht
+# vor dem Entfernen des Staging-Namens; im winzigen Fenster davor erkennt der
+# Signal-Handler dasselbe Paar zusätzlich über `-ef`.
+release_pair_complete=1
+rm -f "$STAGED_DMG"
 published_checksum=""
 trap - EXIT INT TERM
 

@@ -10,6 +10,28 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.10] — 2026-08-11
+
+### Behoben
+
+- Bereinigung: Englische Verneinungen mit geradem oder typografischem Apostroph
+  schützen auch das einzelne Schluss-`t`; aus „can't“ kann damit nicht mehr
+  unbemerkt „can“ werden. Liegen Füllwort, Satzgrenze und gelöschte Verneinung
+  in derselben Ausrichtungslücke, wird die Verneinung jetzt ihrem tatsächlichen
+  Satzteil zugeordnet.
+- Netzwerk-Brücke: C0-/DEL-Steuerzeichen in der HTTP-Request-Line werden
+  abgelehnt. Methode, Pfad und Gegenstellen-Adresse werden zusätzlich
+  einzeilig maskiert, bevor sie in `bridge.log` oder die CLI-Diagnose gelangen.
+- `stillepost-cli bridge token` liest den Tokenzustand ohne `--new` genau einmal
+  und erzeugt nach einem Lesefehler unter keinen Umständen einen Ersatz-Token.
+- Release-Skripte: `INT` und `TERM` rollen ein noch unvollständiges eigenes
+  Artefaktpaar zurück und enden mit Fehlerstatus. Ein Signal im Übergang zum
+  vollständigen DMG-/Prüfsummenpaar kann nicht mehr nur eine Hälfte entfernen
+  und anschließend Erfolg melden.
+- Die öffentlichen Datenschutztexte beschreiben globale IPv6-Adressen im
+  lokalen Schnittstellenpräfix korrekt. Die Health-Antwort dokumentiert keinen
+  veralteten festen Versionswert mehr.
+
 ## [0.9.9] — 2026-08-10
 
 ### Hinzugefügt

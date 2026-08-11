@@ -76,6 +76,27 @@ public enum BridgeToken {
         return nil
     }
 
+    /// Entscheidet den CLI-Befehl mit höchstens einem Lesezugriff. Ohne
+    /// ``--new`` wird ein vorhandener Wert wiederverwendet, ein echter
+    /// Lesefehler abgebrochen und nur bei ``missing`` neu erzeugt. Mit
+    /// ``--new`` ist der ausdrückliche Ersetzungswunsch bereits eindeutig und
+    /// der Schlüsselbund muss vorher nicht gelesen werden.
+    public static func resolveForCommand(
+        wantsNew: Bool,
+        loadOutcome: () -> LoadOutcome = { BridgeToken.loadOutcome() },
+        regenerate: () throws -> String = { try BridgeToken.regenerate() }
+    ) throws -> (token: String, reused: Bool) {
+        if wantsNew { return (try regenerate(), false) }
+        switch loadOutcome() {
+        case .token(let token):
+            return (token, true)
+        case .missing:
+            return (try regenerate(), false)
+        case .failed(let status):
+            throw LoadError.keychain(status)
+        }
+    }
+
     /// Erzeugt ein neues Token und speichert es (überschreibt ein vorhandenes).
     /// Rückgabe ist das neue Token — der Aufrufer entscheidet, ob er es anzeigt
     /// oder direkt in die Zwischenablage legt.

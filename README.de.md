@@ -269,9 +269,11 @@ Geräte, die selbst transkribieren).
 
 **Datenschutz und Grenzen.** Der Mac ist hier nur Empfänger: Das Audio wird auf
 diesem Rechner verarbeitet, die Spracherkennung läuft weiter ausschließlich lokal.
-Der Zugang gilt nur für private Adressbereiche und nur mit Token. Die Verbindung
-ist allerdings **unverschlüsselt** — wer im gleichen WLAN mitliest, kann Diktate
-mitlesen. Von unterwegs ist der Zugang nicht gedacht.
+Der Zugang gilt nur für private/Link-Local-Adressbereiche sowie für globale
+IPv6-Adressen in einem Präfix, das gerade eine aktive Schnittstelle dieses Macs
+verwendet; zusätzlich ist immer das Token nötig. Die Verbindung ist allerdings
+**unverschlüsselt** — wer im gleichen WLAN mitliest, kann Diktate mitlesen. Von
+unterwegs ist der Zugang nicht gedacht.
 
 Anleitung für den Kurzbefehl, Messwerte und die getroffenen Entscheidungen:
 [docs/ios-bridge.md](docs/ios-bridge.md).

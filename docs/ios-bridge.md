@@ -58,7 +58,9 @@ Angriffsfläche.
 
 Alle Routen verlangen `Authorization: Bearer <token>`.
 
-- `GET /v1/health` → `{"ok":true,"version":"0.9.2","cleanup":true}`
+- `GET /v1/health` → `{"ok":true,"version":"<App-Version>","cleanup":true}`.
+  Im App-Bundle kommt der Wert aus dessen Produktversion; ein direkter CLI-Lauf
+  ohne Bundle kann stattdessen `dev` melden.
 - `POST /v1/dictate` → Audio im Anfragetext (WAV, AAC/m4a, MP3, …), Antwort:
   `{"text":"…","raw":"…","sttSec":1.2,"cleanupSec":1.5,"usedFallback":false,"endpoint":"…"}`.
   `?raw=1` überspringt die Bereinigung.

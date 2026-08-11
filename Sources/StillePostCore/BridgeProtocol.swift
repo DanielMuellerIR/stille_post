@@ -120,7 +120,8 @@ public enum BridgeHTTP {
             return .incomplete
         }
         var lines = headerText.components(separatedBy: "\r\n")
-        guard let requestLine = lines.first else { return .incomplete }
+        guard let requestLine = lines.first,
+              isValidRequestLine(requestLine) else { return .incomplete }
         lines.removeFirst()
         let parts = requestLine.split(separator: " ", omittingEmptySubsequences: true)
         guard parts.count >= 2 else { return .incomplete }
@@ -147,7 +148,8 @@ public enum BridgeHTTP {
         }
 
         var lines = headerText.components(separatedBy: "\r\n")
-        guard let requestLine = lines.first else {
+        guard let requestLine = lines.first,
+              isValidRequestLine(requestLine) else {
             return .failure(.error(status: 400, message: L10n.text("core.bridge.bad_request")))
         }
         lines.removeFirst()
@@ -188,6 +190,15 @@ public enum BridgeHTTP {
             bearerToken: bearerToken(in: headers),
             contentType: headers["content-type"], body: body
         ))
+    }
+
+    /// Eine HTTP-Request-Line darf keine C0-/DEL-Steuerzeichen enthalten.
+    /// Einzelne LF oder ESC würden sonst bis in Pfad und Diagnoseprotokoll
+    /// gelangen, obwohl der Parser Zeilen ausschließlich an CRLF trennt.
+    private static func isValidRequestLine(_ line: String) -> Bool {
+        line.unicodeScalars.allSatisfy { scalar in
+            scalar.value >= 0x20 && scalar.value != 0x7F
+        }
     }
 
     /// Kopfzeilen "Name: Wert" in ein Wörterbuch (Namen kleingeschrieben).
