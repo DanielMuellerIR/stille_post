@@ -26,6 +26,13 @@ Datei mit dem Versions-Bump fortgeschrieben.
 - Netzwerk-Brücke: Auch die Protokollzeilen für eine abgewiesene Gegenstelle und
   für einen Lese-Timeout maskieren die Adresse jetzt einzeilig. Bisher galt das
   nur für die Zeile einer angenommenen Anfrage.
+- `stillepost-cli doctor` stürzt nicht mehr ab, wenn in der Konfiguration eine
+  unbrauchbare Ollama-Adresse steht (etwa mit Leerzeichen im Hostnamen). Der
+  Befund wird jetzt wie ein nicht erreichbarer Endpunkt gemeldet — ausgerechnet
+  dieser Befehl wird ja wegen einer kaputten Konfiguration aufgerufen. Außerdem
+  bricht die Erreichbarkeitsprüfung nach fünf Sekunden ab statt nach einer
+  Minute; `doctor` prüft die ganze Kette, und ein abgeschalteter Rechner soll
+  nicht jedes Mal so lange kosten.
 - Diktat-Ablauf: Bricht das Stoppen an einer internen Prüfung ab, geht die
   Maschine zurück auf „bereit“ statt dauerhaft in „verarbeitet“ stehen zu
   bleiben. In diesem Zustand ignoriert der Hotkey jeden Tastendruck — die App

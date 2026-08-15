@@ -147,9 +147,22 @@ case "doctor":
             }
             // Ollama erreichbar + Modell vorhanden?
             struct TagsResponse: Decodable { struct M: Decodable { let name: String }; let models: [M] }
+            // Eine handgeschriebene `ollamaURL` kann unbrauchbar sein (Leerzeichen
+            // im Hostnamen etwa). Das ist für `doctor` ein zu meldender Befund und
+            // kein Grund abzustürzen — ausgerechnet dieser Befehl wird ja wegen
+            // einer kaputten Konfiguration aufgerufen.
+            guard let tagsURL = URL(string: "\(endpoint.ollamaURL)/api/tags") else {
+                print(L10n.format("cli.doctor.cleanup_unreachable", name, endpoint.ollamaURL))
+                return false
+            }
+            // Kurze Frist statt der 60 Sekunden, die eine ungebremste Anfrage
+            // mitbringt: `doctor` prüft die ganze Kette, und ein abgeschalteter
+            // Rechner darf nicht jedes Mal eine Minute kosten.
+            var tagsRequest = URLRequest(url: tagsURL)
+            tagsRequest.timeoutInterval = 5
             do {
                 let data = try runBlocking {
-                    try await URLSession.shared.data(from: URL(string: "\(endpoint.ollamaURL)/api/tags")!).0
+                    try await URLSession.shared.data(for: tagsRequest).0
                 }
                 let tags = try JSONDecoder().decode(TagsResponse.self, from: data)
                 if tags.models.contains(where: { $0.name == endpoint.model || $0.name.hasPrefix(endpoint.model + ":") }) {

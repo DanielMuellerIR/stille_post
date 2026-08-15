@@ -6,7 +6,7 @@
     "token_budget": 1000000,
     "status": "active",
     "started_at": "2026-08-15T13:40:35+02:00",
-    "tokens_spent": 240021
+    "tokens_spent": 258913
   },
   "campaign_history": [],
   "scope": {
@@ -175,12 +175,20 @@
       "risk": "medium",
       "priority": 3,
       "reason": "Audioaufnahme, Segmentierung und Formatumwandlung; Fehler hier verfaelschen jedes Diktat an der Quelle",
-      "state": "in_progress",
-      "active_run": {
+      "state": "completed",
+      "last_run": {
         "campaign_id": "20260815T134035935432+0200",
-        "started_at": "2026-08-15T14:09:54+02:00",
-        "required_review": "full",
-        "status_at_start": "pending"
+        "completed_at": "2026-08-15T14:12:21+02:00",
+        "observed_head": "dd4551d4019ebcd28af5255d503c57d38e223a2c",
+        "content_sha256": "5d04cea27065328a3d25fdb04a7e8e220726aa9dce3955b3d98ae73a8e0d93dd",
+        "file_count": 6,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Die Float-nach-16-Bit-PCM-Umrechnung stand in WavCodec.swift zweimal wortgleich: einmal fuer die WAV an den whisper-server, einmal fuer die fortlaufende Datei auf Platte. Beide muessen dieselben Bytes erzeugen, weil 'Erneut transkribieren' die Datei liest. Jetzt eine Stelle (WavCodec.pcm16), Gleichheit beider Wege durch neuen Test byteweise belegt. Uebriger Bereich ohne Beanstandung; nur beobachtet: AudioRecorder liest die converter-Referenz im Tap unsynchronisiert, waehrend stop() sie auf nil setzt — das dient dort bewusst als zweite Bremse fuer noch laufende Tap-Aufrufe, ein Lock im Echtzeit-Audiopfad waere schlechter.",
+        "tests": [
+          "swift test: 162 Tests gruen (vorher 161), neuer Test vergleicht Datei- und Netz-WAV byteweise",
+          "scripts/e2e-test.sh: bestanden (STT 0,21 s, Bereinigung 0,46 s)"
+        ]
       }
     },
     {
@@ -204,7 +212,13 @@
       "risk": "medium",
       "priority": 3,
       "reason": "Headless-Zugang fuer Tests und Agenten; darf keine Secrets ausgeben und muss Exit-Codes sauber liefern",
-      "state": "pending"
+      "state": "in_progress",
+      "active_run": {
+        "campaign_id": "20260815T134035935432+0200",
+        "started_at": "2026-08-15T14:13:19+02:00",
+        "required_review": "full",
+        "status_at_start": "pending"
+      }
     },
     {
       "id": "app-ui",
