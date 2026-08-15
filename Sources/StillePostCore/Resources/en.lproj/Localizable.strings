@@ -246,6 +246,7 @@
 "core.bridge.text_empty" = "No text supplied";
 "core.bridge.cleanup_off" = "Text cleanup is switched off on this Mac";
 "core.bridge.busy" = "Bridge is busy — please send again in a moment";
+"core.bridge.abandoned" = "Connection dropped, request discarded";
 "core.bridge.audio_empty" = "No usable audio supplied";
 "core.bridge.audio_unsupported" = "Audio format could not be read: %@";
 "core.bridge.audio_format" = "The target format for Whisper could not be configured";

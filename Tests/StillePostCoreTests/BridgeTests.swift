@@ -357,6 +357,58 @@ final class BridgeTests: XCTestCase {
                        "der Rest wird abgelehnt, nicht gepuffert")
     }
 
+    func testAbandonedRequestIsDroppedInsteadOfTranscribedForNobody() async throws {
+        // Legt die Gegenstelle auf, während ihre Anfrage noch in der
+        // Warteschlange steht, darf die Brücke die teure Arbeit gar nicht erst
+        // beginnen — sonst belegt ein Client, der einfach geht, den einzigen
+        // Arbeitsplatz weiter, und niemand holt das Ergebnis je ab.
+        let started = Counter()
+        let router = makeRouter(transcribe: { _ in
+            started.increment()
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            return "roher text"
+        })
+        @Sendable func dictate() async -> BridgeResponse {
+            await router.respond(to: BridgeRequest(
+                method: "POST", path: "/v1/dictate", bearerToken: "richtig",
+                body: Data("audio".utf8)
+            ))
+        }
+        // Die erste Anfrage belegt den Arbeitsplatz …
+        let first = Task { await dictate() }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        // … die zweite stellt sich an und wird dann abgebrochen.
+        let second = Task { await dictate() }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        second.cancel()
+
+        let abandoned = await second.value
+        let delivered = await first.value
+        XCTAssertEqual(delivered.status, 200, "die laufende Anfrage läuft normal zu Ende")
+        XCTAssertEqual(abandoned.status, 503)
+        // 503 allein wäre mehrdeutig — „ausgelastet“ hat denselben Status. Die
+        // Meldung belegt, dass die Anfrage wirklich am Abbruch scheiterte und
+        // nicht schon an der Warteschlangengrenze.
+        XCTAssertEqual(try object(abandoned)["error"] as? String,
+                       L10n.text("core.bridge.abandoned"))
+        XCTAssertEqual(started.count, 1,
+                       "die abgebrochene Anfrage darf nicht mehr transkribiert werden")
+    }
+
+    func testFinishedRequestLeavesNoDictationInTheQueue() async throws {
+        // Eine fertige Task hält ihr Ergebnis fest, und das ist hier die
+        // vollständige Antwort samt diktiertem Text. Bliebe sie als Kettenende
+        // stehen, stünde das letzte Diktat bis zur nächsten Anfrage im Speicher.
+        let router = makeRouter(transcribe: { _ in "streng vertrauliches diktat" })
+        let response = await router.respond(to: BridgeRequest(
+            method: "POST", path: "/v1/dictate", bearerToken: "richtig",
+            body: Data("audio".utf8)
+        ))
+        XCTAssertEqual(response.status, 200)
+        let tail = await router.pipelineTail
+        XCTAssertNil(tail, "nach getaner Arbeit darf am Kettenende nichts liegen bleiben")
+    }
+
     func testUnknownPathAndWrongMethod() async {
         let router = makeRouter()
         let unknown = await router.respond(to: BridgeRequest(

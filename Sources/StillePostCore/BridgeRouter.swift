@@ -42,7 +42,9 @@ public actor BridgeRouter {
     private let maxBodyBytes: Int
     /// Ende der Warteschlange der schweren Routen: Jede neue Anfrage wartet auf
     /// die Task hier hinten, bevor sie selbst startet.
-    private var pipelineTail: Task<BridgeResponse, Never>?
+    /// Intern (statt private), damit ein Test belegen kann, dass hier nach
+    /// getaner Arbeit nichts liegen bleibt.
+    var pipelineTail: Task<BridgeResponse, Never>?
     /// Wie viele schwere Anfragen höchstens gleichzeitig in der Warteschlange
     /// stehen dürfen — die gerade laufende eingerechnet. Ohne diese Grenze hält
     /// jede wartende Task ihren vollständigen `BridgeRequest` samt Audio-Body im
@@ -107,6 +109,12 @@ public actor BridgeRouter {
     /// statt sie samt Body zu puffern: Ein abgewiesener Client kann es gleich
     /// noch einmal versuchen, aufgestauter Speicher lässt sich nicht
     /// zurücknehmen.
+    ///
+    /// Bricht die Verbindung ab, während die Anfrage noch wartet, wird ihre Task
+    /// storniert und die teure Arbeit beginnt gar nicht erst. Ohne das würde ein
+    /// Client, der einfach auflegt, den einzigen Arbeitsplatz der Brücke noch
+    /// minutenlang für Transkription und Bereinigung belegen, deren Ergebnis
+    /// niemand mehr abholt.
     private func serialized(
         _ work: @escaping @Sendable () async -> BridgeResponse
     ) async -> BridgeResponse {
@@ -117,11 +125,27 @@ public actor BridgeRouter {
         let previous = pipelineTail
         let task = Task { () -> BridgeResponse in
             _ = await previous?.value  // Ergebnis egal — nur die Reihenfolge zählt
+            // Die Gegenstelle ist gegangen, während wir in der Schlange standen:
+            // Diese Antwort holt niemand mehr ab, also gar nicht erst anfangen.
+            guard !Task.isCancelled else {
+                return .error(status: 503, message: L10n.text("core.bridge.abandoned"))
+            }
             return await work()
         }
         pipelineTail = task
-        let response = await task.value
+        // Die Reihung läuft über eine unstrukturierte Task, die Stornierung
+        // deshalb nicht von selbst mit. Dieser Handler reicht sie weiter.
+        let response = await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
         pipelineDepth -= 1
+        // Die eigene Task nicht als Kettenende liegen lassen: Eine fertige Task
+        // hält ihr Ergebnis fest, und das ist bei `/v1/dictate` die vollständige
+        // Antwort samt diktiertem Text. Ohne dieses Aufräumen bliebe das letzte
+        // Diktat bis zur nächsten Anfrage im Speicher der Brücke stehen.
+        if pipelineTail == task { pipelineTail = nil }
         return response
     }
 

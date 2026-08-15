@@ -203,9 +203,13 @@ public final class BridgeServer: @unchecked Sendable {
         // Erste Hürde, noch vor dem Token: Kommt die Verbindung überhaupt aus dem
         // eigenen Netz? Eine versehentliche Portweiterleitung im Router soll die
         // Brücke nicht ins Internet stellen.
-        guard let address = Self.peerAddress(connection),
-              BridgePeer.isLocalNetwork(address) else {
-            log(L10n.format("core.bridge.rejected_peer", Self.peerAddress(connection) ?? "?"))
+        let peer = Self.peerAddress(connection)
+        guard let address = peer, BridgePeer.isLocalNetwork(address) else {
+            // Wie in der Anfragezeile einzeilig maskieren: Die Adresse kommt von
+            // außen, und eine abgewiesene Gegenstelle darf `bridge.log` genauso
+            // wenig verbiegen wie eine angenommene.
+            log(L10n.format("core.bridge.rejected_peer",
+                            Self.singleLineLogField(peer ?? "?")))
             connection.cancel()
             return
         }
@@ -219,7 +223,8 @@ public final class BridgeServer: @unchecked Sendable {
         let session = Session(connection: connection, address: address)
         // Wer eine Verbindung öffnet und dann schweigt, belegt sie nicht endlos.
         let timeout = DispatchWorkItem { [weak self] in
-            self?.log(L10n.format("core.bridge.read_timeout", address))
+            self?.log(L10n.format("core.bridge.read_timeout",
+                                  Self.singleLineLogField(address)))
             connection.cancel()
         }
         session.timeout = timeout
@@ -313,7 +318,10 @@ public final class BridgeServer: @unchecked Sendable {
         // Anfragen kommen oft in einem Rutsch an und landen direkt hier — ohne
         // diese Zeile stünde für sie wieder nur ein nacktes „401“ im Protokoll.
         let authFailure = router.authorizationFailure(bearerToken: request.bearerToken)
-        Task { [router] in
+        // Die Task an die Verbindung hängen. Legt die Gegenstelle auf, storniert
+        // `finish` sie, und der Router nimmt eine noch wartende Anfrage dann gar
+        // nicht erst aus der Warteschlange.
+        session.work = Task { [router] in
             let response = await router.respond(to: request)
             var line = L10n.format(
                 "core.bridge.request_log",
@@ -380,6 +388,12 @@ public final class BridgeServer: @unchecked Sendable {
         // sonst noch einen kompletten Request-Body fest.
         session.buffer = Data()
         session.timeout = nil
+        // Angefangene Arbeit stornieren. Nach einer normal ausgelieferten
+        // Antwort ist die Task längst fertig und das bleibt folgenlos; bei einem
+        // echten Verbindungsabbruch gibt es dagegen den Arbeitsplatz der Brücke
+        // sofort frei, statt für niemanden weiterzurechnen.
+        session.work?.cancel()
+        session.work = nil
         openConnections = max(0, openConnections - 1)
     }
 
@@ -434,6 +448,9 @@ public final class BridgeServer: @unchecked Sendable {
         var finished = false
         /// Wurde das Token schon nach dem Kopf geprüft? (Nur einmal nötig.)
         var earlyAuthChecked = false
+        /// Die laufende Verarbeitung dieser Anfrage — damit `finish` sie bei
+        /// einem Verbindungsabbruch stornieren kann.
+        var work: Task<Void, Never>?
 
         init(connection: NWConnection, address: String) {
             self.connection = connection

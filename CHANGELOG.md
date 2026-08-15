@@ -10,6 +10,23 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.11] — unveröffentlicht
+
+### Behoben
+
+- Netzwerk-Brücke: Bricht ein Gerät die Verbindung ab, während seine Anfrage
+  noch in der Warteschlange steht, wird sie jetzt verworfen, statt Transkription
+  und Bereinigung für ein Ergebnis laufen zu lassen, das niemand mehr abholt.
+  Bisher belegte ein Client, der einfach auflegte, den einzigen Arbeitsplatz der
+  Brücke bis zum Ende weiter.
+- Netzwerk-Brücke: Das Ende der Warteschlange hielt nach getaner Arbeit die
+  fertige Antwort der letzten Anfrage fest — bei `/v1/dictate` also den
+  vollständigen diktierten Text. Er blieb dadurch bis zur nächsten Anfrage im
+  Speicher stehen und wird jetzt sofort freigegeben.
+- Netzwerk-Brücke: Auch die Protokollzeilen für eine abgewiesene Gegenstelle und
+  für einen Lese-Timeout maskieren die Adresse jetzt einzeilig. Bisher galt das
+  nur für die Zeile einer angenommenen Anfrage.
+
 ## [0.9.10] — 2026-08-11
 
 ### Behoben

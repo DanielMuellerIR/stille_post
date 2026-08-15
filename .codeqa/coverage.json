@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "project": "stille_post",
+  "campaign": {
+    "id": "20260815T134035935432+0200",
+    "token_budget": 1000000,
+    "status": "active",
+    "started_at": "2026-08-15T13:40:35+02:00"
+  },
+  "campaign_history": [],
+  "scope": {
+    "paths": [
+      "Sources",
+      "Tests",
+      "scripts",
+      "build.sh",
+      "install.sh",
+      "release.sh"
+    ],
+    "exclusions": []
+  },
+  "areas": [
+    {
+      "id": "bridge",
+      "paths": [
+        "Sources/StillePostCore/BridgeServer.swift",
+        "Sources/StillePostCore/BridgeRouter.swift",
+        "Sources/StillePostCore/BridgeProtocol.swift",
+        "Sources/StillePostCore/BridgeToken.swift",
+        "Sources/StillePostCore/BridgeInterfaces.swift",
+        "Sources/StillePostCore/BridgeLogFile.swift",
+        "Tests/StillePostCoreTests/BridgeTests.swift"
+      ],
+      "risk": "critical",
+      "priority": 1,
+      "reason": "Einziger von aussen erreichbarer Netzwerkdienst; Token, Herkunftspruefung, Groessen- und Warteschlangengrenzen sind Sicherheitsgrenzen",
+      "state": "in_progress",
+      "active_run": {
+        "campaign_id": "20260815T134035935432+0200",
+        "started_at": "2026-08-15T13:42:51+02:00",
+        "required_review": "full",
+        "status_at_start": "pending"
+      }
+    },
+    {
+      "id": "cleanup",
+      "paths": [
+        "Sources/StillePostCore/CleanupService.swift",
+        "Sources/StillePostCore/CleanupTransport.swift",
+        "Sources/StillePostCore/TranscriptPolish.swift",
+        "Tests/StillePostCoreTests/CoreTests.swift"
+      ],
+      "risk": "critical",
+      "priority": 1,
+      "reason": "Groesste Datei; Worttreue-/Plausibilitaetspruefung entscheidet, ob ein Diktat verfaelscht ankommt; Datenschutz (kein Key, kein Audio)",
+      "state": "pending"
+    },
+    {
+      "id": "config-state",
+      "paths": [
+        "Sources/StillePostCore/Config.swift",
+        "Sources/StillePostCore/HistoryStore.swift",
+        "Sources/StillePostCore/KeychainUpsert.swift",
+        "Sources/StillePostCore/Localization.swift",
+        "Sources/StillePostCore/PasteboardSnapshot.swift",
+        "Tests/StillePostCoreTests/LocalizationTests.swift",
+        "Sources/StillePostCore/Resources"
+      ],
+      "risk": "high",
+      "priority": 2,
+      "reason": "Zentrale Abhaengigkeit aller anderen Bereiche; Schluesselbund und Diktathistorie sind datenschutzrelevant",
+      "state": "pending"
+    },
+    {
+      "id": "dictation-flow",
+      "paths": [
+        "Sources/StillePostCore/DictationEngine.swift",
+        "Sources/StillePostCore/DictationDependencies.swift"
+      ],
+      "risk": "high",
+      "priority": 2,
+      "reason": "Orchestriert Aufnahme bis Einfuegen; hier gilt die Regel genau eine Bereinigung ueber den Gesamttext",
+      "state": "pending"
+    },
+    {
+      "id": "whisper",
+      "paths": [
+        "Sources/StillePostCore/WhisperClient.swift",
+        "Sources/StillePostCore/WhisperEndpoint.swift",
+        "Sources/StillePostCore/WhisperServerManager.swift",
+        "Sources/StillePostCore/ModelInstaller.swift",
+        "Tests/StillePostCoreTests/ModelInstallerTests.swift"
+      ],
+      "risk": "high",
+      "priority": 2,
+      "reason": "Erzwingt die Loopback-Regel, ueber die Audio den Rechner nicht verlassen darf; Modell-Download prueft Herkunft und Pruefsumme",
+      "state": "pending"
+    },
+    {
+      "id": "audio",
+      "paths": [
+        "Sources/StillePostCore/AudioRecorder.swift",
+        "Sources/StillePostCore/AudioInputDevice.swift",
+        "Sources/StillePostCore/AudioDecoder.swift",
+        "Sources/StillePostCore/WavCodec.swift",
+        "Sources/StillePostCore/VadSegmenter.swift",
+        "Tests/StillePostCoreTests/VadSegmenterTests.swift"
+      ],
+      "risk": "medium",
+      "priority": 3,
+      "reason": "Audioaufnahme, Segmentierung und Formatumwandlung; Fehler hier verfaelschen jedes Diktat an der Quelle",
+      "state": "pending"
+    },
+    {
+      "id": "build-release",
+      "paths": [
+        "scripts",
+        "build.sh",
+        "install.sh",
+        "release.sh"
+      ],
+      "risk": "high",
+      "priority": 3,
+      "reason": "Signatur, Notarisierung und Release-Artefakte; ein Fehler hier liefert einen defekten oder unsignierten Build aus",
+      "state": "pending"
+    },
+    {
+      "id": "cli",
+      "paths": [
+        "Sources/stillepost-cli"
+      ],
+      "risk": "medium",
+      "priority": 3,
+      "reason": "Headless-Zugang fuer Tests und Agenten; darf keine Secrets ausgeben und muss Exit-Codes sauber liefern",
+      "state": "pending"
+    },
+    {
+      "id": "app-ui",
+      "paths": [
+        "Sources/StillePost"
+      ],
+      "risk": "medium",
+      "priority": 4,
+      "reason": "AppKit/SwiftUI-Schicht; soll nur orchestrieren, keine Geschaeftslogik duplizieren; Schluesselbund nie im Renderpfad",
+      "state": "pending"
+    }
+  ],
+  "architecture": {
+    "campaign_id": "20260815T134035935432+0200",
+    "recorded_at": "2026-08-15T13:42:39+02:00",
+    "observed_head": "42f0a5f5b56a75acef8d829135b65a086799259e",
+    "summary": "Die gesamte Fachlogik liegt in StillePostCore hinter einer public API; App und CLI konsumieren dieselbe Logik. Die UI fasst weder URLSession noch Process noch den Schluesselbund direkt an, sondern geht durch den Kern. DictationEngine bekommt seine Mitspieler ueber Protokolle aus DictationDependencies injiziert, dadurch ist der Diktat-Lifecycle ohne Mikrofon, Server und Dateisystem testbar. Zustandswechsel und Ergebnisse fliessen als Closures nach oben und werden dabei bewusst auf den Main-Thread gehoben.",
+    "paradigm": "Schichtenmodell: Kernbibliothek StillePostCore plus zwei duenne Frontends (Menueleisten-App und CLI), innerhalb des Kerns ereignisgetrieben ueber Callbacks",
+    "fit": "passt",
+    "recommendation": "Kein Paradigmenwechsel noetig oder sinnvoll. Das Modell traegt die Anwendung sauber und ist der Grund, warum 156 Tests ohne GUI laufen. Einzig zu beobachten: vereinzelte Frontend-Stellen, die am Kern vorbei selbst HTTP sprechen (stillepost-cli erreicht /api/tags direkt per URLSession) — lokale Verstoesse, die bereichsweise zurueckgebaut gehoeren, keine Strukturfrage."
+  }
+}
