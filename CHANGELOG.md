@@ -26,6 +26,10 @@ Datei mit dem Versions-Bump fortgeschrieben.
 - Netzwerk-Brücke: Auch die Protokollzeilen für eine abgewiesene Gegenstelle und
   für einen Lese-Timeout maskieren die Adresse jetzt einzeilig. Bisher galt das
   nur für die Zeile einer angenommenen Anfrage.
+- Bereinigung: Ein Fehlertext, den der LLM-Dienst im Stream meldet, wird wie
+  jede andere fremde Fehlerantwort auf 300 Zeichen gekürzt, bevor er als Grund
+  in den Verlauf geschrieben wird. Bisher landete er dort in voller Länge — ein
+  einziges kaputtes Gegenüber konnte damit die Verlaufsdatei zumüllen.
 
 ## [0.9.10] — 2026-08-11
 

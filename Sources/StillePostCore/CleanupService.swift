@@ -1035,11 +1035,28 @@ public final class CleanupService {
         case incompleteStream
         case invalidStreamFrame
         case providerError(String)
+
+        /// So viele Zeichen fremden Fehlertexts übernehmen wir höchstens.
+        ///
+        /// Warum das nötig ist: Diese Beschreibungen sammelt `clean()` in
+        /// `failures` und gibt sie als `fallbackReason` weiter — von dort landen
+        /// sie dauerhaft in der Verlaufsdatei und im Verlaufsfenster. Der Text
+        /// stammt aber vom Gegenüber: eine Ollama-Fehlerseite, eine
+        /// HTML-Antwort eines Proxys oder ein beliebig langer `error`-Wert im
+        /// Stream. Ohne Grenze schreibt ein einziges kaputtes Gegenüber seine
+        /// gesamte Ausgabe in den Verlauf.
+        static let maxForeignErrorCharacters = 300
+
+        /// Kürzt fremden Fehlertext auf das Maß oben.
+        static func shortened(_ text: String) -> String {
+            String(text.prefix(maxForeignErrorCharacters))
+        }
+
         public var errorDescription: String? {
             switch self {
             case .badConfig(let detail): return detail
             case .serverError(let body):
-                return L10n.format("core.cleanup.server_error", String(body.prefix(300)))
+                return L10n.format("core.cleanup.server_error", Self.shortened(body))
             case .badResponse:
                 return L10n.text("core.cleanup.bad_response")
             case .unreachable(let url):
@@ -1049,7 +1066,8 @@ public final class CleanupService {
             case .invalidStreamFrame:
                 return L10n.text("core.cleanup.invalid_stream_frame")
             case .providerError(let detail):
-                return L10n.format("core.cleanup.provider_error", detail)
+                // Genau wie `serverError`: Auch dieser Text kommt vom Gegenüber.
+                return L10n.format("core.cleanup.provider_error", Self.shortened(detail))
             }
         }
     }

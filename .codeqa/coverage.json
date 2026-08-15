@@ -5,7 +5,8 @@
     "id": "20260815T134035935432+0200",
     "token_budget": 1000000,
     "status": "active",
-    "started_at": "2026-08-15T13:40:35+02:00"
+    "started_at": "2026-08-15T13:40:35+02:00",
+    "tokens_spent": 101734
   },
   "campaign_history": [],
   "scope": {
@@ -34,12 +35,21 @@
       "risk": "critical",
       "priority": 1,
       "reason": "Einziger von aussen erreichbarer Netzwerkdienst; Token, Herkunftspruefung, Groessen- und Warteschlangengrenzen sind Sicherheitsgrenzen",
-      "state": "in_progress",
-      "active_run": {
+      "state": "completed",
+      "last_run": {
         "campaign_id": "20260815T134035935432+0200",
-        "started_at": "2026-08-15T13:42:51+02:00",
-        "required_review": "full",
-        "status_at_start": "pending"
+        "completed_at": "2026-08-15T13:50:27+02:00",
+        "observed_head": "be4f1380a10204819d29233f79e420e21ec5b279",
+        "content_sha256": "0ef2072da2044c710a3f8d72f38042ea51796cc036c343dae8b3bb64d49e8635",
+        "file_count": 7,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Drei Funde: (1) AGENTS.md verlangt Stornieren angefangener Arbeit bei Verbindungsabbruch — war nicht umgesetzt, die Verarbeitungs-Task hing an nichts; haengt jetzt an der Session, wird in finish() storniert und ueber withTaskCancellationHandler an die Warteschlangen-Task weitergereicht. (2) pipelineTail hielt nach getaner Arbeit die fertige Antwort samt diktiertem Text bis zur naechsten Anfrage im Speicher. (3) Adressmaskierung fuer bridge.log war nur auf einem von drei Protokollwegen umgesetzt. Nebenbei doppelten peerAddress-Aufruf entfernt.",
+        "tests": [
+          "swift build: passed",
+          "swift test: 158 Tests gruen (vorher 156, zwei neue)",
+          "Gegenprobe: beide neuen Tests fallen ohne die Korrektur (abgebrochene Anfrage wurde transkribiert, Zaehler 2 statt 1; pipelineTail nicht nil)"
+        ]
       }
     },
     {
@@ -53,7 +63,13 @@
       "risk": "critical",
       "priority": 1,
       "reason": "Groesste Datei; Worttreue-/Plausibilitaetspruefung entscheidet, ob ein Diktat verfaelscht ankommt; Datenschutz (kein Key, kein Audio)",
-      "state": "pending"
+      "state": "in_progress",
+      "active_run": {
+        "campaign_id": "20260815T134035935432+0200",
+        "started_at": "2026-08-15T13:50:37+02:00",
+        "required_review": "full",
+        "status_at_start": "pending"
+      }
     },
     {
       "id": "config-state",
@@ -153,5 +169,19 @@
     "paradigm": "Schichtenmodell: Kernbibliothek StillePostCore plus zwei duenne Frontends (Menueleisten-App und CLI), innerhalb des Kerns ereignisgetrieben ueber Callbacks",
     "fit": "passt",
     "recommendation": "Kein Paradigmenwechsel noetig oder sinnvoll. Das Modell traegt die Anwendung sauber und ist der Grund, warum 156 Tests ohne GUI laufen. Einzig zu beobachten: vereinzelte Frontend-Stellen, die am Kern vorbei selbst HTTP sprechen (stillepost-cli erreicht /api/tags direkt per URLSession) — lokale Verstoesse, die bereichsweise zurueckgebaut gehoeren, keine Strukturfrage."
-  }
+  },
+  "themes": [
+    {
+      "id": "foreign-error-cap",
+      "summary": "Die Regel 'fremden Fehlertext auf 300 Zeichen kuerzen, bevor er in Verlauf und Oberflaeche geraet' steht an zwei Stellen unabhaengig voneinander: CleanupService.CleanupError.maxForeignErrorCharacters (benannt) und WhisperClient als nackte 300. Beide Fehlertexte landen ueber denselben Weg im Verlauf. Zwei Zahlen, die dasselbe meinen, driften auseinander.",
+      "evidence": [
+        "Sources/StillePostCore/CleanupService.swift",
+        "Sources/StillePostCore/WhisperClient.swift"
+      ],
+      "priority": 3,
+      "state": "pending",
+      "noted_at": "2026-08-15T13:58:10+02:00",
+      "campaign_id": "20260815T134035935432+0200"
+    }
+  ]
 }
