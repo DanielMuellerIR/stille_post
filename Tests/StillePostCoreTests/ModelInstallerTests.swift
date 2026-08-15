@@ -99,6 +99,29 @@ final class ModelInstallerTests: XCTestCase {
                       "Default-Modellpfad und Standardmodell dürfen nicht auseinanderlaufen")
     }
 
+    /// Beide Modelle landen im selben Zielpfad — der steht als `whisper.modelPath`
+    /// in der Konfiguration und ändert sich beim Modellwechsel nicht. Teilten sie
+    /// sich deshalb auch die Teildatei, dann setzte ein Wechsel den abgebrochenen
+    /// Download des anderen Modells fort: Die Bereichsanfrage holte den Rest der
+    /// ANDEREN Datei, die Gesamtgröße stimmte am Ende, und die
+    /// Vollständigkeitsprüfung ließ eine aus zwei Modellen zusammengesetzte Datei
+    /// durch.
+    func testPartialDownloadBelongsToExactlyOneModel() {
+        let target = directory.appendingPathComponent("ggml-large-v3-turbo.bin").path
+        let turbo = ModelInstaller.partialPath(for: ModelCatalog.turbo, at: target)
+        let large = ModelInstaller.partialPath(for: ModelCatalog.largeV3, at: target)
+
+        XCTAssertNotEqual(turbo, large,
+                          "Zwei Modelle dürfen sich am selben Zielpfad keine Teildatei teilen")
+        for partial in [turbo, large] {
+            XCTAssertTrue(partial.hasPrefix(target), "Die Teildatei liegt neben dem Ziel")
+            XCTAssertTrue(partial.hasSuffix(".partial"), "… und bleibt als Teildatei erkennbar")
+            XCTAssertNotEqual(partial, target, "… überschreibt das Ziel aber nie")
+        }
+        XCTAssertTrue(turbo.contains(ModelCatalog.turbo.name),
+                      "Der Modellname macht die Teildatei unterscheidbar")
+    }
+
     func testProgressFraction() {
         XCTAssertEqual(ModelInstaller.Progress(receivedBytes: 50, totalBytes: 200).fraction, 0.25)
         XCTAssertNil(ModelInstaller.Progress(receivedBytes: 50, totalBytes: 0).fraction,

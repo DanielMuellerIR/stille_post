@@ -26,6 +26,13 @@ Datei mit dem Versions-Bump fortgeschrieben.
 - Netzwerk-Brücke: Auch die Protokollzeilen für eine abgewiesene Gegenstelle und
   für einen Lese-Timeout maskieren die Adresse jetzt einzeilig. Bisher galt das
   nur für die Zeile einer angenommenen Anfrage.
+- Modell-Download: Die Teildatei eines abgebrochenen Downloads trägt jetzt den
+  Modellnamen. Beide angebotenen Modelle landen im selben konfigurierten
+  Zielpfad; bisher hieß die Teildatei nur `<ziel>.partial`, und ein Wechsel des
+  Modells setzte den abgebrochenen Download des anderen fort. Am Ende stimmte
+  die Gesamtgröße, und die Vollständigkeitsprüfung ließ eine aus zwei Modellen
+  zusammengesetzte Datei durch. Eine alte `<ziel>.partial` aus einem früheren
+  Abbruch wird nicht mehr fortgesetzt und kann von Hand gelöscht werden.
 - Bereinigung: Ein Fehlertext, den der LLM-Dienst im Stream meldet, wird wie
   jede andere fremde Fehlerantwort auf 300 Zeichen gekürzt, bevor er als Grund
   in den Verlauf geschrieben wird. Bisher landete er dort in voller Länge — ein

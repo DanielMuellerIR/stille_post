@@ -6,7 +6,7 @@
     "token_budget": 1000000,
     "status": "active",
     "started_at": "2026-08-15T13:40:35+02:00",
-    "tokens_spent": 101734
+    "tokens_spent": 149774
   },
   "campaign_history": [],
   "scope": {
@@ -63,12 +63,21 @@
       "risk": "critical",
       "priority": 1,
       "reason": "Groesste Datei; Worttreue-/Plausibilitaetspruefung entscheidet, ob ein Diktat verfaelscht ankommt; Datenschutz (kein Key, kein Audio)",
-      "state": "in_progress",
-      "active_run": {
+      "state": "completed",
+      "last_run": {
         "campaign_id": "20260815T134035935432+0200",
-        "started_at": "2026-08-15T13:50:37+02:00",
-        "required_review": "full",
-        "status_at_start": "pending"
+        "completed_at": "2026-08-15T13:58:45+02:00",
+        "observed_head": "f067fc2a9f17f9a52299289e672ac4b01e21ca72",
+        "content_sha256": "bf26a743c7e281cdb4eed4da9da17e05176f8bb2ed69676f935f9452073fabfd",
+        "file_count": 4,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "CleanupError.serverError kuerzte fremden Fehlertext auf 300 Zeichen, providerError nicht — obwohl beide ueber fallbackReason dauerhaft in der Verlaufsdatei landen und der providerError-Wert direkt aus einem Stream-Frame des Gegenuebers stammt. Grenze heisst jetzt maxForeignErrorCharacters und gilt fuer beide Wege. Uebriger Bereich ohne Beanstandung: Fallback-Semantik, einmaliger Wiederholversuch ueber frische Sitzung, Worttreue-Pruefung samt Sperrliste, Hirschberg-LCS und die deterministischen Stufen entsprechen den Projektregeln und sind durch vorhandene Tests gedeckt.",
+        "tests": [
+          "swift test: 159 Tests gruen (vorher 158)",
+          "Gegenprobe: neuer Test faellt ohne die Aenderung (5000 statt 300 Zeichen)",
+          "scripts/e2e-test.sh: bestanden (STT 4,53 s, Bereinigung 0,51 s via gemma4:e4b-it-qat)"
+        ]
       }
     },
     {
@@ -110,7 +119,13 @@
       "risk": "high",
       "priority": 2,
       "reason": "Erzwingt die Loopback-Regel, ueber die Audio den Rechner nicht verlassen darf; Modell-Download prueft Herkunft und Pruefsumme",
-      "state": "pending"
+      "state": "in_progress",
+      "active_run": {
+        "campaign_id": "20260815T134035935432+0200",
+        "started_at": "2026-08-15T13:58:49+02:00",
+        "required_review": "full",
+        "status_at_start": "pending"
+      }
     },
     {
       "id": "audio",

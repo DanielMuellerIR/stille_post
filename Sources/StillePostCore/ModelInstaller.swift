@@ -129,7 +129,7 @@ public final class ModelInstaller {
                         to rawPath: String,
                         onProgress: (@Sendable (Progress) -> Void)? = nil) async throws -> String {
         let path = Config.expandPath(rawPath)
-        let partialPath = path + ".partial"
+        let partialPath = Self.partialPath(for: model, at: path)
         let manager = FileManager.default
 
         try manager.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
@@ -160,6 +160,22 @@ public final class ModelInstaller {
         }
         try manager.moveItem(atPath: partialPath, toPath: path)
         return path
+    }
+
+    /// Pfad der Teildatei eines angefangenen Downloads.
+    ///
+    /// Der Modellname MUSS im Namen stehen. Beide angebotenen Modelle landen im
+    /// selben Zielpfad — der steht als `whisper.modelPath` in der Konfiguration
+    /// und ändert sich nicht, wenn man ein anderes Modell lädt. Hieß die
+    /// Teildatei nur `<ziel>.partial`, dann setzte
+    /// `stillepost-cli install-model large-v3` nach einem abgebrochenen
+    /// Turbo-Download dessen Reste fort: Die Bereichsanfrage holte den Rest der
+    /// ANDEREN Datei, am Ende stimmte die Gesamtgröße, und die
+    /// Vollständigkeitsprüfung ließ eine aus zwei Modellen zusammengesetzte
+    /// Datei durch. Mit dem Namen darin findet ein Modellwechsel schlicht keine
+    /// passende Teildatei und lädt sauber von vorn.
+    static func partialPath(for model: WhisperModel, at path: String) -> String {
+        path + ".\(model.name).partial"
     }
 
     /// Verbindliche Größe per HEAD holen.
