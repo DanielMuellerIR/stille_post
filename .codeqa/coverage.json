@@ -6,7 +6,7 @@
     "token_budget": 1000000,
     "status": "active",
     "started_at": "2026-08-15T13:40:35+02:00",
-    "tokens_spent": 258913
+    "tokens_spent": 329844
   },
   "campaign_history": [],
   "scope": {
@@ -202,7 +202,23 @@
       "risk": "high",
       "priority": 3,
       "reason": "Signatur, Notarisierung und Release-Artefakte; ein Fehler hier liefert einen defekten oder unsignierten Build aus",
-      "state": "pending"
+      "state": "completed",
+      "last_run": {
+        "campaign_id": "20260815T134035935432+0200",
+        "completed_at": "2026-08-15T14:28:17+02:00",
+        "observed_head": "fae3a6ed9400b410a197a5bf84e2326ed15393f6",
+        "content_sha256": "b6e9f604157efab8d219fb4fbf73d94f3043bf65058b4d9d0911d0e2eab3a753",
+        "file_count": 10,
+        "review": "full",
+        "outcome": "reviewed-clean",
+        "summary": "Zwei Verdachtsmomente geprueft und beide widerlegt, deshalb keine Aenderung. (1) Der Ad-hoc-Signaturzweig in build-app.sh signiert nur das aeussere Bundle, waehrend der Developer-ID-Zweig ausdruecklich von innen nach aussen signiert — nachgestellt mit ad-hoc signierter CLI plus strip: die Tiefenpruefung laeuft trotzdem durch, strip erhaelt die Ad-hoc-Signatur. (2) build-app.sh --install faengt beim Zwischenpfad in /Applications nur EXIT ab, release.sh dagegen zusaetzlich INT und TERM. Erste Messung schien das zu bestaetigen, war aber falsch: Hintergrundjobs eines Skripts ignorieren SIGINT, und das Signal erreichte den Kindprozess nie. Mit echter Prozessgruppe (set -m, kill an die Gruppe) raeumen beide Varianten bei INT und TERM auf und enden mit 130/143. Eine bereits vorgenommene Aenderung wurde daraufhin zurueckgenommen. Nur beobachtet, bewusst nicht angefasst: release.sh und install.sh loesen den Notary-Profilnamen mit demselben Zehnzeiler auf — eine Zusammenfuehrung liesse sich hier ohne Apple-Roundtrip nicht verifizieren, und das sind die riskantesten Skripte des Projekts.",
+        "tests": [
+          "scripts/test-release-publication.sh: bestanden (Signal-/Rollback-Vertrag von release.sh)",
+          "bash -n ueber alle zehn Skripte: fehlerfrei",
+          "./build.sh: Bundle gebaut und signiert; codesign --verify --deep --strict: valid on disk",
+          "shellcheck: nicht installiert, deshalb NICHT ausgefuehrt"
+        ]
+      }
     },
     {
       "id": "cli",
@@ -212,12 +228,20 @@
       "risk": "medium",
       "priority": 3,
       "reason": "Headless-Zugang fuer Tests und Agenten; darf keine Secrets ausgeben und muss Exit-Codes sauber liefern",
-      "state": "in_progress",
-      "active_run": {
+      "state": "completed",
+      "last_run": {
         "campaign_id": "20260815T134035935432+0200",
-        "started_at": "2026-08-15T14:13:19+02:00",
-        "required_review": "full",
-        "status_at_start": "pending"
+        "completed_at": "2026-08-15T14:19:04+02:00",
+        "observed_head": "fae3a6ed9400b410a197a5bf84e2326ed15393f6",
+        "content_sha256": "7fd5f5ae80a89bf54605e6059e31b3377c84faee88f5999a1ad9464cf242c116",
+        "file_count": 1,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "checkEndpoint packte die aus der Konfiguration zusammengesetzte Tags-Adresse mit URL(string:)! erzwungen aus. Eine unbrauchbare ollamaURL (Leerzeichen im Hostnamen genuegt) liess doctor mit \"Fatal error: Unexpectedly found nil\" abstuerzen — ohne Meldung und ohne Exit-Code, ausgerechnet bei dem Befehl, den man wegen einer kaputten Konfiguration aufruft. Wird jetzt wie ein nicht erreichbarer Endpunkt gemeldet. Gleiche Stelle: Anfrage ohne eigene Frist (60 s Voreinstellung je totem Endpunkt) bekommt 5 Sekunden. Uebriger Bereich ohne Beanstandung: Secrets gehen nirgends nach argv, Diagnose nach stderr und Ergebnis nach stdout, Exit-Codes 0/1/2 sauber getrennt.",
+        "tests": [
+          "Reproduktion vor der Aenderung: Fatal error in main.swift:152; nach der Aenderung klare Meldung und Exit-Code 1",
+          "swift test: 162 Tests gruen (der CLI-Einstieg selbst ist ein top-level main.swift ohne Unit-Tests)"
+        ]
       }
     },
     {
@@ -228,7 +252,13 @@
       "risk": "medium",
       "priority": 4,
       "reason": "AppKit/SwiftUI-Schicht; soll nur orchestrieren, keine Geschaeftslogik duplizieren; Schluesselbund nie im Renderpfad",
-      "state": "pending"
+      "state": "in_progress",
+      "active_run": {
+        "campaign_id": "20260815T134035935432+0200",
+        "started_at": "2026-08-15T14:28:22+02:00",
+        "required_review": "full",
+        "status_at_start": "pending"
+      }
     }
   ],
   "architecture": {

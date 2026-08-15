@@ -100,6 +100,7 @@
 "settings.cleanup.keep_alive.unload" = "sofort entladen";
 "settings.cleanup.api_key_new" = "Neuen API-Key eintragen";
 "settings.cleanup.api_key_store" = "Im Schlüsselbund speichern";
+"settings.cleanup.api_key_storing" = "Speichere …";
 "settings.cleanup.api_key_saved" = "Gespeichert.";
 "settings.cleanup.api_key_error" = "Fehler: %@";
 "settings.cleanup.api_key_check" = "Status prüfen";

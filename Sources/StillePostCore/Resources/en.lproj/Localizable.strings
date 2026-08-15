@@ -100,6 +100,7 @@
 "settings.cleanup.keep_alive.unload" = "unload immediately";
 "settings.cleanup.api_key_new" = "Enter a new API key";
 "settings.cleanup.api_key_store" = "Save in Keychain";
+"settings.cleanup.api_key_storing" = "Saving …";
 "settings.cleanup.api_key_saved" = "Saved.";
 "settings.cleanup.api_key_error" = "Error: %@";
 "settings.cleanup.api_key_check" = "Check status";

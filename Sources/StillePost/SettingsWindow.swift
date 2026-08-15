@@ -419,38 +419,63 @@ private struct APIKeyRow: View {
     let envVar: String
     @State private var newKey = ""
     @State private var status: String?
+    /// Läuft gerade eine Schlüsselbund-Aktion? Sperrt beide Knöpfe — wie in
+    /// `BridgeRow`, damit Speichern und Prüfen sich nicht überholen.
+    @State private var busy = false
 
     var body: some View {
         HStack {
             SecureField(L10n.text("settings.cleanup.api_key_new"), text: $newKey)
-            Button(L10n.text("settings.cleanup.api_key_store")) {
-                do {
-                    try CleanupService.storeRemoteAPIKey(newKey)
-                    newKey = ""
-                    status = L10n.text("settings.cleanup.api_key_saved")
-                } catch {
-                    status = L10n.format("settings.cleanup.api_key_error", error.localizedDescription)
-                }
-            }
-            .disabled(newKey.isEmpty)
+            Button(L10n.text("settings.cleanup.api_key_store")) { store() }
+                .disabled(newKey.isEmpty || busy)
         }
         HStack {
-            Button(L10n.text("settings.cleanup.api_key_check")) {
-                status = L10n.text("settings.cleanup.api_key_checking")
-                Task.detached {
-                    let found = CleanupService.remoteAPIKey(envVar: envVar) != nil
-                    await MainActor.run {
-                        status = found
-                            ? L10n.format("settings.cleanup.api_key_found", envVar)
-                            : L10n.text("settings.cleanup.api_key_missing")
-                    }
-                }
-            }
+            Button(L10n.text("settings.cleanup.api_key_check")) { check() }
+                .disabled(busy)
             Text(status ?? L10n.text("settings.cleanup.api_key_privacy"))
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .frame(maxWidth: 500, alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Speichert den eingegebenen Key im Schlüsselbund.
+    ///
+    /// Der SCHREIBzugriff läuft genauso abseits des Main-Threads wie der Lesezugriff
+    /// darunter: Auch er kann den modalen Berechtigungsdialog auslösen, und der
+    /// blockierte dann das Einstellungsfenster — dieselbe Begründung wie oben und
+    /// in `BridgeRow`. Bisher lief er synchron im Knopfdruck.
+    @MainActor private func store() {
+        guard !busy else { return }
+        let key = newKey
+        busy = true
+        status = L10n.text("settings.cleanup.api_key_storing")
+        Task {
+            defer { busy = false }
+            do {
+                try await Task.detached { try CleanupService.storeRemoteAPIKey(key) }.value
+                newKey = ""
+                status = L10n.text("settings.cleanup.api_key_saved")
+            } catch {
+                status = L10n.format("settings.cleanup.api_key_error", error.localizedDescription)
+            }
+        }
+    }
+
+    /// Meldet nur, OB ein Key hinterlegt ist — angezeigt wird er nie.
+    @MainActor private func check() {
+        guard !busy else { return }
+        busy = true
+        status = L10n.text("settings.cleanup.api_key_checking")
+        Task {
+            defer { busy = false }
+            let found = await Task.detached {
+                CleanupService.remoteAPIKey(envVar: envVar) != nil
+            }.value
+            status = found
+                ? L10n.format("settings.cleanup.api_key_found", envVar)
+                : L10n.text("settings.cleanup.api_key_missing")
         }
     }
 }

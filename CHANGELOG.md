@@ -26,6 +26,11 @@ Datei mit dem Versions-Bump fortgeschrieben.
 - Netzwerk-Brücke: Auch die Protokollzeilen für eine abgewiesene Gegenstelle und
   für einen Lese-Timeout maskieren die Adresse jetzt einzeilig. Bisher galt das
   nur für die Zeile einer angenommenen Anfrage.
+- Einstellungen: „Im Schlüsselbund speichern“ arbeitet jetzt abseits des
+  Haupt-Threads, genau wie die Prüfung daneben und wie die Token-Knöpfe der
+  Brücke. Zeigt macOS beim Speichern einen Berechtigungsdialog, blockiert er
+  nicht mehr das Einstellungsfenster. Beide Knöpfe sind währenddessen gesperrt,
+  damit Speichern und Prüfen sich nicht überholen.
 - `stillepost-cli doctor` stürzt nicht mehr ab, wenn in der Konfiguration eine
   unbrauchbare Ollama-Adresse steht (etwa mit Leerzeichen im Hostnamen). Der
   Befund wird jetzt wie ein nicht erreichbarer Endpunkt gemeldet — ausgerechnet
