@@ -269,11 +269,11 @@ einen chirurgischen Fix ist, und die Reste zweier Fixes.
 - GitHub-Push-Stopp aufgehoben (2026-08-10). Die Bedingung „bis die App
   sinnvoll nutzbar ist" ist erfüllt: Lokales Diktat läuft, und das Diktat vom
   iPhone ist über die vollständige Kette einmal am Gerät bestätigt.
-- Sparkle-Erstveröffentlichung: ERLEDIGT (geprüft 2026-08-10). Pages liefert den
-  Feed, die Team-ID steht als Actions-Variable, der private Schlüssel als
-  Actions-Secret, und der Appcast-Workflow lief bei allen Releases bis
-  einschließlich 0.9.0 erfolgreich. Offen bleibt allein die Probe am Gerät: einen
-  echten Updatelauf von einer älteren Fassung bis zum Neustart durchspielen.
+- Sparkle: VOLLSTÄNDIG ERLEDIGT. Die Erstveröffentlichung war am 2026-08-10
+  geprüft (Pages liefert den Feed, Team-ID als Actions-Variable, privater
+  Schlüssel als Actions-Secret, Appcast-Workflow bei allen Releases erfolgreich).
+  Die zuletzt offene Probe am Gerät — ein echter Updatelauf von einer älteren
+  Fassung — ist am 2026-08-15 bestätigt.
 - Mehrtägigen Realbetrieb auf beiden vorgesehenen Macs durchführen und Befunde mit
   Datum, Build und Konfiguration notieren.
 - Cleanup-Modell-Benchmark: ERLEDIGT (2026-07-23). Evidenzbasierter Default ist jetzt
