@@ -26,6 +26,11 @@ Datei mit dem Versions-Bump fortgeschrieben.
 - Netzwerk-Brücke: Auch die Protokollzeilen für eine abgewiesene Gegenstelle und
   für einen Lese-Timeout maskieren die Adresse jetzt einzeilig. Bisher galt das
   nur für die Zeile einer angenommenen Anfrage.
+- Verlauf: Der gespeicherte Name einer zurückbehaltenen Aufnahme wird jetzt auch
+  beim Lesen geprüft und nicht nur beim Löschen. Ein Name, der aus dem
+  Aufnahme-Ordner herausführt, ergibt keinen Lesepfad mehr — „Erneut
+  transkribieren“ hätte sonst eine beliebige Datei an den whisper-server
+  geschickt.
 - Modell-Download: Die Teildatei eines abgebrochenen Downloads trägt jetzt den
   Modellnamen. Beide angebotenen Modelle landen im selben konfigurierten
   Zielpfad; bisher hieß die Teildatei nur `<ziel>.partial`, und ein Wechsel des

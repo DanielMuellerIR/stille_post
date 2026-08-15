@@ -6,7 +6,7 @@
     "token_budget": 1000000,
     "status": "active",
     "started_at": "2026-08-15T13:40:35+02:00",
-    "tokens_spent": 149774
+    "tokens_spent": 187085
   },
   "campaign_history": [],
   "scope": {
@@ -94,7 +94,13 @@
       "risk": "high",
       "priority": 2,
       "reason": "Zentrale Abhaengigkeit aller anderen Bereiche; Schluesselbund und Diktathistorie sind datenschutzrelevant",
-      "state": "pending"
+      "state": "in_progress",
+      "active_run": {
+        "campaign_id": "20260815T134035935432+0200",
+        "started_at": "2026-08-15T14:03:18+02:00",
+        "required_review": "full",
+        "status_at_start": "pending"
+      }
     },
     {
       "id": "dictation-flow",
@@ -119,12 +125,20 @@
       "risk": "high",
       "priority": 2,
       "reason": "Erzwingt die Loopback-Regel, ueber die Audio den Rechner nicht verlassen darf; Modell-Download prueft Herkunft und Pruefsumme",
-      "state": "in_progress",
-      "active_run": {
+      "state": "completed",
+      "last_run": {
         "campaign_id": "20260815T134035935432+0200",
-        "started_at": "2026-08-15T13:58:49+02:00",
-        "required_review": "full",
-        "status_at_start": "pending"
+        "completed_at": "2026-08-15T14:03:08+02:00",
+        "observed_head": "8289373452fcb3b77cb3613693e573a576cd61c5",
+        "content_sha256": "5b4c6e93c3965414ded845d5e6e59ea4b919141ca65ed5fe20865a0ebafb083f",
+        "file_count": 5,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "ModelInstaller.install nannte die Teildatei nur <ziel>.partial, obwohl der Zielpfad aus whisper.modelPath kommt und fuer beide Modelle derselbe ist. Ein Modellwechsel setzte deshalb den abgebrochenen Download des anderen Modells fort und erzeugte eine groessenrichtige, inhaltlich gemischte Datei, die die Vollstaendigkeitspruefung passierte. Teildatei traegt jetzt den Modellnamen. Geprueft und in Ordnung: Loopback-Sperre in WhisperEndpoint haelt auch gegen fuehrende Nullen und Kurzformen (mit getaddrinfo nachgemessen), Weiterleitungs-Sperre in WhisperClient, Besitzvertrag in WhisperServerManager, Symlink-Erkennung ueber lstat.",
+        "tests": [
+          "swift test: 160 Tests gruen (vorher 159)",
+          "getaddrinfo-Gegenprobe: 0127.0.0.1, 127.0.0.010, 127.000.000.001 loesen alle nach 127.x auf — kein Oktal-Bypass"
+        ]
       }
     },
     {

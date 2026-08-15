@@ -112,8 +112,13 @@ public final class HistoryStore {
     public var recordingsDir: URL { audioDir }
 
     /// Absoluter Pfad zur Audio-Datei eines Eintrags (falls vorhanden).
+    ///
+    /// Der Name wird hier genauso geprüft wie beim Löschen: Er kommt aus
+    /// `history.json` und darf den Aufnahme-Ordner nicht verlassen. „Erneut
+    /// transkribieren“ liest die Datei über diesen Weg und schickte sonst eine
+    /// beliebige Datei des Rechners an den whisper-server.
     public func audioURL(for entry: Entry) -> URL? {
-        guard let name = entry.audioFileName else { return nil }
+        guard let name = entry.audioFileName.flatMap(Self.safeAudioName) else { return nil }
         return audioDir.appendingPathComponent(name)
     }
 
@@ -218,8 +223,22 @@ public final class HistoryStore {
         return try body()
     }
 
-    private func removeAudioFile(named name: String) throws {
+    /// Gibt den Namen zurück, wenn er wirklich nur ein Dateiname ist — sonst nil.
+    ///
+    /// `lastPathComponent` ist hier das Maß: Bei „../woanders.wav“ oder
+    /// „unter/ordner.wav“ liefert es etwas anderes als den Namen selbst, und
+    /// genau daran erkennt man den Ausbruch aus dem Aufnahme-Ordner. Lesen und
+    /// Löschen benutzen dieselbe Prüfung; eine Angabe, die zum Löschen zu
+    /// unsicher ist, darf auch nicht gelesen werden.
+    private static func safeAudioName(_ name: String) -> String? {
         guard !name.isEmpty, URL(fileURLWithPath: name).lastPathComponent == name else {
+            return nil
+        }
+        return name
+    }
+
+    private func removeAudioFile(named name: String) throws {
+        guard let name = Self.safeAudioName(name) else {
             throw PersistenceError.unsafeAudioFileName
         }
         let url = audioDir.appendingPathComponent(name)

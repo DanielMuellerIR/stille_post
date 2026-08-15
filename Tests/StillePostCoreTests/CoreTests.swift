@@ -1201,6 +1201,34 @@ final class CoreTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
     }
 
+    func testAudioNameThatLeavesTheRecordingsFolderIsRefusedOnBothPaths() throws {
+        // `audioFileName` steht in history.json. Beim Löschen war ein Ausbruch aus
+        // dem Aufnahme-Ordner längst abgefangen, beim Lesen nicht — dabei ist
+        // gerade der Lesepfad der gefährlichere: „Erneut transkribieren“ hätte
+        // eine beliebige Datei des Rechners an den whisper-server geschickt.
+        let baseDir = FileManager.default.temporaryDirectory.appendingPathComponent("sp-name-\(UUID())")
+        try FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: baseDir) }
+        let store = HistoryStore(baseDir: baseDir)
+
+        for unsafe in ["../heimlich.wav", "unter/ordner.wav", "/etc/passwd", ""] {
+            let entry = HistoryStore.Entry(rawText: "", cleanText: "", status: "failed",
+                                           audioFileName: unsafe, durationSec: 1)
+            XCTAssertNil(store.audioURL(for: entry),
+                         "„\(unsafe)“ darf keinen Lesepfad ergeben")
+            XCTAssertThrowsError(try store.deleteAudio(for: entry),
+                                 "„\(unsafe)“ darf auch nicht gelöscht werden")
+        }
+
+        // Gegenprobe: Ein normaler Name aus `newRecordingURL` bleibt benutzbar.
+        let regular = HistoryStore.Entry(
+            rawText: "", cleanText: "", status: "failed",
+            audioFileName: store.newRecordingURL().lastPathComponent, durationSec: 1
+        )
+        XCTAssertNotNil(store.audioURL(for: regular))
+        XCTAssertNoThrow(try store.deleteAudio(for: regular))
+    }
+
     func testHistoryStoresReloadInsideCrossProcessLock() throws {
         let baseDir = FileManager.default.temporaryDirectory.appendingPathComponent("sp-lock-\(UUID())")
         defer { try? FileManager.default.removeItem(at: baseDir) }
