@@ -6,7 +6,7 @@
     "token_budget": 1000000,
     "status": "active",
     "started_at": "2026-08-15T13:40:35+02:00",
-    "tokens_spent": 187085
+    "tokens_spent": 205909
   },
   "campaign_history": [],
   "scope": {
@@ -66,17 +66,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260815T134035935432+0200",
-        "completed_at": "2026-08-15T13:58:45+02:00",
-        "observed_head": "f067fc2a9f17f9a52299289e672ac4b01e21ca72",
-        "content_sha256": "bf26a743c7e281cdb4eed4da9da17e05176f8bb2ed69676f935f9452073fabfd",
+        "completed_at": "2026-08-15T14:06:38+02:00",
+        "observed_head": "68f6bf393d419d7fed167bf73f3adfb8c55e60c5",
+        "content_sha256": "0f44555fddff1510ba57e59ae76d1922ce1da27969ec626f5beac5b45660595c",
         "file_count": 4,
-        "review": "full",
-        "outcome": "improved",
-        "summary": "CleanupError.serverError kuerzte fremden Fehlertext auf 300 Zeichen, providerError nicht — obwohl beide ueber fallbackReason dauerhaft in der Verlaufsdatei landen und der providerError-Wert direkt aus einem Stream-Frame des Gegenuebers stammt. Grenze heisst jetzt maxForeignErrorCharacters und gilt fuer beide Wege. Uebriger Bereich ohne Beanstandung: Fallback-Semantik, einmaliger Wiederholversuch ueber frische Sitzung, Worttreue-Pruefung samt Sperrliste, Hirschberg-LCS und die deterministischen Stufen entsprechen den Projektregeln und sind durch vorhandene Tests gedeckt.",
+        "review": "delta-plus-boundaries",
+        "outcome": "reviewed-clean",
+        "summary": "Delta ist ausschliesslich der im Bereich config-state hinzugefuegte HistoryStore-Test in CoreTests.swift (28 Zeilen, reiner Testzuwachs, keine Produktivaenderung). Er wurde dort geschrieben, gegengeprueft und laeuft gruen; an der Bereinigungslogik hat sich nichts geaendert.",
         "tests": [
-          "swift test: 159 Tests gruen (vorher 158)",
-          "Gegenprobe: neuer Test faellt ohne die Aenderung (5000 statt 300 Zeichen)",
-          "scripts/e2e-test.sh: bestanden (STT 4,53 s, Bereinigung 0,51 s via gemma4:e4b-it-qat)"
+          "swift test: 161 Tests gruen"
         ]
       }
     },
@@ -94,12 +92,20 @@
       "risk": "high",
       "priority": 2,
       "reason": "Zentrale Abhaengigkeit aller anderen Bereiche; Schluesselbund und Diktathistorie sind datenschutzrelevant",
-      "state": "in_progress",
-      "active_run": {
+      "state": "completed",
+      "last_run": {
         "campaign_id": "20260815T134035935432+0200",
-        "started_at": "2026-08-15T14:03:18+02:00",
-        "required_review": "full",
-        "status_at_start": "pending"
+        "completed_at": "2026-08-15T14:06:25+02:00",
+        "observed_head": "68f6bf393d419d7fed167bf73f3adfb8c55e60c5",
+        "content_sha256": "801587604262e2a882e3551d76c7e5f7f767a318f64d2ba8f0f8b54ef2bd95ee",
+        "file_count": 10,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "HistoryStore.audioURL(for:) setzte den in history.json gespeicherten Aufnahme-Namen ungeprueft zu einem Pfad zusammen, waehrend removeAudioFile denselben Namen laengst gegen Ausbruch aus dem Aufnahme-Ordner absicherte. Der Lesepfad ist der gefaehrlichere, weil DictationEngine.retry die Datei darueber an den whisper-server schickt. Beide Wege benutzen jetzt safeAudioName. Uebriger Bereich ohne Beanstandung; nur beobachtet: cleanup.numCtx ohne Wertegrenze (Folge waere lediglich ein scheiterndes Ollama und Rueckfall auf Rohtext).",
+        "tests": [
+          "swift test: 161 Tests gruen (vorher 160)",
+          "Gegenprobe: neuer Test faellt ohne die Aenderung (aus ../heimlich.wav entstand ein Lesepfad)"
+        ]
       }
     },
     {
@@ -111,7 +117,13 @@
       "risk": "high",
       "priority": 2,
       "reason": "Orchestriert Aufnahme bis Einfuegen; hier gilt die Regel genau eine Bereinigung ueber den Gesamttext",
-      "state": "pending"
+      "state": "in_progress",
+      "active_run": {
+        "campaign_id": "20260815T134035935432+0200",
+        "started_at": "2026-08-15T14:06:43+02:00",
+        "required_review": "full",
+        "status_at_start": "pending"
+      }
     },
     {
       "id": "whisper",

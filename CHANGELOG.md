@@ -26,6 +26,11 @@ Datei mit dem Versions-Bump fortgeschrieben.
 - Netzwerk-Brücke: Auch die Protokollzeilen für eine abgewiesene Gegenstelle und
   für einen Lese-Timeout maskieren die Adresse jetzt einzeilig. Bisher galt das
   nur für die Zeile einer angenommenen Anfrage.
+- Diktat-Ablauf: Bricht das Stoppen an einer internen Prüfung ab, geht die
+  Maschine zurück auf „bereit“ statt dauerhaft in „verarbeitet“ stehen zu
+  bleiben. In diesem Zustand ignoriert der Hotkey jeden Tastendruck — die App
+  wäre bis zum Neustart taub gewesen. Der Fall ist mit dem heutigen Ablauf nicht
+  auslösbar; die Sackgasse ist trotzdem weg.
 - Verlauf: Der gespeicherte Name einer zurückbehaltenen Aufnahme wird jetzt auch
   beim Lesen geprüft und nicht nur beim Löschen. Ein Name, der aus dem
   Aufnahme-Ordner herausführt, ergibt keinen Lesepfad mehr — „Erneut

@@ -281,7 +281,16 @@ public final class DictationEngine {
             return
         }
 
-        guard let collector = segmentResults else { return }
+        guard let collector = segmentResults else {
+            // Heute unerreichbar: `beginRecording` setzt den Sammler, bevor es
+            // `.recording` meldet, und der Wächter oben verlangt genau diesen
+            // Zustand. Ohne das Zurücksetzen bliebe die Maschine hier aber für
+            // immer in `.processing` stehen — `toggle()` ignoriert diesen Zustand,
+            // die App wäre bis zum Neustart taub. Ein Wächter darf keinen
+            // Endzustand hinterlassen, aus dem es keinen Weg zurück gibt.
+            setState(.idle)
+            return
+        }
         segmentResults = nil
 
         let generation = sessionGeneration
@@ -480,27 +489,31 @@ public final class DictationEngine {
             recordingStart = nil
         }
         state = newState
-        if Thread.isMainThread {
-            onStateChange?(newState)
-        } else {
-            DispatchQueue.main.async { self.onStateChange?(newState) }
-        }
+        Self.onMain { self.onStateChange?(newState) }
     }
 
     /// Liefert das fertige Diktat garantiert auf dem Main-Thread aus.
-    ///
-    /// `finishSession` ist eine `nonisolated async`-Funktion und läuft deshalb auf
-    /// dem globalen Concurrency-Executor (Cooperative-Pool) — AUCH wenn `stop()`
-    /// den Aufruf in `Task { @MainActor in … }` kapselt: Swift hebt eine
-    /// nonisolated-async-Funktion nach dem Await bewusst vom Aufrufer-Actor herunter.
-    /// `onResult` fasst aber AppKit an (Overlay-Panel, Statusicon); AppKit bricht ab
-    /// macOS 26 hart ab ("Must only be used from the main thread"), wenn das off-main
-    /// geschieht. Wie `setState` deshalb hier auf den Main-Thread heben.
     private func deliverResult(_ result: DictationResult) {
+        Self.onMain { self.onResult?(result) }
+    }
+
+    /// Ruft `work` auf dem Main-Thread auf — sofort, wenn wir schon dort sind.
+    ///
+    /// Warum jede Rückmeldung der Engine hier durchmuss: `finishSession` ist eine
+    /// `nonisolated async`-Funktion und läuft deshalb auf dem globalen
+    /// Concurrency-Executor (Cooperative-Pool) — AUCH wenn `stop()` den Aufruf in
+    /// `Task { @MainActor in … }` kapselt: Swift hebt eine nonisolated-async-Funktion
+    /// nach dem Await bewusst vom Aufrufer-Actor herunter. `onStateChange` und
+    /// `onResult` fassen aber AppKit an (Statusicon, Overlay-Panel); AppKit bricht ab
+    /// macOS 26 hart ab („Must only be used from the main thread“), wenn das off-main
+    /// geschieht.
+    ///
+    /// Die Weiche stand vorher zweimal wortgleich da — einmal je Rückmeldung.
+    private static func onMain(_ work: @escaping @Sendable () -> Void) {
         if Thread.isMainThread {
-            onResult?(result)
+            work()
         } else {
-            DispatchQueue.main.async { self.onResult?(result) }
+            DispatchQueue.main.async(execute: work)
         }
     }
 
