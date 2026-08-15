@@ -70,6 +70,26 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(restored[1599], -0.5, accuracy: 0.001)
     }
 
+    func testDiskAndNetworkWavCarryTheSameBytes() throws {
+        // Dasselbe Audio geht auf zwei Wegen weiter: als WAV per HTTP an den
+        // whisper-server und fortlaufend als Datei auf Platte. „Erneut
+        // transkribieren“ liest später die Datei — sie muss genau das Audio
+        // enthalten, das das Live-Diktat schon gesehen hat. Beide Wege benutzen
+        // deshalb dieselbe Umrechnung; dieser Test hält sie zusammen.
+        let samples: [Float] = [0, 0.5, -0.5, 0.123, -0.987,
+                                1, -1, 2, -2]  // die letzten vier prüfen die Begrenzung
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("writer-parity-\(UUID()).wav")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let writer = try WavFileWriter(url: url)
+        try writer.append(samples)
+        try writer.finish()
+
+        XCTAssertEqual(try Data(contentsOf: url), WavCodec.wavData(from: samples),
+                       "Datei und Netz-WAV müssen Byte für Byte übereinstimmen")
+    }
+
     func testWavFileWriterRetainsAndReportsFirstAppendFailure() throws {
         enum Expected: Error { case diskFull }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("writer-fail-\(UUID()).wav")

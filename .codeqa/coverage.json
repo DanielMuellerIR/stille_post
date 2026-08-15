@@ -6,7 +6,7 @@
     "token_budget": 1000000,
     "status": "active",
     "started_at": "2026-08-15T13:40:35+02:00",
-    "tokens_spent": 205909
+    "tokens_spent": 240021
   },
   "campaign_history": [],
   "scope": {
@@ -117,12 +117,21 @@
       "risk": "high",
       "priority": 2,
       "reason": "Orchestriert Aufnahme bis Einfuegen; hier gilt die Regel genau eine Bereinigung ueber den Gesamttext",
-      "state": "in_progress",
-      "active_run": {
+      "state": "completed",
+      "last_run": {
         "campaign_id": "20260815T134035935432+0200",
-        "started_at": "2026-08-15T14:06:43+02:00",
-        "required_review": "full",
-        "status_at_start": "pending"
+        "completed_at": "2026-08-15T14:09:49+02:00",
+        "observed_head": "db6a8f7ccd87774ea9106c32eebcd881a0942e29",
+        "content_sha256": "fc446c1699899fe722764dad8d5ce751cf299d8b940a18e38ea4e28c6efb56e7",
+        "file_count": 2,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "Zwei Punkte: (1) setState und deliverResult hatten dieselbe Main-Thread-Weiche wortgleich doppelt — steht jetzt einmal als onMain, Begruendung mitgewandert, Verhalten unveraendert. (2) Der Waechter 'guard let collector = segmentResults' in stop() kehrte wortlos zurueck und liess die Maschine in .processing stehen, wo toggle() jeden Tastendruck ignoriert; heute nicht ausloesbar, aber die Sackgasse ist weg. Geprueft und in Ordnung: Generationszaehlung an jedem Await-Punkt, SegmentCollector-Reihenfolge, WAV-Aufbewahrung nach AGENTS.md.",
+        "tests": [
+          "swift test: 161 Tests gruen, darunter testResultIsDeliveredOnMainThread als Vertrag fuer die zusammengefuehrte Weiche",
+          "./build.sh: Bundle gebaut; codesign --verify --deep --strict: valid on disk, satisfies its Designated Requirement",
+          "Eingebettete CLI aus dem Bundle mit isoliertem STILLEPOST_APP_SUPPORT gestartet: laeuft (kein GUI-Start mit Fensterfokus)"
+        ]
       }
     },
     {
@@ -166,7 +175,13 @@
       "risk": "medium",
       "priority": 3,
       "reason": "Audioaufnahme, Segmentierung und Formatumwandlung; Fehler hier verfaelschen jedes Diktat an der Quelle",
-      "state": "pending"
+      "state": "in_progress",
+      "active_run": {
+        "campaign_id": "20260815T134035935432+0200",
+        "started_at": "2026-08-15T14:09:54+02:00",
+        "required_review": "full",
+        "status_at_start": "pending"
+      }
     },
     {
       "id": "build-release",

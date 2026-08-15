@@ -13,14 +13,26 @@ public enum WavCodec {
     /// Baut eine komplette WAV-Datei (Header + Daten) im Speicher aus Float-Samples.
     /// 16-Bit PCM, mono, 16 kHz — kompakt genug, um Segmente per HTTP zu verschicken.
     public static func wavData(from samples: [Float]) -> Data {
-        // Float (-1...1) in 16-Bit-Ganzzahlen umrechnen (mit Begrenzung gegen Übersteuerung).
+        let pcm = pcm16(from: samples)
+        return wavHeader(dataByteCount: pcm.count) + pcm
+    }
+
+    /// Rechnet Float-Samples (-1…1) in 16-Bit-Ganzzahlen um, mit Begrenzung gegen
+    /// Übersteuerung.
+    ///
+    /// Steht bewusst an EINER Stelle: Dieselben Bytes gehen einmal per HTTP an den
+    /// whisper-server (`wavData`) und einmal fortlaufend auf Platte
+    /// (`WavFileWriter.append`). Stünde die Umrechnung zweimal da, könnte eine
+    /// Änderung an Begrenzung oder Skalierung dazu führen, dass „Erneut
+    /// transkribieren“ auf anderen Samples arbeitet als das Live-Diktat.
+    static func pcm16(from samples: [Float]) -> Data {
         var pcm = Data(capacity: samples.count * 2)
         for sample in samples {
             let clamped = max(-1, min(1, sample))
             var value = Int16(clamped * 32767)
             withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
         }
-        return wavHeader(dataByteCount: pcm.count) + pcm
+        return pcm
     }
 
     /// Baut den 44-Byte-Standard-WAV-Header für 16-Bit-PCM mono.
@@ -89,12 +101,9 @@ public final class WavFileWriter {
         defer { lock.unlock() }
         if let firstError { throw firstError }
         guard !isFinished else { throw WriterError.alreadyFinished }
-        var pcm = Data(capacity: samples.count * 2)
-        for sample in samples {
-            let clamped = max(-1, min(1, sample))
-            var value = Int16(clamped * 32767)
-            withUnsafeBytes(of: &value) { pcm.append(contentsOf: $0) }
-        }
+        // Dieselbe Umrechnung wie beim Versand an den whisper-server — siehe
+        // `WavCodec.pcm16`.
+        let pcm = WavCodec.pcm16(from: samples)
         do {
             try beforeWrite?(writeCount)
             try handle.write(contentsOf: pcm)
