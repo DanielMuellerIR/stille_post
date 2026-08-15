@@ -140,7 +140,9 @@ public final class WhisperClient {
             switch self {
             case .badConfig(let detail): return detail
             case .serverError(let body):
-                return L10n.format("core.whisper.server_error", String(body.prefix(300)))
+                // Fremder Text vom whisper-server: gekürzt, bevor er als
+                // `errorMessage` im Verlauf landet (Begründung in `DiagnosticText`).
+                return L10n.format("core.whisper.server_error", DiagnosticText.shortened(body))
             case .badResponse:
                 return L10n.text("core.whisper.bad_response")
             }

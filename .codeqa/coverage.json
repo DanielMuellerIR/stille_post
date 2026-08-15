@@ -6,7 +6,7 @@
     "token_budget": 1000000,
     "status": "active",
     "started_at": "2026-08-15T13:40:35+02:00",
-    "tokens_spent": 329844
+    "tokens_spent": 375919
   },
   "campaign_history": [],
   "scope": {
@@ -87,7 +87,8 @@
         "Sources/StillePostCore/Localization.swift",
         "Sources/StillePostCore/PasteboardSnapshot.swift",
         "Tests/StillePostCoreTests/LocalizationTests.swift",
-        "Sources/StillePostCore/Resources"
+        "Sources/StillePostCore/Resources",
+        "Sources/StillePostCore/DiagnosticText.swift"
       ],
       "risk": "high",
       "priority": 2,
@@ -252,12 +253,22 @@
       "risk": "medium",
       "priority": 4,
       "reason": "AppKit/SwiftUI-Schicht; soll nur orchestrieren, keine Geschaeftslogik duplizieren; Schluesselbund nie im Renderpfad",
-      "state": "in_progress",
-      "active_run": {
+      "state": "completed",
+      "last_run": {
         "campaign_id": "20260815T134035935432+0200",
-        "started_at": "2026-08-15T14:28:22+02:00",
-        "required_review": "full",
-        "status_at_start": "pending"
+        "completed_at": "2026-08-15T15:15:57+02:00",
+        "observed_head": "dc03097b67a9a5dad7cdea6672ed8d33b7cb5e68",
+        "content_sha256": "bd6285a0dd10093f79e73da53653f5c3727e07a9254906be7ca3a24b68b01345",
+        "file_count": 9,
+        "review": "full",
+        "outcome": "improved",
+        "summary": "In APIKeyRow lief \"Im Schluesselbund speichern\" synchron im Knopfdruck auf dem Main-Thread, waehrend die Statuspruefung direkt darunter und beide Token-Knoepfe in BridgeRow ueber Task.detached laufen — mit ausdruecklicher Begruendung, dass ein modaler Berechtigungsdialog sonst das Fenster blockiert. Der Schreibzugriff kann denselben Dialog ausloesen; dieselbe Regel war an einer von drei Stellen nicht angewandt. Speichern laeuft jetzt ebenfalls detached, beide Knoepfe sperren ueber busy, eigener Textschluessel fuer die Wartemeldung. Uebriger Bereich ohne Beanstandung: PasteService setzt den Bildschirmfreigabe-Fall nach AGENTS.md um, der Warmhalte-Timer laeuft nur bei keep_alive = -1, die UI arbeitet nirgends am Kern vorbei, kein erzwungenes Auspacken.",
+        "tests": [
+          "swift test: 162 Tests gruen, darunter der Gleichstand beider Sprachdateien",
+          "./build.sh gebaut; codesign --verify --deep --strict: sauber",
+          "Sichtpruefung am Bundle (STILLEPOST_OPEN_SETTINGS=bereinigung, Wegwerf-Datenordner, STILLEPOST_ALLOW_MULTIPLE=1): Zeile rendert, Speichern-Knopf bei leerem Feld gesperrt, Pruefen-Knopf aktiv; Test-App danach beendet und aufgeraeumt",
+          "Die Knoepfe selbst wurden NICHT angeklickt (kein weiterer Schluesselbund-Dialog); der interaktive Schreibpfad ist damit nicht am Geraet durchgespielt"
+        ]
       }
     }
   ],
@@ -279,9 +290,10 @@
         "Sources/StillePostCore/WhisperClient.swift"
       ],
       "priority": 3,
-      "state": "pending",
+      "state": "in_progress",
       "noted_at": "2026-08-15T13:58:10+02:00",
-      "campaign_id": "20260815T134035935432+0200"
+      "campaign_id": "20260815T134035935432+0200",
+      "started_at": "2026-08-15T15:16:27+02:00"
     }
   ]
 }

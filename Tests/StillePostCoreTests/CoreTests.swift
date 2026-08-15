@@ -1053,17 +1053,21 @@ final class CoreTests: XCTestCase {
     }
 
     func testForeignErrorTextIsShortenedBeforeItReachesTheHistory() {
-        // Diese Beschreibungen wandern über `fallbackReason` dauerhaft in die
-        // Verlaufsdatei. Der Text kommt vom Gegenüber — eine Fehlerseite eines
-        // Proxys oder ein beliebig langer `error`-Wert im Stream darf den
-        // Verlauf nicht fluten. Bisher galt die Grenze nur für `serverError`.
+        // Diese Beschreibungen wandern über `fallbackReason` beziehungsweise
+        // `errorMessage` dauerhaft in die Verlaufsdatei. Der Text kommt vom
+        // Gegenüber — eine Fehlerseite eines Proxys oder ein beliebig langer
+        // `error`-Wert im Stream darf den Verlauf nicht fluten. Geprüft werden
+        // alle drei Wege gemeinsam, damit keiner die gemeinsame Grenze verliert.
         let flood = String(repeating: "x", count: 5000)
-        for error: CleanupService.CleanupError in [.serverError(body: flood),
-                                                   .providerError(flood)] {
-            let described = error.localizedDescription
-            XCTAssertEqual(described.filter { $0 == "x" }.count,
-                           CleanupService.CleanupError.maxForeignErrorCharacters,
-                           "fremder Fehlertext muss gekürzt ankommen: \(error)")
+        let described: [String] = [
+            CleanupService.CleanupError.serverError(body: flood).localizedDescription,
+            CleanupService.CleanupError.providerError(flood).localizedDescription,
+            WhisperClient.WhisperError.serverError(body: flood).localizedDescription,
+        ]
+        for text in described {
+            XCTAssertEqual(text.filter { $0 == "x" }.count,
+                           DiagnosticText.maxForeignCharacters,
+                           "fremder Fehlertext muss gekürzt ankommen: \(text.prefix(40))")
         }
     }
 
