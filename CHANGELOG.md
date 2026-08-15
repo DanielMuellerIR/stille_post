@@ -10,7 +10,7 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
-## [0.9.11] — unveröffentlicht
+## [0.9.11] — 2026-08-15
 
 ### Behoben
 
@@ -34,7 +34,7 @@ Datei mit dem Versions-Bump fortgeschrieben.
 - `stillepost-cli doctor` stürzt nicht mehr ab, wenn in der Konfiguration eine
   unbrauchbare Ollama-Adresse steht (etwa mit Leerzeichen im Hostnamen). Der
   Befund wird jetzt wie ein nicht erreichbarer Endpunkt gemeldet — ausgerechnet
-  dieser Befehl wird ja wegen einer kaputten Konfiguration aufgerufen. Außerdem
+  dieser Befehl wird wegen einer kaputten Konfiguration aufgerufen. Außerdem
   bricht die Erreichbarkeitsprüfung nach fünf Sekunden ab statt nach einer
   Minute; `doctor` prüft die ganze Kette, und ein abgeschalteter Rechner soll
   nicht jedes Mal so lange kosten.
@@ -58,7 +58,7 @@ Datei mit dem Versions-Bump fortgeschrieben.
 - Bereinigung: Ein Fehlertext, den der LLM-Dienst im Stream meldet, wird wie
   jede andere fremde Fehlerantwort auf 300 Zeichen gekürzt, bevor er als Grund
   in den Verlauf geschrieben wird. Bisher landete er dort in voller Länge — ein
-  einziges kaputtes Gegenüber konnte damit die Verlaufsdatei zumüllen.
+  einziger fehlerhafter Dienst konnte damit die gesamte Verlaufsdatei füllen.
 
 ## [0.9.10] — 2026-08-11
 
