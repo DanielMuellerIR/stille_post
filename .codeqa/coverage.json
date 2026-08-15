@@ -4,9 +4,11 @@
   "campaign": {
     "id": "20260815T134035935432+0200",
     "token_budget": 1000000,
-    "status": "active",
+    "status": "complete",
     "started_at": "2026-08-15T13:40:35+02:00",
-    "tokens_spent": 375919
+    "tokens_spent": 397788,
+    "finished_at": "2026-08-15T15:19:17+02:00",
+    "finish_reason": "all-current"
   },
   "campaign_history": [],
   "scope": {
@@ -66,15 +68,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260815T134035935432+0200",
-        "completed_at": "2026-08-15T14:06:38+02:00",
-        "observed_head": "68f6bf393d419d7fed167bf73f3adfb8c55e60c5",
-        "content_sha256": "0f44555fddff1510ba57e59ae76d1922ce1da27969ec626f5beac5b45660595c",
+        "completed_at": "2026-08-15T15:18:45+02:00",
+        "observed_head": "90e1dcad1b51346a96ba05e224c02c42c372ef38",
+        "content_sha256": "a1f9a80a646a670b8da9c024a6e60947e3267b8c8086a43302c4620b3a179097",
         "file_count": 4,
         "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Delta ist ausschliesslich der im Bereich config-state hinzugefuegte HistoryStore-Test in CoreTests.swift (28 Zeilen, reiner Testzuwachs, keine Produktivaenderung). Er wurde dort geschrieben, gegengeprueft und laeuft gruen; an der Bereinigungslogik hat sich nichts geaendert.",
+        "outcome": "improved",
+        "summary": "Delta aus drei Quellen, alle in dieser Kampagne verifiziert: (1) CleanupService gibt die 300-Zeichen-Grenze an DiagnosticText ab (Querschnitts-Fund), (2) CoreTests bekam im Bereich audio den Byte-Vergleich zwischen Datei- und Netz-WAV, (3) CoreTests bekam im Bereich config-state den Test fuer Aufnahme-Namen. Die Bereinigungslogik selbst ist unveraendert.",
         "tests": [
-          "swift test: 161 Tests gruen"
+          "swift test: 162 Tests gruen"
         ]
       }
     },
@@ -96,16 +98,15 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260815T134035935432+0200",
-        "completed_at": "2026-08-15T14:06:25+02:00",
-        "observed_head": "68f6bf393d419d7fed167bf73f3adfb8c55e60c5",
-        "content_sha256": "801587604262e2a882e3551d76c7e5f7f767a318f64d2ba8f0f8b54ef2bd95ee",
-        "file_count": 10,
-        "review": "full",
+        "completed_at": "2026-08-15T15:18:46+02:00",
+        "observed_head": "90e1dcad1b51346a96ba05e224c02c42c372ef38",
+        "content_sha256": "ab2ae38c110dcfad2bb59832b98f0ce9f03e3844740335702d3cb6b4b04fcb3d",
+        "file_count": 11,
+        "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "HistoryStore.audioURL(for:) setzte den in history.json gespeicherten Aufnahme-Namen ungeprueft zu einem Pfad zusammen, waehrend removeAudioFile denselben Namen laengst gegen Ausbruch aus dem Aufnahme-Ordner absicherte. Der Lesepfad ist der gefaehrlichere, weil DictationEngine.retry die Datei darueber an den whisper-server schickt. Beide Wege benutzen jetzt safeAudioName. Uebriger Bereich ohne Beanstandung; nur beobachtet: cleanup.numCtx ohne Wertegrenze (Folge waere lediglich ein scheiterndes Ollama und Rueckfall auf Rohtext).",
+        "summary": "Delta aus zwei Quellen: (1) zwei neue Lokalisierungsschluessel (settings.cleanup.api_key_storing, de und en) aus dem Bereich app-ui, durch den Gleichstandstest beider Sprachdateien gedeckt, (2) die neue gemeinsame Einheit DiagnosticText.swift aus dem Querschnitts-Fund, hier zugeordnet, weil dieser Bereich die geteilten Kern-Hilfsmittel traegt (Localization, KeychainUpsert, PasteboardSnapshot). Config und HistoryStore selbst unveraendert.",
         "tests": [
-          "swift test: 161 Tests gruen (vorher 160)",
-          "Gegenprobe: neuer Test faellt ohne die Aenderung (aus ../heimlich.wav entstand ein Lesepfad)"
+          "swift test: 162 Tests gruen, darunter der Gleichstand beider Sprachdateien"
         ]
       }
     },
@@ -150,16 +151,16 @@
       "state": "completed",
       "last_run": {
         "campaign_id": "20260815T134035935432+0200",
-        "completed_at": "2026-08-15T14:03:08+02:00",
-        "observed_head": "8289373452fcb3b77cb3613693e573a576cd61c5",
-        "content_sha256": "5b4c6e93c3965414ded845d5e6e59ea4b919141ca65ed5fe20865a0ebafb083f",
+        "completed_at": "2026-08-15T15:18:45+02:00",
+        "observed_head": "90e1dcad1b51346a96ba05e224c02c42c372ef38",
+        "content_sha256": "05b33ff9bb0b159dfe219603707e5e8028c9419f6f786b471bf3963cce416b5d",
         "file_count": 5,
-        "review": "full",
+        "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "ModelInstaller.install nannte die Teildatei nur <ziel>.partial, obwohl der Zielpfad aus whisper.modelPath kommt und fuer beide Modelle derselbe ist. Ein Modellwechsel setzte deshalb den abgebrochenen Download des anderen Modells fort und erzeugte eine groessenrichtige, inhaltlich gemischte Datei, die die Vollstaendigkeitspruefung passierte. Teildatei traegt jetzt den Modellnamen. Geprueft und in Ordnung: Loopback-Sperre in WhisperEndpoint haelt auch gegen fuehrende Nullen und Kurzformen (mit getaddrinfo nachgemessen), Weiterleitungs-Sperre in WhisperClient, Besitzvertrag in WhisperServerManager, Symlink-Erkennung ueber lstat.",
+        "summary": "Delta ist ausschliesslich die Umstellung von WhisperError.serverError auf DiagnosticText.shortened aus dem Querschnitts-Fund foreign-error-cap. Verhalten unveraendert (dieselben 300 Zeichen), aber die Grenze steht jetzt nur noch an einer Stelle. Grenzen des Bereichs unveraendert: WhisperEndpoint, WhisperServerManager und ModelInstaller nicht angefasst.",
         "tests": [
-          "swift test: 160 Tests gruen (vorher 159)",
-          "getaddrinfo-Gegenprobe: 0127.0.0.1, 127.0.0.010, 127.000.000.001 loesen alle nach 127.x auf — kein Oktal-Bypass"
+          "swift test: 162 Tests gruen",
+          "Gegenprobe mit abweichender Grenze (100 statt 300): der Test faellt"
         ]
       }
     },
@@ -290,10 +291,20 @@
         "Sources/StillePostCore/WhisperClient.swift"
       ],
       "priority": 3,
-      "state": "in_progress",
+      "state": "completed",
       "noted_at": "2026-08-15T13:58:10+02:00",
       "campaign_id": "20260815T134035935432+0200",
-      "started_at": "2026-08-15T15:16:27+02:00"
+      "started_at": "2026-08-15T15:16:27+02:00",
+      "completed": {
+        "campaign_id": "20260815T134035935432+0200",
+        "completed_at": "2026-08-15T15:18:22+02:00",
+        "observed_head": "90e1dcad1b51346a96ba05e224c02c42c372ef38",
+        "summary": "Grenze heisst jetzt DiagnosticText.maxForeignCharacters und steht in einer eigenen kleinen Einheit nach dem Muster von ByteSize. Alle drei Aufrufstellen (CleanupError.serverError, CleanupError.providerError, WhisperError.serverError) gehen darueber; der vorhandene Test deckt jetzt alle drei gegen dieselbe Konstante ab. Die Protokollzeilen der Bruecke brauchen bewusst keine Laengengrenze, weil Methode und Pfad schon durch die 8-KB-Grenze des Kopfbereichs begrenzt sind.",
+        "tests": [
+          "swift test: 162 Tests gruen",
+          "Gegenprobe mit absichtlich abweichender Grenze in WhisperClient (100 statt 300): der Test faellt"
+        ]
+      }
     }
   ]
 }
