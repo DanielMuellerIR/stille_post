@@ -17,6 +17,7 @@ source "$HELPERS"
 
 STAGED_DMG="$TEST_ROOT/staged.dmg"
 FINAL_DMG="$TEST_ROOT/final.dmg"
+STAGED_CHECKSUM="$TEST_ROOT/staged.dmg.sha256"
 FINAL_CHECKSUM="$TEST_ROOT/final.dmg.sha256"
 printf 'dmg\n' > "$STAGED_DMG"
 printf 'sum\n' > "$FINAL_CHECKSUM"
@@ -29,6 +30,21 @@ status=$?
 set -e
 [[ "$status" -eq 130 ]]
 [[ ! -e "$FINAL_CHECKSUM" ]]
+
+# Abbruch exakt nach dem Prüfsummen-Hardlink: Der Shell-Marker ist noch leer,
+# aber die gemeinsame Inode-Identität mit dem Staging-Namen beweist Eigentum.
+# Der Rollback muss die einzelne finale Prüfsumme deshalb entfernen.
+printf 'sum\n' > "$STAGED_CHECKSUM"
+link "$STAGED_CHECKSUM" "$FINAL_CHECKSUM"
+[[ -e "$FINAL_CHECKSUM" ]]
+published_checksum=""
+release_pair_complete=0
+rollback_checksum
+if [[ -e "$FINAL_CHECKSUM" ]]; then
+    echo "FEHLER: einzelne finale Prüfsumme wurde nach Abbruch nicht entfernt" >&2
+    exit 1
+fi
+rm -f "$STAGED_CHECKSUM"
 
 # Nach erfolgreichem Hardlink ist das Paar vollständig, auch wenn das Signal
 # vor der Shell-Markierung ankommt. Die Prüfsumme muss dann erhalten bleiben.

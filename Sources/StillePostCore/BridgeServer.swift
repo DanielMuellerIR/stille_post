@@ -305,6 +305,13 @@ public final class BridgeServer: @unchecked Sendable {
                 self.send(response, on: session)
             case .complete(let request):
                 session.timeout?.cancel()
+                // Ein geordneter TCP-Halbschluss kann zusammen mit den letzten
+                // Request-Bytes eintreffen. Für eine bereits verlassene
+                // Verbindung keine teure Arbeit mehr beginnen.
+                guard !isComplete else {
+                    session.connection.cancel()
+                    return
+                }
                 self.handle(request, on: session)
             }
         }
@@ -334,11 +341,19 @@ public final class BridgeServer: @unchecked Sendable {
                 line += " — " + authFailure.logDescription
             }
             self.log(line)
-            self.queue.async { self.send(response, on: session) }
+            self.queue.async {
+                guard !session.finished else { return }
+                self.send(response, on: session)
+            }
         }
+        monitorDisconnect(session)
     }
 
     private func send(_ response: BridgeResponse, on session: Session) {
+        guard !session.finished else { return }
+        // Fehlerantworten entstehen teilweise ohne `handle`; auch dann braucht
+        // das geordnete Schließen genau einen laufenden EOF-Empfang.
+        monitorDisconnect(session)
         // Sobald eine Antwort rausgeht, hat der Lese-Timeout seine Aufgabe
         // erledigt — zentral hier und nicht an jeder Antwortstelle einzeln.
         // Ohne das Stornieren bliebe sein WorkItem die volle Frist in der Queue
@@ -373,11 +388,32 @@ public final class BridgeServer: @unchecked Sendable {
         let overdue = DispatchWorkItem { connection.cancel() }
         session.timeout = overdue
         queue.asyncAfter(deadline: .now() + closeGraceSeconds, execute: overdue)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 1024) {
-            _, _, isComplete, error in
-            guard isComplete || error != nil else { return }
-            overdue.cancel()
-            connection.cancel()
+        // `monitorDisconnect` liest bereits seit Beginn der Arbeit weiter. Ein
+        // zweiter paralleler receive wäre nicht nur unnötig, sondern könnte das
+        // EOF dem falschen Callback überlassen.
+    }
+
+    /// Überwacht nach dem vollständigen Request weiter die Empfangsrichtung.
+    /// Ein TCP-FIN ist ein erfolgreiches EOF (`isComplete`) und löst deshalb
+    /// nicht verlässlich den `.failed`-/`.cancelled`-Zustand aus.
+    private func monitorDisconnect(_ session: Session) {
+        guard !session.monitoringDisconnect else { return }
+        session.monitoringDisconnect = true
+        receiveDisconnect(session)
+    }
+
+    private func receiveDisconnect(_ session: Session) {
+        session.connection.receive(minimumIncompleteLength: 1, maximumLength: 1024) {
+            [weak self] _, _, isComplete, error in
+            guard let self, !session.finished else { return }
+            if isComplete || error != nil {
+                session.timeout?.cancel()
+                session.connection.cancel()
+                return
+            }
+            // Zusätzliche Bytes sind für `Connection: close` bedeutungslos; bis
+            // zum EOF weiterlesen, damit ein Client die Arbeit abbrechen kann.
+            self.receiveDisconnect(session)
         }
     }
 
@@ -415,7 +451,9 @@ public final class BridgeServer: @unchecked Sendable {
     /// direkt konstruierte Requests und künftige Aufrufwege.
     static func singleLineLogField(_ value: String) -> String {
         value.unicodeScalars.map { scalar in
-            if scalar.value < 0x20 || scalar.value == 0x7F {
+            let category = scalar.properties.generalCategory
+            if category == .control || category == .lineSeparator
+                || category == .paragraphSeparator {
                 return String(format: "\\u{%04X}", scalar.value)
             }
             return String(scalar)
@@ -451,6 +489,8 @@ public final class BridgeServer: @unchecked Sendable {
         /// Die laufende Verarbeitung dieser Anfrage — damit `finish` sie bei
         /// einem Verbindungsabbruch stornieren kann.
         var work: Task<Void, Never>?
+        /// Genau ein EOF-Empfang bleibt während Arbeit und Antwort aktiv.
+        var monitoringDisconnect = false
 
         init(connection: NWConnection, address: String) {
             self.connection = connection

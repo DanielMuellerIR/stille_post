@@ -115,14 +115,6 @@ echo "== 5/5 veröffentlichen =="
 # inzwischen ein Verzeichnis (oder ein Symlink auf eines) steht — das Skript
 # meldete dann RELEASE OK, obwohl unter dem angekündigten Namen kein DMG liegt.
 # `link` ruft link(2) direkt auf und scheitert in genau diesem Fall.
-publish_no_clobber() {
-    local source=$1 destination=$2
-    if ! link "$source" "$destination"; then
-        echo "FEHLER: Release-Artefakt konnte nicht atomar angelegt werden (existiert es inzwischen?): $destination" >&2
-        return 1
-    fi
-    rm -f "$source"
-}
 
 # Die Prüfsumme vollständig im Staging erzeugen; im Ordner des DMG rechnen,
 # damit nur der Dateiname in der Zeile steht — und das exakte Format von
@@ -146,7 +138,18 @@ rm -f "$STAGED_CHECKSUM"
 published_checksum=""
 release_pair_complete=0
 rollback_checksum() {
+    local checksum_to_remove=""
     if [[ -n "$published_checksum" ]]; then
+        checksum_to_remove="$published_checksum"
+    # Ein Signal kann direkt nach dem Hardlink und noch vor der folgenden
+    # Shell-Zuweisung ankommen. Solange der Staging-Name existiert, beweist die
+    # gemeinsame Inode-Identität, dass die finale Prüfsumme diesem Lauf gehört.
+    elif [[ -f "$STAGED_CHECKSUM" && -f "$FINAL_CHECKSUM" \
+            && ! -L "$FINAL_CHECKSUM" \
+            && "$STAGED_CHECKSUM" -ef "$FINAL_CHECKSUM" ]]; then
+        checksum_to_remove="$FINAL_CHECKSUM"
+    fi
+    if [[ -n "$checksum_to_remove" ]]; then
         # Ein Signal kann genau nach dem erfolgreichen DMG-link(2), aber vor
         # der nächsten Shell-Zuweisung ankommen. Solange das Staging-DMG noch
         # existiert, beweist die gemeinsame Inode-Identität, dass das finale
@@ -157,7 +160,7 @@ rollback_checksum() {
                  && "$STAGED_DMG" -ef "$FINAL_DMG" ]]; then
             return
         fi
-        rm -f "$published_checksum"
+        rm -f "$checksum_to_remove"
     fi
 }
 abort_release() {
@@ -171,8 +174,15 @@ abort_release() {
 trap rollback_checksum EXIT
 trap 'abort_release 130' INT
 trap 'abort_release 143' TERM
-publish_no_clobber "$STAGED_CHECKSUM" "$FINAL_CHECKSUM"
+# Für die Prüfsumme bleibt der Staging-Hardlink bis NACH dem Eigentumsmarker
+# bestehen. So kann der Trap auch das winzige Signal-Fenster direkt nach link(2)
+# über die gemeinsame Inode-Identität erkennen.
+if ! link "$STAGED_CHECKSUM" "$FINAL_CHECKSUM"; then
+    echo "FEHLER: Release-Artefakt konnte nicht atomar angelegt werden (existiert es inzwischen?): $FINAL_CHECKSUM" >&2
+    exit 5
+fi
 published_checksum="$FINAL_CHECKSUM"
+rm -f "$STAGED_CHECKSUM"
 if ! link "$STAGED_DMG" "$FINAL_DMG"; then
     echo "FEHLER: Das fertige DMG konnte nicht veröffentlicht werden." >&2
     exit 5  # der Trap nimmt die Prüfsumme wieder zurück

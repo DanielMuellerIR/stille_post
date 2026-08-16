@@ -371,11 +371,13 @@ public final class CleanupService {
         var rawLo = [Int](repeating: 0, count: m)
         var rawHi = [Int](repeating: 0, count: m)
         var corrections = 0
-        // Weggelassene Sperrlisten-Wörter, einzeln für die Nachbewertung unten:
-        // (genau dieses Roh-Wort, Ausgabe-Index direkt HINTER der ganzen Lücke).
-        // Die Einzelzuordnung ist wichtig, wenn vor der Verneinung in derselben
-        // Lücke noch ein Füllwort und eine Satzgrenze stehen.
-        var droppedMeaning: [(rawStart: Int, rawEnd: Int, cleanIndex: Int)] = []
+        // Weggelassene Sperrlisten-Wörter, einzeln für die Nachbewertung unten.
+        // Neben dem Wort selbst bleiben die Grenzen der ganzen Löschungslücke
+        // erhalten: Eine Satzgrenze kann vor einem ebenfalls gelöschten Füllwort
+        // stehen und gehört trotzdem zur Einordnung der folgenden Verneinung.
+        var droppedMeaning: [(
+            rawStart: Int, rawEnd: Int, gapStart: Int, gapEnd: Int, cleanIndex: Int
+        )] = []
         // Bedeutungsschlüssel der Ausgabe-Wörter unmittelbar vor und hinter einer
         // Lücke. Steht die Verneinung dort noch, war die Löschung nur eine
         // Entdoppelung ("nicht nicht" -> "nicht") und ändert die Aussage nicht.
@@ -401,7 +403,7 @@ public final class CleanupService {
                     for rawIndex in rs..<re {
                         if let key = meaningCriticalWords[rawTokens[rawIndex].norm],
                            unrepresented.contains(key) {
-                            droppedMeaning.append((rawIndex, rawIndex + 1, cs))
+                            droppedMeaning.append((rawIndex, rawIndex + 1, rs, re, cs))
                         }
                     }
                 }
@@ -438,6 +440,13 @@ public final class CleanupService {
             return isClauseBoundary(raw[rawTokens[index - 1].range.upperBound
                                           ..< rawTokens[index].range.lowerBound])
         }
+        /// Liegt an irgendeiner Wortkante in diesem Teil der Löschungslücke
+        /// eine Satzteil-Grenze? Beide Enden sind inklusive; `before n` ist
+        /// absichtlich immer falsch und macht auch eine Lücke am Textende sicher.
+        func rawClauseBoundary(from lower: Int, through upper: Int) -> Bool {
+            guard lower <= upper else { return false }
+            return (lower...upper).contains(where: rawClauseBoundary(before:))
+        }
         // Weggelassene Sperrlisten-Wörter nachtragen. Eine reine Löschung hat kein
         // eigenes Ausgabe-Wort, an dem die Rücksetzung hängen könnte — deshalb
         // erbt sie normalerweise das Ausgabe-Wort direkt VOR der Lücke (steht die
@@ -461,9 +470,13 @@ public final class CleanupService {
             // Verneinung hing als Rest an dessen Ende. Umgekehrt schließt
             // „das geht so nicht, wir machen …“ den ERSTEN Satzteil ab — dort
             // bleibt es beim Wort davor.
-            if drop.cleanIndex < m,
-               rawClauseBoundary(before: drop.rawStart),
-               !rawClauseBoundary(before: drop.rawEnd) {
+            let boundaryBeforeWord = rawClauseBoundary(
+                from: drop.gapStart, through: drop.rawStart
+            )
+            let boundaryAfterWord = rawClauseBoundary(
+                from: drop.rawEnd, through: drop.gapEnd
+            )
+            if drop.cleanIndex < m, boundaryBeforeWord, !boundaryAfterWord {
                 neighbor = drop.cleanIndex
             }
             tainted[neighbor] = true
@@ -567,16 +580,20 @@ public final class CleanupService {
                 let piece = text[s..<idx]
                 var normalized = String(piece)
                     .precomposedStringWithCanonicalMapping.lowercased()
-                // Apostrophe gehören sonst nicht zum Token. Bei englischen
-                // Verneinungen ist das einzelne Schluss-`t` aber gerade der
-                // Bedeutungsträger: `can't` -> `can` darf nicht als harmlose
-                // Löschung dieses einen Buchstabens durchgehen. Gerade und
-                // typografische Apostrophe werden gleich behandelt.
+                // Apostrophe gehören sonst nicht zum Token. Bekannte englische
+                // n't-Formen werden deshalb in ihren bejahenden Stamm plus GENAU
+                // einen Verneinungsschlüssel zerlegt (`didn't` -> `did` + `not`).
+                // Gerade und typografische Apostrophe werden gleich behandelt.
                 if normalized == "t", s > text.startIndex {
                     let apostropheIndex = text.index(before: s)
                     let apostrophe = text[apostropheIndex]
                     if (apostrophe == "'" || apostrophe == "’"),
-                       result.last?.range.upperBound == apostropheIndex {
+                       let previous = result.last,
+                       previous.range.upperBound == apostropheIndex,
+                       let affirmative = negativeContractionStems[previous.norm] {
+                        result[result.count - 1] = Token(
+                            norm: affirmative, range: previous.range
+                        )
                         normalized = "contractednot"
                     }
                 }
@@ -591,6 +608,18 @@ public final class CleanupService {
         }
         return result
     }
+
+    /// Wortteil vor dem Apostroph -> bejahender Stamm. Nur bekannte n't-Formen
+    /// werden umgeschrieben; ein beliebiges Wort mit angehängtem `'t` bekommt
+    /// nicht versehentlich die Bedeutung „not“.
+    private static let negativeContractionStems: [String: String] = [
+        "ain": "ain", "aren": "are", "can": "can", "couldn": "could",
+        "didn": "did", "doesn": "does", "don": "do", "hadn": "had",
+        "hasn": "has", "haven": "have", "isn": "is", "mightn": "might",
+        "mustn": "must", "needn": "need", "oughtn": "ought", "shan": "shall",
+        "shouldn": "should", "wasn": "was", "weren": "were", "won": "will",
+        "wouldn": "would",
+    ]
 
     /// Sammelt die Anker-Paare (Roh-Index, Ausgabe-Index) einer längsten
     /// gemeinsamen Teilfolge nach Hirschberg: Die Roh-Seite wird halbiert, beide
@@ -710,6 +739,12 @@ public final class CleanupService {
         let a = Array(joinedRaw)
         let b = Array(joinedCleaned)
         if a == b { return true }  // reine Wort-Trennung/-Fusion: Buchstaben identisch
+        // `contractednot` ist die interne Form des Apostroph-t. Für die
+        // Äquivalenzprüfung entspricht sie dem ausgeschriebenen `not`:
+        // `did` + `contractednot` und `did` + `not` sind derselbe Inhalt.
+        let expandedRaw = rawSpan.map { $0 == "contractednot" ? "not" : $0 }.joined()
+        let expandedCleaned = cleanedSpan.map { $0 == "contractednot" ? "not" : $0 }.joined()
+        if expandedRaw == expandedCleaned { return true }
         // Sperrliste ZUERST (nur die buchstabengleiche Trennung/Fusion oben darf
         // vorbei, die ändert nichts an der Aussage): Verschwindet ein
         // sinnumkehrendes Wort auf einer Seite oder taucht es neu auf, ist das
@@ -778,11 +813,10 @@ public final class CleanupService {
     /// Englisch steht mit auf der Liste, weil `whisper.language` standardmäßig
     /// `auto` ist und `en` ausdrücklich unterstützt wird: Ohne die englischen
     /// Einträge galt "I did not approve this" -> "I did approve this." als
-    /// gewöhnliche Füllwort-Löschung. Die verkürzten Formen sind im Diktat als
-    /// eigene Wörter zu finden, weil der Apostroph die Wörter trennt
-    /// ("didn't" -> "didn" + "t") — deshalb steht der Stamm "didn" auf der Liste
-    /// und nicht "didnt". Weitere Diktatsprachen sind noch nicht abgedeckt; der
-    /// offene Punkt steht im Backlog.
+    /// gewöhnliche Füllwort-Löschung. Bekannte Kurzformen normalisiert `tokens`
+    /// zu bejahendem Stamm plus `contractednot`; dadurch zählt jedes n't genau
+    /// einmal. Weitere Diktatsprachen sind noch nicht abgedeckt; der offene Punkt
+    /// steht im Backlog.
     private static let meaningCriticalWords: [String: String] = [
         // Verneinung
         "kein": "kein", "keine": "kein", "keinen": "kein", "keinem": "kein",
@@ -805,9 +839,6 @@ public final class CleanupService {
         // Englisch — dieselben zwei Kriterien. "not"/"note", "no"/"know",
         // "only"/"once" liegen unter den Toleranzen in Reichweite voneinander.
         "not": "not", "cannot": "not", "contractednot": "not",
-        "didn": "not", "doesn": "not", "don": "not", "isn": "not", "aren": "not",
-        "wasn": "not", "weren": "not", "hasn": "not", "haven": "not", "hadn": "not",
-        "shouldn": "not", "couldn": "not", "wouldn": "not", "ain": "not",
         "no": "no", "none": "no",
         "never": "never",
         "nothing": "nothing",

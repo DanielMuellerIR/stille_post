@@ -70,7 +70,7 @@ final class BridgeTests: XCTestCase {
     }
 
     func testRejectsControlCharactersInRequestLine() {
-        for control in ["\n", "\u{001B}", "\u{007F}"] {
+        for control in ["\n", "\u{001B}", "\u{007F}", "\u{0085}", "\u{2028}", "\u{2029}"] {
             let raw = "GET /v1/health\(control)FAKE HTTP/1.1\r\nContent-Length: 0\r\n\r\n"
             guard case .failure(let response) = BridgeHTTP.parse(
                 Data(raw.utf8), maxBodyBytes: 1024
@@ -148,6 +148,46 @@ final class BridgeTests: XCTestCase {
         private var value = 0
         func increment() { lock.lock(); value += 1; lock.unlock() }
         var count: Int { lock.lock(); defer { lock.unlock() }; return value }
+    }
+
+    /// Steuerbare Serverarbeit für den echten Verbindungsabbruch-Test. Der Test
+    /// wartet nicht nach Gefühl: Er schließt die Senderichtung erst, nachdem die
+    /// Transkription nachweislich begonnen hat, und gibt einen fehlerhaften alten
+    /// Stand anschließend trotzdem sauber frei.
+    private final class DisconnectWork: @unchecked Sendable {
+        let started: XCTestExpectation
+        let cancelled: XCTestExpectation
+        private let lock = NSLock()
+        private var released = false
+
+        init(testCase: XCTestCase) {
+            started = testCase.expectation(description: "Transkription gestartet")
+            cancelled = testCase.expectation(description: "Transkription storniert")
+        }
+
+        func run() async throws -> String {
+            started.fulfill()
+            while true {
+                if Task.isCancelled {
+                    cancelled.fulfill()
+                    throw CancellationError()
+                }
+                if isReleased { return "roher text" }
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+        }
+
+        private var isReleased: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return released
+        }
+
+        func release() {
+            lock.lock()
+            released = true
+            lock.unlock()
+        }
     }
 
     private func makeRouter(
@@ -570,6 +610,44 @@ final class BridgeTests: XCTestCase {
         wait(for: [deallocated], timeout: 5)
     }
 
+    func testClientHalfCloseCancelsInFlightRequest() throws {
+        // Ein geordnetes TCP-FIN ändert den NWConnection-Zustand nicht zwingend
+        // auf `.failed` oder `.cancelled`. Deshalb muss der Server während der
+        // Arbeit weiter auf EOF lauschen und die Router-Task selbst stornieren.
+        let work = DisconnectWork(testCase: self)
+        let (server, port) = try startServer(router: makeRouter(
+            transcribe: { _ in try await work.run() }
+        ))
+        let connection = NWConnection(
+            host: "127.0.0.1", port: NWEndpoint.Port(rawValue: UInt16(port))!, using: .tcp
+        )
+        defer {
+            work.release()
+            connection.cancel()
+            server.stop()
+        }
+
+        let ready = expectation(description: "Client verbunden")
+        connection.stateUpdateHandler = { state in
+            if case .ready = state { ready.fulfill() }
+        }
+        connection.start(queue: DispatchQueue(label: "de.stillepost.test.half-close"))
+        wait(for: [ready], timeout: 5)
+
+        let body = Data("audio".utf8)
+        let request = "POST /v1/dictate HTTP/1.1\r\n"
+            + "Authorization: Bearer richtig\r\n"
+            + "Content-Length: \(body.count)\r\n\r\n"
+        connection.send(content: Data(request.utf8) + body,
+                        completion: .contentProcessed { _ in })
+        wait(for: [work.started], timeout: 5)
+
+        let halfClosed = expectation(description: "Client-Senderichtung geschlossen")
+        connection.send(content: nil, contentContext: .finalMessage, isComplete: true,
+                        completion: .contentProcessed { _ in halfClosed.fulfill() })
+        wait(for: [halfClosed, work.cancelled], timeout: 2)
+    }
+
     func testBufferLimitAdmitsAnExactlyMaximalRequest() throws {
         // Grenzwert: Kopf exakt am Kopf-Limit, Body exakt am Body-Limit. Diese
         // nach Parser-Vertrag gültige Anfrage muss unter den Puffer-Deckel des
@@ -619,8 +697,10 @@ final class BridgeTests: XCTestCase {
 
     func testUntrustedLogFieldsStayOnOneLine() {
         XCTAssertEqual(
-            BridgeServer.singleLineLogField("/ok\n\u{001B}[31m\u{007F}"),
-            "/ok\\u{000A}\\u{001B}[31m\\u{007F}"
+            BridgeServer.singleLineLogField(
+                "/ok\n\u{001B}[31m\u{007F}\u{0085}\u{2028}\u{2029}"
+            ),
+            "/ok\\u{000A}\\u{001B}[31m\\u{007F}\\u{0085}\\u{2028}\\u{2029}"
         )
     }
 

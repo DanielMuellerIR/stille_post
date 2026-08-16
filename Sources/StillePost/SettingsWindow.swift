@@ -419,13 +419,15 @@ private struct APIKeyRow: View {
     let envVar: String
     @State private var newKey = ""
     @State private var status: String?
-    /// Läuft gerade eine Schlüsselbund-Aktion? Sperrt beide Knöpfe — wie in
-    /// `BridgeRow`, damit Speichern und Prüfen sich nicht überholen.
+    /// Läuft gerade eine Schlüsselbund-Aktion? Sperrt Eingabe und Knöpfe — wie
+    /// in `BridgeRow`, damit Speichern, Prüfen und ein neuer Text sich nicht
+    /// überholen.
     @State private var busy = false
 
     var body: some View {
         HStack {
             SecureField(L10n.text("settings.cleanup.api_key_new"), text: $newKey)
+                .disabled(busy)
             Button(L10n.text("settings.cleanup.api_key_store")) { store() }
                 .disabled(newKey.isEmpty || busy)
         }
@@ -455,7 +457,9 @@ private struct APIKeyRow: View {
             defer { busy = false }
             do {
                 try await Task.detached { try CleanupService.storeRemoteAPIKey(key) }.value
-                newKey = ""
+                // Programmgesteuerte Änderungen bleiben ebenfalls erhalten;
+                // geleert wird nur genau der erfolgreich gespeicherte Schnappschuss.
+                if newKey == key { newKey = "" }
                 status = L10n.text("settings.cleanup.api_key_saved")
             } catch {
                 status = L10n.format("settings.cleanup.api_key_error", error.localizedDescription)

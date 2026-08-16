@@ -438,6 +438,17 @@ final class CoreTests: XCTestCase {
             text: "Erster Satz. nicht machen wir das.",
             revertedClauses: 1
         ))
+
+        // Die Satzgrenze kann auch VOR dem Füllwort liegen. Sie gehört trotzdem
+        // zur selben Löschungslücke und ordnet `nicht` dem zweiten Satz zu.
+        let boundaryBeforeFiller = CleanupService.reconcile(
+            raw: "erster satz. ähm nicht machen wir das",
+            cleaned: "Erster Satz. Machen wir das."
+        )
+        XCTAssertEqual(boundaryBeforeFiller, .accepted(
+            text: "Erster Satz. nicht machen wir das.",
+            revertedClauses: 1
+        ))
     }
 
     func testReconcileCatchesSwallowedEnglishNegation() {
@@ -460,6 +471,19 @@ final class CoreTests: XCTestCase {
         // Ohne Verneinung bleibt die englische Bereinigung ganz normal erlaubt.
         XCTAssertTrue(acceptsUnchanged(raw: "so i did approve this yesterday",
                                        cleaned: "I did approve this yesterday."))
+    }
+
+    func testReconcileTreatsEnglishContractionsAsOneNegation() {
+        // Die Kurzform und die ausgeschriebene Form sind bedeutungsgleich. Der
+        // Apostroph darf nicht zwei Verneinungsschlüssel aus einem Wort machen.
+        for (raw, cleaned) in [
+            ("i didn't approve this", "I did not approve this."),
+            ("it doesn't work", "It does not work."),
+            ("i can't approve this", "I can not approve this."),
+            ("i can’t approve this", "I cannot approve this."),
+        ] {
+            XCTAssertTrue(acceptsUnchanged(raw: raw, cleaned: cleaned), raw)
+        }
     }
 
     func testReconcileStillAllowsDeletingFillersAndStutteredNegations() {

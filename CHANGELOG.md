@@ -10,6 +10,30 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.12] — 2026-08-16
+
+### Behoben
+
+- Netzwerk-Brücke: Schließt ein Client die Verbindung erst nach einer vollständig
+  übertragenen Anfrage, wird die laufende oder wartende Arbeit jetzt trotzdem
+  storniert. Bisher wurde nach dem Einlesen nicht weiter auf das Verbindungsende
+  geachtet; Transkription und Bereinigung konnten daher für niemanden weiterlaufen.
+- Bereinigung: Eine gelöschte Verneinung wird auch dann dem richtigen Satzteil
+  zugeordnet, wenn in derselben Löschungslücke ein Füllwort hinter der Satzgrenze
+  steht. Englische n't-Kurzformen zählen außerdem genau einmal als Verneinung;
+  gleichbedeutende Erweiterungen wie „didn't“ zu „did not“ bleiben damit erlaubt.
+- Netzwerk-Brücke: Unicode-Steuerzeichen sowie Zeilen- und Absatztrenner können
+  keine zusätzlichen sichtbaren Zeilen mehr in `bridge.log` oder die
+  CLI-Diagnose einschleusen. Die Request-Line akzeptiert nur das unterstützte
+  ASCII-Format, und die zweite Log-Schranke maskiert die übrigen Aufrufwege.
+- Release-Skript: Ein Signal direkt nach dem Hardlink der Prüfsumme wird jetzt
+  auch vor dem anschließenden Shell-Marker als eigenes, unvollständiges Artefakt
+  erkannt und zurückgerollt. Eine einzelne `.sha256` blockiert dadurch keinen
+  Wiederholungsversuch mehr.
+- Einstellungen: Während ein API-Schlüssel asynchron gespeichert wird, bleibt
+  auch das Eingabefeld gesperrt. Sein Inhalt wird nach Erfolg nur gelöscht, wenn
+  er noch genau dem gespeicherten Schnappschuss entspricht.
+
 ## [0.9.11] — 2026-08-15
 
 ### Behoben

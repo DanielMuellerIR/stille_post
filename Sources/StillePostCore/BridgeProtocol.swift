@@ -192,12 +192,13 @@ public enum BridgeHTTP {
         ))
     }
 
-    /// Eine HTTP-Request-Line darf keine C0-/DEL-Steuerzeichen enthalten.
-    /// Einzelne LF oder ESC würden sonst bis in Pfad und Diagnoseprotokoll
-    /// gelangen, obwohl der Parser Zeilen ausschließlich an CRLF trennt.
+    /// Die unterstützte HTTP-Request-Line ist reines sichtbares ASCII plus
+    /// Leerzeichen. Pfade mit anderen Zeichen kommen HTTP-konform prozentkodiert;
+    /// rohe Unicode-Zeilen-/Absatztrenner dürfen dagegen nie bis ins lokale
+    /// Diagnoseprotokoll gelangen.
     private static func isValidRequestLine(_ line: String) -> Bool {
         line.unicodeScalars.allSatisfy { scalar in
-            scalar.value >= 0x20 && scalar.value != 0x7F
+            scalar.value >= 0x20 && scalar.value <= 0x7E
         }
     }
 
