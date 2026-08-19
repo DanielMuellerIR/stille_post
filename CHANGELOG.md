@@ -14,6 +14,11 @@ Datei mit dem Versions-Bump fortgeschrieben.
 
 ### Behoben
 
+- Verlauf: „Alle löschen“ räumt jetzt jede zurückbehaltene Aufnahme weg, auch
+  wenn eine davon nicht zu löschen ist. Bisher brach der Vorgang beim ersten
+  Problem ab; der Verlauf war zu diesem Zeitpunkt schon leer, und alle weiteren
+  Aufnahmen blieben ohne zugehörigen Eintrag auf der Platte liegen. Ein
+  aufgetretener Fehler wird weiterhin gemeldet.
 - Diktat: Lässt sich die temporäre Aufnahme nach einem erfolgreichen Diktat
   nicht löschen, wird der fertige Text jetzt trotzdem eingefügt und erst danach
   der Fehler gemeldet. Bisher hielt das gescheiterte Aufräumen das gesamte

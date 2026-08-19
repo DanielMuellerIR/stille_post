@@ -176,11 +176,23 @@ public final class HistoryStore {
                 try saveLocked([])
                 entries = []
                 historyWasCleared = true
+                // Jede Aufnahme einzeln versuchen. Bricht die Schleife beim ersten
+                // Problem ab (unsicherer Name aus einer von Hand bearbeiteten
+                // history.json, gesperrte Datei), bleiben alle danach kommenden
+                // Aufnahmen liegen — und weil der Verlauf schon leer ist, kennt
+                // ihre Namen dann niemand mehr. Gerade dieser Knopf soll keine
+                // Aufnahme zurücklassen. Der erste Fehler wird nach der Schleife
+                // gemeldet, damit das Scheitern trotzdem sichtbar bleibt.
+                var firstFailure: Error?
                 for entry in fresh {
-                    if let name = entry.audioFileName {
+                    guard let name = entry.audioFileName else { continue }
+                    do {
                         try removeAudioFile(named: name)
+                    } catch {
+                        if firstFailure == nil { firstFailure = error }
                     }
                 }
+                if let firstFailure { throw firstFailure }
             }
         }
     }

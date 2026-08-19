@@ -1386,6 +1386,33 @@ final class CoreTests: XCTestCase {
         XCTAssertNoThrow(try store.deleteAudio(for: regular))
     }
 
+    func testDeleteAllRemovesEveryRecordingEvenIfOneNameIsRefused() throws {
+        // "Alle loeschen" ist der Datenschutz-Knopf: Danach darf keine Aufnahme
+        // mehr liegen. Bisher brach die Schleife beim ersten unsicheren Namen ab —
+        // der Verlauf war da schon leer, und alle danach kommenden Aufnahmen
+        // blieben ohne Eintrag auf der Platte zurueck, also unauffindbar.
+        let baseDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sp-deleteall-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: baseDir) }
+        let store = HistoryStore(baseDir: baseDir)
+        let audioURL = store.newRecordingURL()
+        try FileManager.default.createDirectory(at: audioURL.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data("wav".utf8).write(to: audioURL)
+
+        // Der unsichere Name steht ZUERST — genau dort brach die Schleife ab.
+        try store.append(.init(rawText: "", cleanText: "", status: "failed",
+                               audioFileName: "../heimlich.wav", durationSec: 1))
+        try store.append(.init(rawText: "", cleanText: "", status: "failed",
+                               audioFileName: audioURL.lastPathComponent, durationSec: 1))
+
+        XCTAssertThrowsError(try store.deleteAll(), "der unsichere Name muss gemeldet werden")
+
+        XCTAssertEqual(try store.list().count, 0, "der Verlauf ist leer")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path),
+                       "die zweite Aufnahme muss trotzdem weg sein")
+    }
+
     func testHistoryStoresReloadInsideCrossProcessLock() throws {
         let baseDir = FileManager.default.temporaryDirectory.appendingPathComponent("sp-lock-\(UUID())")
         defer { try? FileManager.default.removeItem(at: baseDir) }
