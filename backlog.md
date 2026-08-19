@@ -293,6 +293,22 @@ einen chirurgischen Fix ist, und die Reste zweier Fixes.
   Referenz-Gegenprobe: VoiceInk (GPL-3) baut auf denselben Bausteinen
   (whisper.cpp + optional Parakeet via FluidAudio) — architektonisch kein
   Vorsprung gegenüber Stille Post, aber Ideenquelle (z. B. app-abhängige Modi).
+- Keine CI für die Testsuite (Befund CodeQA 2026-08-19). Der einzige Workflow
+  (`.github/workflows/publish-appcast.yml`, `macos-15`) läuft erst beim
+  Veröffentlichen eines Releases; er prüft dort immerhin Developer-ID und
+  Notarisierung über `scripts/verify-release.sh`. `swift test` und die
+  Shell-Tests (`scripts/test-release-publication.sh`) laufen dagegen nur, wenn
+  jemand sie von Hand startet. Ein Push mit roter Suite fällt damit nirgends
+  auf. Zu entscheiden ist vor allem die Kostenfrage: ein `macos`-Runner je Push
+  ist nicht umsonst, ein Lauf nur auf `main` oder nur vor einem Release wäre die
+  sparsame Variante.
+- `release.sh` prüft nicht, ob der Arbeitsbaum sauber ist (Befund CodeQA
+  2026-08-19). Das DMG entsteht aus dem Arbeitsbaum, nicht aus dem Commit —
+  ein Release mit uncommitteten Änderungen trägt dann einen Tag, zu dem der
+  ausgelieferte Build nicht passt. Bisher nie passiert; eine Vorabprüfung
+  neben den bereits vorhandenen (Artefakt existiert schon, Team-ID, Notary)
+  wäre die naheliegende Stelle. Offen bleibt, ob die Prüfung hart abbricht oder
+  sich für Zwischenstände übergehen lässt.
 - Eingabegerät-Wechsel während der Aufnahme (Befund CodeQA 2026-08-19, ungeprüft
   an echter Hardware): `AudioRecorder` hört nicht auf
   `AVAudioEngineConfigurationChange`. Wird das Mikrofon mitten im Diktat abgezogen
