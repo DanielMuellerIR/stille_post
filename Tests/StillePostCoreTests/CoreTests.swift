@@ -806,6 +806,64 @@ final class CoreTests: XCTestCase {
     }
 
     @MainActor
+    func testUndeletableRecordingStillDeliversTheDictation() async throws {
+        // Der Text ist transkribiert, bereinigt und im Verlauf gespeichert; nur
+        // das Wegraeumen der Diagnoseaufnahme scheitert (hier: schreibgeschuetzter
+        // Ordner). Das ist ein Aufraeumproblem — das fertige Diktat gehoert
+        // trotzdem ausgeliefert, sonst faellt es wegen einer Nebensache unter den
+        // Tisch. Der Fehler wird zusaetzlich gemeldet.
+        let baseDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sp-undeletable-\(UUID())")
+        let blocked = baseDir.appendingPathComponent("gesperrt")
+        try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
+        let wavURL = blocked.appendingPathComponent("aufnahme.wav")
+        try Data("RIFF".utf8).write(to: wavURL)
+        // Ohne Schreibrecht am Ordner laesst sich die Datei darin nicht loeschen.
+        try FileManager.default.setAttributes([.posixPermissions: 0o555],
+                                              ofItemAtPath: blocked.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755],
+                                                   ofItemAtPath: blocked.path)
+            try? FileManager.default.removeItem(at: baseDir)
+        }
+
+        let history = HistoryStore(baseDir: baseDir.appendingPathComponent("verlauf"))
+        let engine = DictationEngine(config: Config(), history: history) { rawText in
+            CleanupService.Result(text: rawText, usedFallback: false,
+                                  fallbackReason: nil, endpoint: nil)
+        }
+        let delivered = expectation(description: "onResult ausgeliefert")
+        var deliveredText: String?
+        var deliveredEntry: HistoryStore.Entry?
+        engine.onResult = {
+            deliveredText = $0.text
+            deliveredEntry = $0.entry
+            delivered.fulfill()
+        }
+        // Der Fehler wird nach der Auslieferung gemeldet — auf beides warten,
+        // sonst haengt das Ergebnis von der Reihenfolge zweier Threads ab.
+        let reported = expectation(description: "Aufraeumfehler gemeldet")
+        var reportedError: String?
+        engine.onStateChange = { state in
+            if case .error(let message) = state {
+                reportedError = message
+                reported.fulfill()
+            }
+        }
+
+        engine.processForTesting(rawText: "das diktat darf nicht verloren gehen",
+                                 wavURL: wavURL)
+        await fulfillment(of: [delivered, reported], timeout: 5)
+
+        XCTAssertEqual(deliveredText, "das diktat darf nicht verloren gehen")
+        XCTAssertNotNil(deliveredEntry, "der Verlaufseintrag gehoert mit ausgeliefert")
+        XCTAssertEqual(try history.list().count, 1, "im Verlauf steht der Eintrag")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: wavURL.path),
+                      "die Aufnahme bleibt liegen — genau darum geht es")
+        XCTAssertNotNil(reportedError, "das gescheiterte Aufraeumen muss gemeldet werden")
+    }
+
+    @MainActor
     func testResultIsDeliveredOnMainThread() async throws {
         // Regression 0.8.13: finishSession ist nonisolated async und läuft off-main;
         // onResult fasst aber im App-Callback AppKit an (Overlay-Panel). Lieferte die

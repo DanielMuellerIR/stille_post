@@ -14,6 +14,10 @@ Datei mit dem Versions-Bump fortgeschrieben.
 
 ### Behoben
 
+- Diktat: Lässt sich die temporäre Aufnahme nach einem erfolgreichen Diktat
+  nicht löschen, wird der fertige Text jetzt trotzdem eingefügt und erst danach
+  der Fehler gemeldet. Bisher hielt das gescheiterte Aufräumen das gesamte
+  Diktat zurück, obwohl es längst bereinigt und im Verlauf gespeichert war.
 - Modell-Download: Eine Teildatei, die größer ist als die erwartete Datei, wird
   nicht mehr als angefangener Download weiterverwendet, sondern neu geladen.
   Wurde das Modell am Server durch eine kleinere Fassung ersetzt, blieb die

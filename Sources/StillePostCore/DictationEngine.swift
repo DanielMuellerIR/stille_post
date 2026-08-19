@@ -385,6 +385,12 @@ public final class DictationEngine {
                 try FileManager.default.removeItem(at: wavURL)
             } catch {
                 guard isCurrentSession(generation) else { return }
+                // Der Text ist fertig, bereinigt und liegt schon im Verlauf. Dass
+                // die Diagnoseaufnahme nicht wegzuräumen war, ist ein
+                // Aufräumproblem und darf das Diktat nicht zurückhalten — sonst
+                // fällt die eigentliche Arbeit wegen einer Nebensache unter den
+                // Tisch. Also erst ausliefern, dann den Fehler melden.
+                deliverResult(DictationResult(text: cleaned.text, entry: entry))
                 setState(.error(L10n.format(
                     "core.history.audio_delete_failed", error.localizedDescription
                 )))
@@ -523,7 +529,8 @@ public final class DictationEngine {
 
     /// Startet nur die Nachverarbeitung ohne Mikrofon. Der schmale Testweg hält
     /// echte Aufnahme-/TCC-Zustände aus Lifecycle-Regressionen heraus.
-    func processForTesting(rawText: String, duration: TimeInterval = 1) {
+    func processForTesting(rawText: String, duration: TimeInterval = 1,
+                           wavURL: URL? = nil) {
         sessionTask?.cancel()
         sessionGeneration &+= 1
         let generation = sessionGeneration
@@ -533,7 +540,7 @@ public final class DictationEngine {
                 if self.isCurrentSession(generation) { self.sessionTask = nil }
             }
             await self.finishSession(
-                segments: [rawText], duration: duration, wavURL: nil,
+                segments: [rawText], duration: duration, wavURL: wavURL,
                 generation: generation
             )
         }
