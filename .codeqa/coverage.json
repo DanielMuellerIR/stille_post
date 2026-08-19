@@ -2,15 +2,25 @@
   "schema_version": 1,
   "project": "stille_post",
   "campaign": {
-    "id": "20260815T134035935432+0200",
-    "token_budget": 1000000,
+    "id": "20260819T173410378760+0200",
+    "token_budget": 2000000,
     "status": "complete",
-    "started_at": "2026-08-15T13:40:35+02:00",
-    "tokens_spent": 397788,
-    "finished_at": "2026-08-15T15:19:17+02:00",
+    "started_at": "2026-08-19T17:34:10+02:00",
+    "tokens_spent": 288198,
+    "finished_at": "2026-08-19T18:13:57+02:00",
     "finish_reason": "all-current"
   },
-  "campaign_history": [],
+  "campaign_history": [
+    {
+      "id": "20260815T134035935432+0200",
+      "token_budget": 1000000,
+      "status": "complete",
+      "started_at": "2026-08-15T13:40:35+02:00",
+      "tokens_spent": 397788,
+      "finished_at": "2026-08-15T15:19:17+02:00",
+      "finish_reason": "all-current"
+    }
+  ],
   "scope": {
     "paths": [
       "Sources",
@@ -39,18 +49,17 @@
       "reason": "Einziger von aussen erreichbarer Netzwerkdienst; Token, Herkunftspruefung, Groessen- und Warteschlangengrenzen sind Sicherheitsgrenzen",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134035935432+0200",
-        "completed_at": "2026-08-15T13:50:27+02:00",
-        "observed_head": "be4f1380a10204819d29233f79e420e21ec5b279",
-        "content_sha256": "0ef2072da2044c710a3f8d72f38042ea51796cc036c343dae8b3bb64d49e8635",
+        "campaign_id": "20260819T173410378760+0200",
+        "completed_at": "2026-08-19T17:52:18+02:00",
+        "observed_head": "7c2754666e2c5cea2bd51b69536e4ff498a9243f",
+        "content_sha256": "069d039f0407c35a16a3b0008ca922226ba534dc018c4df5397fc2e323059163",
         "file_count": 7,
-        "review": "full",
+        "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Drei Funde: (1) AGENTS.md verlangt Stornieren angefangener Arbeit bei Verbindungsabbruch — war nicht umgesetzt, die Verarbeitungs-Task hing an nichts; haengt jetzt an der Session, wird in finish() storniert und ueber withTaskCancellationHandler an die Warteschlangen-Task weitergereicht. (2) pipelineTail hielt nach getaner Arbeit die fertige Antwort samt diktiertem Text bis zur naechsten Anfrage im Speicher. (3) Adressmaskierung fuer bridge.log war nur auf einem von drei Protokollwegen umgesetzt. Nebenbei doppelten peerAddress-Aufruf entfernt.",
+        "summary": "Herkunftspruefung von Textmerkmalen auf die 16 Adressbytes umgestellt: eine globale IPv6-Adresse in Punkt-Schreibweise galt als privates IPv4-Netz. Delta aus 0.9.11/0.9.12 (Stornierung wartender Anfragen, EOF-Ueberwachung, Request-Line auf sichtbares ASCII, Log-Maskierung) mitgeprueft; Token-Vergleich, Puffergrenzen und Protokolldatei ohne Fund.",
         "tests": [
-          "swift build: passed",
-          "swift test: 158 Tests gruen (vorher 156, zwei neue)",
-          "Gegenprobe: beide neuen Tests fallen ohne die Korrektur (abgebrochene Anfrage wurde transkribiert, Zaehler 2 statt 1; pipelineTail nicht nil)"
+          "swift test: 167 tests, 0 failures",
+          "roter Test vor der Aenderung: testGlobalIPv6InDottedNotationIsNotHomeNetwork"
         ]
       }
     },
@@ -67,16 +76,16 @@
       "reason": "Groesste Datei; Worttreue-/Plausibilitaetspruefung entscheidet, ob ein Diktat verfaelscht ankommt; Datenschutz (kein Key, kein Audio)",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134035935432+0200",
-        "completed_at": "2026-08-15T15:18:45+02:00",
-        "observed_head": "90e1dcad1b51346a96ba05e224c02c42c372ef38",
-        "content_sha256": "a1f9a80a646a670b8da9c024a6e60947e3267b8c8086a43302c4620b3a179097",
+        "campaign_id": "20260819T173410378760+0200",
+        "completed_at": "2026-08-19T18:12:58+02:00",
+        "observed_head": "296d4dd0385baca0f6f82e1c9fff58cf6dd0fc03",
+        "content_sha256": "710b5f86e169c2841ca8fbd72a8a92552dc473739f97723cd9e3ad968db7ea58",
         "file_count": 4,
         "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Delta aus drei Quellen, alle in dieser Kampagne verifiziert: (1) CleanupService gibt die 300-Zeichen-Grenze an DiagnosticText ab (Querschnitts-Fund), (2) CoreTests bekam im Bereich audio den Byte-Vergleich zwischen Datei- und Netz-WAV, (3) CoreTests bekam im Bereich config-state den Test fuer Aufnahme-Namen. Die Bereinigungslogik selbst ist unveraendert.",
+        "summary": "Nachbuchung: Das Delta gegenueber dem Abschluss von heute Morgen ist genau die Endpunkt-Pruefung, die aus der CLI in den Kern gewandert ist (checkOllamaEndpoint, installedModelNames, matchesModel) — im selben Zug geschrieben und mit zwei Tests belegt.",
         "tests": [
-          "swift test: 162 Tests gruen"
+          "swift test: 173 tests, 0 failures"
         ]
       }
     },
@@ -97,16 +106,17 @@
       "reason": "Zentrale Abhaengigkeit aller anderen Bereiche; Schluesselbund und Diktathistorie sind datenschutzrelevant",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134035935432+0200",
-        "completed_at": "2026-08-15T15:18:46+02:00",
-        "observed_head": "90e1dcad1b51346a96ba05e224c02c42c372ef38",
-        "content_sha256": "ab2ae38c110dcfad2bb59832b98f0ce9f03e3844740335702d3cb6b4b04fcb3d",
+        "campaign_id": "20260819T173410378760+0200",
+        "completed_at": "2026-08-19T17:59:59+02:00",
+        "observed_head": "1017e7d4938d1c16cd0357a079f1d95fa2a62cbc",
+        "content_sha256": "f659d550e29f830a6ce15a21af0195b8dcdf7b294d67f86423dd6e21ae23f8b2",
         "file_count": 11,
         "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Delta aus zwei Quellen: (1) zwei neue Lokalisierungsschluessel (settings.cleanup.api_key_storing, de und en) aus dem Bereich app-ui, durch den Gleichstandstest beider Sprachdateien gedeckt, (2) die neue gemeinsame Einheit DiagnosticText.swift aus dem Querschnitts-Fund, hier zugeordnet, weil dieser Bereich die geteilten Kern-Hilfsmittel traegt (Localization, KeychainUpsert, PasteboardSnapshot). Config und HistoryStore selbst unveraendert.",
+        "summary": "'Alle loeschen' bricht nicht mehr beim ersten Problem ab und laesst keine Aufnahme ohne Verlaufseintrag zurueck. Delta (Namenspruefung auch auf dem Lesepfad, DiagnosticText als einzige Kuerzungsgrenze) mitgeprueft; Config-Laden/Speichern, Dateisperre des Verlaufs, Schluesselbund-Upsert, Zwischenablage-Kopie und die Sprachdateien (293 Schluessel, de/en deckungsgleich) ohne Fund.",
         "tests": [
-          "swift test: 162 Tests gruen, darunter der Gleichstand beider Sprachdateien"
+          "swift test: 170 tests, 0 failures",
+          "roter Test vor der Aenderung: testDeleteAllRemovesEveryRecordingEvenIfOneNameIsRefused"
         ]
       }
     },
@@ -121,18 +131,17 @@
       "reason": "Orchestriert Aufnahme bis Einfuegen; hier gilt die Regel genau eine Bereinigung ueber den Gesamttext",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134035935432+0200",
-        "completed_at": "2026-08-15T14:09:49+02:00",
-        "observed_head": "db6a8f7ccd87774ea9106c32eebcd881a0942e29",
-        "content_sha256": "fc446c1699899fe722764dad8d5ce751cf299d8b940a18e38ea4e28c6efb56e7",
+        "campaign_id": "20260819T173410378760+0200",
+        "completed_at": "2026-08-19T17:57:40+02:00",
+        "observed_head": "ea447c3a6e71077512a822b0c4252054a5d22a91",
+        "content_sha256": "509b79a0856b24aa27e8196dcb72185f799deea41626fba97f858539940b0305",
         "file_count": 2,
-        "review": "full",
+        "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Zwei Punkte: (1) setState und deliverResult hatten dieselbe Main-Thread-Weiche wortgleich doppelt — steht jetzt einmal als onMain, Begruendung mitgewandert, Verhalten unveraendert. (2) Der Waechter 'guard let collector = segmentResults' in stop() kehrte wortlos zurueck und liess die Maschine in .processing stehen, wo toggle() jeden Tastendruck ignoriert; heute nicht ausloesbar, aber die Sackgasse ist weg. Geprueft und in Ordnung: Generationszaehlung an jedem Await-Punkt, SegmentCollector-Reihenfolge, WAV-Aufbewahrung nach AGENTS.md.",
+        "summary": "Erfolgreiches Diktat wird jetzt auch dann ausgeliefert, wenn die temporaere Aufnahme nicht zu loeschen ist — bisher hielt das Aufraeumen den fertigen Text zurueck. Delta (Main-Thread-Weiche zusammengefuehrt, Sackgasse in stop() geschlossen) mitgeprueft; Generationszaehler, Abbruchpfade und die Reihenfolge Verlauf-vor-Loeschen ohne Fund.",
         "tests": [
-          "swift test: 161 Tests gruen, darunter testResultIsDeliveredOnMainThread als Vertrag fuer die zusammengefuehrte Weiche",
-          "./build.sh: Bundle gebaut; codesign --verify --deep --strict: valid on disk, satisfies its Designated Requirement",
-          "Eingebettete CLI aus dem Bundle mit isoliertem STILLEPOST_APP_SUPPORT gestartet: laeuft (kein GUI-Start mit Fensterfokus)"
+          "swift test: 169 tests, 0 failures",
+          "roter Test vor der Aenderung: testUndeletableRecordingStillDeliversTheDictation lief in den Timeout"
         ]
       }
     },
@@ -150,17 +159,16 @@
       "reason": "Erzwingt die Loopback-Regel, ueber die Audio den Rechner nicht verlassen darf; Modell-Download prueft Herkunft und Pruefsumme",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134035935432+0200",
-        "completed_at": "2026-08-15T15:18:45+02:00",
-        "observed_head": "90e1dcad1b51346a96ba05e224c02c42c372ef38",
-        "content_sha256": "05b33ff9bb0b159dfe219603707e5e8028c9419f6f786b471bf3963cce416b5d",
+        "campaign_id": "20260819T173410378760+0200",
+        "completed_at": "2026-08-19T17:54:42+02:00",
+        "observed_head": "5039a559ce908b43bee9ed641280d58c1f959efc",
+        "content_sha256": "3fb7fe8da6ef0b8b0404d27e1f03a4b12e3b1ee5edfa3cbe038420ec48b4cc3f",
         "file_count": 5,
         "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Delta ist ausschliesslich die Umstellung von WhisperError.serverError auf DiagnosticText.shortened aus dem Querschnitts-Fund foreign-error-cap. Verhalten unveraendert (dieselben 300 Zeichen), aber die Grenze steht jetzt nur noch an einer Stelle. Grenzen des Bereichs unveraendert: WhisperEndpoint, WhisperServerManager und ModelInstaller nicht angefasst.",
+        "summary": "Fortsetzungspunkt des Modell-Downloads als reine Funktion resumeOffset: eine zu grosse Teildatei blockierte die Installation dauerhaft. Loopback-Zwang (WhisperEndpoint), Weiterleitungssperre im WhisperClient, 200/206-Behandlung im DownloadSink und der Autostart-Host geprueft, dort kein Fund.",
         "tests": [
-          "swift test: 162 Tests gruen",
-          "Gegenprobe mit abweichender Grenze (100 statt 300): der Test faellt"
+          "swift test: 168 tests, 0 failures"
         ]
       }
     },
@@ -179,17 +187,16 @@
       "reason": "Audioaufnahme, Segmentierung und Formatumwandlung; Fehler hier verfaelschen jedes Diktat an der Quelle",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134035935432+0200",
-        "completed_at": "2026-08-15T14:12:21+02:00",
-        "observed_head": "dd4551d4019ebcd28af5255d503c57d38e223a2c",
-        "content_sha256": "5d04cea27065328a3d25fdb04a7e8e220726aa9dce3955b3d98ae73a8e0d93dd",
+        "campaign_id": "20260819T173410378760+0200",
+        "completed_at": "2026-08-19T18:03:02+02:00",
+        "observed_head": "55867d27465e7161e1d9d20155690fe932866f51",
+        "content_sha256": "f0a63b082931582b264cc6402b26a4aeb8d89db311bd4f29fdb27e7dd6051823",
         "file_count": 6,
-        "review": "full",
+        "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Die Float-nach-16-Bit-PCM-Umrechnung stand in WavCodec.swift zweimal wortgleich: einmal fuer die WAV an den whisper-server, einmal fuer die fortlaufende Datei auf Platte. Beide muessen dieselben Bytes erzeugen, weil 'Erneut transkribieren' die Datei liest. Jetzt eine Stelle (WavCodec.pcm16), Gleichheit beider Wege durch neuen Test byteweise belegt. Uebriger Bereich ohne Beanstandung; nur beobachtet: AudioRecorder liest die converter-Referenz im Tap unsynchronisiert, waehrend stop() sie auf nil setzt — das dient dort bewusst als zweite Bremse fuer noch laufende Tap-Aufrufe, ein Lock im Echtzeit-Audiopfad waere schlechter.",
+        "summary": "Kein Produktionsfehler gefunden. Die nicht offensichtliche Absturzsicherheit der Float-nach-PCM-Begrenzung (NaN, plus/minus unendlich) ist jetzt als Test festgehalten, weil sie jede beilaeufige Umformung der beiden min/max-Aufrufe nicht ueberleben wuerde. Delta (Umrechnung nur noch an einer Stelle) mitgeprueft; Aufnahme, CoreAudio-Geraeteauswahl, Dekodierung fremden Audios und VAD ohne Fund. Ein Fund fuer spaeter im Backlog: Geraetewechsel waehrend der Aufnahme wird nicht behandelt, gehoert zuerst an echte Hardware.",
         "tests": [
-          "swift test: 162 Tests gruen (vorher 161), neuer Test vergleicht Datei- und Netz-WAV byteweise",
-          "scripts/e2e-test.sh: bestanden (STT 0,21 s, Bereinigung 0,46 s)"
+          "swift test: 171 tests, 0 failures"
         ]
       }
     },
@@ -206,19 +213,17 @@
       "reason": "Signatur, Notarisierung und Release-Artefakte; ein Fehler hier liefert einen defekten oder unsignierten Build aus",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134035935432+0200",
-        "completed_at": "2026-08-15T14:28:17+02:00",
-        "observed_head": "fae3a6ed9400b410a197a5bf84e2326ed15393f6",
-        "content_sha256": "b6e9f604157efab8d219fb4fbf73d94f3043bf65058b4d9d0911d0e2eab3a753",
+        "campaign_id": "20260819T173410378760+0200",
+        "completed_at": "2026-08-19T18:05:27+02:00",
+        "observed_head": "0c0dcae8893d7b7d67306e89ed0d08143ddcf5dc",
+        "content_sha256": "3f02ab00f4f17bb1200163094dd3b79e8dfe3046f16c1730e28161c0c0b08a9a",
         "file_count": 10,
-        "review": "full",
+        "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Zwei Verdachtsmomente geprueft und beide widerlegt, deshalb keine Aenderung. (1) Der Ad-hoc-Signaturzweig in build-app.sh signiert nur das aeussere Bundle, waehrend der Developer-ID-Zweig ausdruecklich von innen nach aussen signiert — nachgestellt mit ad-hoc signierter CLI plus strip: die Tiefenpruefung laeuft trotzdem durch, strip erhaelt die Ad-hoc-Signatur. (2) build-app.sh --install faengt beim Zwischenpfad in /Applications nur EXIT ab, release.sh dagegen zusaetzlich INT und TERM. Erste Messung schien das zu bestaetigen, war aber falsch: Hintergrundjobs eines Skripts ignorieren SIGINT, und das Signal erreichte den Kindprozess nie. Mit echter Prozessgruppe (set -m, kill an die Gruppe) raeumen beide Varianten bei INT und TERM auf und enden mit 130/143. Eine bereits vorgenommene Aenderung wurde daraufhin zurueckgenommen. Nur beobachtet, bewusst nicht angefasst: release.sh und install.sh loesen den Notary-Profilnamen mit demselben Zehnzeiler auf — eine Zusammenfuehrung liesse sich hier ohne Apple-Roundtrip nicht verifizieren, und das sind die riskantesten Skripte des Projekts.",
+        "summary": "Keine lohnende Aenderung. Delta (Rollback der Pruefsumme ueber Inode-Identitaet) ist durch den vorhandenen Signaltest abgedeckt und laeuft gruen. Alle zehn Skripte haben set -euo pipefail und sind syntaktisch fehlerfrei; Signaturreihenfolge von innen nach aussen, Ticket-Pflicht vor /Applications, atomares Veroeffentlichen ueber link(2) und die Einzelpruefung eingebetteter Ziele in verify-release.sh sind stimmig. Zwei Entscheidungen statt Reparaturen stehen im Backlog: keine CI fuer die Testsuite, keine Sauberkeitspruefung des Arbeitsbaums vor dem Release.",
         "tests": [
-          "scripts/test-release-publication.sh: bestanden (Signal-/Rollback-Vertrag von release.sh)",
-          "bash -n ueber alle zehn Skripte: fehlerfrei",
-          "./build.sh: Bundle gebaut und signiert; codesign --verify --deep --strict: valid on disk",
-          "shellcheck: nicht installiert, deshalb NICHT ausgefuehrt"
+          "bash scripts/test-release-publication.sh: gruen",
+          "bash -n auf allen zehn Skripten: fehlerfrei"
         ]
       }
     },
@@ -232,17 +237,17 @@
       "reason": "Headless-Zugang fuer Tests und Agenten; darf keine Secrets ausgeben und muss Exit-Codes sauber liefern",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134035935432+0200",
-        "completed_at": "2026-08-15T14:19:04+02:00",
-        "observed_head": "fae3a6ed9400b410a197a5bf84e2326ed15393f6",
-        "content_sha256": "7fd5f5ae80a89bf54605e6059e31b3377c84faee88f5999a1ad9464cf242c116",
+        "campaign_id": "20260819T173410378760+0200",
+        "completed_at": "2026-08-19T18:08:52+02:00",
+        "observed_head": "296d4dd0385baca0f6f82e1c9fff58cf6dd0fc03",
+        "content_sha256": "6b35788ae276924777d048a4e3180fac8de730bd5ec90ab8fe892bd4fdb70e25",
         "file_count": 1,
-        "review": "full",
+        "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "checkEndpoint packte die aus der Konfiguration zusammengesetzte Tags-Adresse mit URL(string:)! erzwungen aus. Eine unbrauchbare ollamaURL (Leerzeichen im Hostnamen genuegt) liess doctor mit \"Fatal error: Unexpectedly found nil\" abstuerzen — ohne Meldung und ohne Exit-Code, ausgerechnet bei dem Befehl, den man wegen einer kaputten Konfiguration aufruft. Wird jetzt wie ein nicht erreichbarer Endpunkt gemeldet. Gleiche Stelle: Anfrage ohne eigene Frist (60 s Voreinstellung je totem Endpunkt) bekommt 5 Sekunden. Uebriger Bereich ohne Beanstandung: Secrets gehen nirgends nach argv, Diagnose nach stderr und Ergebnis nach stdout, Exit-Codes 0/1/2 sauber getrennt.",
+        "summary": "Den im Strukturbild vermerkten lokalen Verstoss zurueckgebaut: doctor sprach am Kern vorbei selbst HTTP mit Ollama. Die Pruefung liegt jetzt als CleanupService.checkOllamaEndpoint im Kern, geht ueber den einspeisbaren Transport und ist ohne echtes Ollama testbar; Diagnose und Betrieb urteilen dadurch nach derselben Namensregel. Delta (Absturz bei kaputter Adresse) mitgeprueft und weiterhin abgefangen.",
         "tests": [
-          "Reproduktion vor der Aenderung: Fatal error in main.swift:152; nach der Aenderung klare Meldung und Exit-Code 1",
-          "swift test: 162 Tests gruen (der CLI-Einstieg selbst ist ein top-level main.swift ohne Unit-Tests)"
+          "swift test: 173 tests, 0 failures",
+          "stillepost-cli doctor am echten Ollama: Modell vorhanden / Modell fehlt / Adresse unbrauchbar"
         ]
       }
     },
@@ -256,31 +261,30 @@
       "reason": "AppKit/SwiftUI-Schicht; soll nur orchestrieren, keine Geschaeftslogik duplizieren; Schluesselbund nie im Renderpfad",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260815T134035935432+0200",
-        "completed_at": "2026-08-15T15:15:57+02:00",
-        "observed_head": "dc03097b67a9a5dad7cdea6672ed8d33b7cb5e68",
-        "content_sha256": "bd6285a0dd10093f79e73da53653f5c3727e07a9254906be7ca3a24b68b01345",
+        "campaign_id": "20260819T173410378760+0200",
+        "completed_at": "2026-08-19T18:12:41+02:00",
+        "observed_head": "296d4dd0385baca0f6f82e1c9fff58cf6dd0fc03",
+        "content_sha256": "ca0a02f7aadba3d1d1e1b481374d0958117b653bd4eb6358fd8559e1d047a011",
         "file_count": 9,
-        "review": "full",
-        "outcome": "improved",
-        "summary": "In APIKeyRow lief \"Im Schluesselbund speichern\" synchron im Knopfdruck auf dem Main-Thread, waehrend die Statuspruefung direkt darunter und beide Token-Knoepfe in BridgeRow ueber Task.detached laufen — mit ausdruecklicher Begruendung, dass ein modaler Berechtigungsdialog sonst das Fenster blockiert. Der Schreibzugriff kann denselben Dialog ausloesen; dieselbe Regel war an einer von drei Stellen nicht angewandt. Speichern laeuft jetzt ebenfalls detached, beide Knoepfe sperren ueber busy, eigener Textschluessel fuer die Wartemeldung. Uebriger Bereich ohne Beanstandung: PasteService setzt den Bildschirmfreigabe-Fall nach AGENTS.md um, der Warmhalte-Timer laeuft nur bei keep_alive = -1, die UI arbeitet nirgends am Kern vorbei, kein erzwungenes Auspacken.",
+        "review": "delta-plus-boundaries",
+        "outcome": "reviewed-clean",
+        "summary": "Keine lohnende Aenderung. Delta (Schluesselbund-Schreibzugriff vom Main-Thread genommen, Eingabefeld waehrend der Aktion gesperrt, Feld nur beim unveraenderten Schnappschuss geleert) ist korrekt. Die drei Projektregeln fuer die Oberflaeche halten: kein Schluesselbundzugriff im Renderpfad (nur in Task.detached hinter Knopfdruck), Bildschirmfreigabe kopiert ohne Paste und ohne Wiederherstellung der Zwischenablage, Minuten-Warmup nur bei dauerhaftem keep_alive. Verlaufsaenderungen springen vor der Zustandsaenderung auf den Main-Thread; Timer und Hotkey-Registrierung werden sauber abgemeldet.",
         "tests": [
-          "swift test: 162 Tests gruen, darunter der Gleichstand beider Sprachdateien",
-          "./build.sh gebaut; codesign --verify --deep --strict: sauber",
-          "Sichtpruefung am Bundle (STILLEPOST_OPEN_SETTINGS=bereinigung, Wegwerf-Datenordner, STILLEPOST_ALLOW_MULTIPLE=1): Zeile rendert, Speichern-Knopf bei leerem Feld gesperrt, Pruefen-Knopf aktiv; Test-App danach beendet und aufgeraeumt",
-          "Die Knoepfe selbst wurden NICHT angeklickt (kein weiterer Schluesselbund-Dialog); der interaktive Schreibpfad ist damit nicht am Geraet durchgespielt"
+          "swift test: 173 tests, 0 failures",
+          "Bundle-Smoke-Test aus scripts/build-app.sh: Overlay-Vorschau und Einstellungen (Tab Bereinigung) starten stabil, isolierter App-Support-Ordner",
+          "Herkunftspruefung gegen die 27 echten Adressen dieses Macs: alle weiterhin Heimnetz, einschliesslich des globalen IPv6-Praefix der FRITZ!Box"
         ]
       }
     }
   ],
   "architecture": {
-    "campaign_id": "20260815T134035935432+0200",
-    "recorded_at": "2026-08-15T13:42:39+02:00",
-    "observed_head": "42f0a5f5b56a75acef8d829135b65a086799259e",
+    "campaign_id": "20260819T173410378760+0200",
+    "recorded_at": "2026-08-19T18:12:58+02:00",
+    "observed_head": "296d4dd0385baca0f6f82e1c9fff58cf6dd0fc03",
     "summary": "Die gesamte Fachlogik liegt in StillePostCore hinter einer public API; App und CLI konsumieren dieselbe Logik. Die UI fasst weder URLSession noch Process noch den Schluesselbund direkt an, sondern geht durch den Kern. DictationEngine bekommt seine Mitspieler ueber Protokolle aus DictationDependencies injiziert, dadurch ist der Diktat-Lifecycle ohne Mikrofon, Server und Dateisystem testbar. Zustandswechsel und Ergebnisse fliessen als Closures nach oben und werden dabei bewusst auf den Main-Thread gehoben.",
     "paradigm": "Schichtenmodell: Kernbibliothek StillePostCore plus zwei duenne Frontends (Menueleisten-App und CLI), innerhalb des Kerns ereignisgetrieben ueber Callbacks",
     "fit": "passt",
-    "recommendation": "Kein Paradigmenwechsel noetig oder sinnvoll. Das Modell traegt die Anwendung sauber und ist der Grund, warum 156 Tests ohne GUI laufen. Einzig zu beobachten: vereinzelte Frontend-Stellen, die am Kern vorbei selbst HTTP sprechen (stillepost-cli erreicht /api/tags direkt per URLSession) — lokale Verstoesse, die bereichsweise zurueckgebaut gehoeren, keine Strukturfrage."
+    "recommendation": "Kein Paradigmenwechsel noetig oder sinnvoll. Das Modell traegt die Anwendung sauber und ist der Grund, warum die Suite ohne GUI laeuft. Der einzige zuvor vermerkte lokale Verstoss ist am 2026-08-19 zurueckgebaut: stillepost-cli doctor sprach am Kern vorbei selbst HTTP mit Ollama und benutzt jetzt CleanupService.checkOllamaEndpoint. Derzeit ist keine Frontend-Stelle mehr bekannt, die den Kern umgeht."
   },
   "themes": [
     {
