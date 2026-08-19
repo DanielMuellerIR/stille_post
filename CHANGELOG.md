@@ -14,6 +14,11 @@ Datei mit dem Versions-Bump fortgeschrieben.
 
 ### Behoben
 
+- Modell-Download: Eine Teildatei, die größer ist als die erwartete Datei, wird
+  nicht mehr als angefangener Download weiterverwendet, sondern neu geladen.
+  Wurde das Modell am Server durch eine kleinere Fassung ersetzt, blieb die
+  Installation sonst dauerhaft mit der Meldung über eine unvollständige Datei
+  stehen, bis jemand die Teildatei von Hand löschte.
 - Netzwerk-Brücke: Die Herkunftsprüfung entscheidet jetzt anhand der 16 Bytes
   einer Adresse statt anhand ihrer Schreibweise. Eine IPv6-Adresse darf ihre
   letzten vier Bytes mit Punkten schreiben („2a00:1234::192.168.1.1“ ist eine

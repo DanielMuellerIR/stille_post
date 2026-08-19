@@ -138,7 +138,8 @@ public final class ModelInstaller {
         let expected = try await expectedSize(of: model)
 
         // Wie weit ist ein früherer Versuch gekommen?
-        let alreadyHave = Self.fileSize(atPath: partialPath)
+        let alreadyHave = Self.resumeOffset(existing: Self.fileSize(atPath: partialPath),
+                                            expected: expected)
 
         if alreadyHave < expected {
             try await download(model, from: alreadyHave, expected: expected,
@@ -176,6 +177,19 @@ public final class ModelInstaller {
     /// passende Teildatei und lädt sauber von vorn.
     static func partialPath(for model: WhisperModel, at path: String) -> String {
         path + ".\(model.name).partial"
+    }
+
+    /// Ab welchem Byte darf ein abgebrochener Download fortsetzen?
+    ///
+    /// Nur eine Teildatei, die höchstens so lang ist wie die erwartete Datei,
+    /// kann ihr Anfang sein. Ist sie LÄNGER, wurde das Modell am Server durch
+    /// eine kleinere Fassung ersetzt — dann ist die 0 die richtige Antwort:
+    /// `DownloadSink` kürzt die Teildatei bei Versatz 0 auf null und lädt sauber
+    /// neu. Ohne diese Unterscheidung lud gar nichts mehr (die Teildatei gilt als
+    /// „schon fertig“), und jeder weitere Versuch endete mit derselben Meldung
+    /// über eine unvollständige Datei, die niemand von Hand wegräumt.
+    static func resumeOffset(existing: Int64, expected: Int64) -> Int64 {
+        existing <= expected ? existing : 0
     }
 
     /// Verbindliche Größe per HEAD holen.

@@ -122,6 +122,18 @@ final class ModelInstallerTests: XCTestCase {
                       "Der Modellname macht die Teildatei unterscheidbar")
     }
 
+    func testResumeOnlyFromAUsableStart() {
+        // Kuerzere Teildatei: fortsetzen, wo sie aufhoert.
+        XCTAssertEqual(ModelInstaller.resumeOffset(existing: 0, expected: 100), 0)
+        XCTAssertEqual(ModelInstaller.resumeOffset(existing: 40, expected: 100), 40)
+        // Genau vollstaendig: nichts mehr zu holen.
+        XCTAssertEqual(ModelInstaller.resumeOffset(existing: 100, expected: 100), 100)
+        // Laenger als das Ziel — das kann kein Anfang der erwarteten Datei sein.
+        // Ohne die 0 laedt hier nichts mehr, und jeder Versuch meldet dieselbe
+        // unvollstaendige Datei.
+        XCTAssertEqual(ModelInstaller.resumeOffset(existing: 140, expected: 100), 0)
+    }
+
     func testProgressFraction() {
         XCTAssertEqual(ModelInstaller.Progress(receivedBytes: 50, totalBytes: 200).fraction, 0.25)
         XCTAssertNil(ModelInstaller.Progress(receivedBytes: 50, totalBytes: 0).fraction,
