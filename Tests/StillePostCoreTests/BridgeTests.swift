@@ -102,6 +102,34 @@ final class BridgeTests: XCTestCase {
         }
     }
 
+    func testGlobalIPv6InDottedNotationIsNotHomeNetwork() {
+        // "2a00:1234::192.168.1.1" ist eine gueltige Schreibweise einer GLOBALEN
+        // IPv6-Adresse — die letzten vier Bytes duerfen als 1.2.3.4 geschrieben
+        // werden. Wer nur "enthaelt einen Punkt" prueft, sieht darin eine private
+        // IPv4-Adresse und laesst ein Geraet aus dem Internet durch.
+        XCTAssertFalse(
+            BridgePeer.isLocalNetwork("2a00:1234::192.168.1.1", ownPrefixes: { [] }),
+            "globale IPv6-Adresse mit Punkt-Schreibweise gehoert nicht zum Heimnetz"
+        )
+        XCTAssertFalse(
+            BridgePeer.isLocalNetwork("2a00:1234::10.0.0.5", ownPrefixes: { [] })
+        )
+        // Und die echte IPv4-in-IPv6-Form bleibt selbstverstaendlich Heimnetz —
+        // jetzt in beiden Schreibweisen derselben Adresse. Frueher entschied der
+        // Text: die Punkt-Form galt als Heimnetz, die gleichwertige Hex-Form nicht.
+        XCTAssertTrue(
+            BridgePeer.isLocalNetwork("::ffff:192.168.1.5", ownPrefixes: { [] })
+        )
+        XCTAssertTrue(
+            BridgePeer.isLocalNetwork("::ffff:c0a8:105", ownPrefixes: { [] }),
+            "dieselbe Adresse in Hex-Schreibweise"
+        )
+        // Eine eingebettete OEFFENTLICHE IPv4-Adresse bleibt draussen.
+        XCTAssertFalse(
+            BridgePeer.isLocalNetwork("::ffff:8.8.8.8", ownPrefixes: { [] })
+        )
+    }
+
     func testGlobalIPv6CountsAsHomeNetworkOnlyInsideAnOwnPrefix() {
         // Der Fall aus dem Alltag: Die FRITZ!Box gibt Mac und iPhone Adressen aus
         // demselben globalen /64. Zählt das nicht als Heimnetz, weist die Brücke

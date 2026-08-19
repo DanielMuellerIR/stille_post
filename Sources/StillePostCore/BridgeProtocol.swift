@@ -256,21 +256,27 @@ public enum BridgePeer {
         var host = address.lowercased()
         if let percent = host.firstIndex(of: "%") { host = String(host[host.startIndex..<percent]) }
         host = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        // IPv4-in-IPv6 ("::ffff:192.168.1.5") auf den IPv4-Teil zurückführen.
-        if let lastColon = host.lastIndex(of: ":"), host.contains(".") {
-            host = String(host[host.index(after: lastColon)...])
-        }
 
-        if host.contains(".") { return isPrivateIPv4(host) }
-        if isPrivateIPv6(host) { return true }
+        // Ohne Doppelpunkt kann es nur eine IPv4-Adresse (oder ein Name) sein.
+        if !host.contains(":") { return isPrivateIPv4(host) }
+
+        // Ab hier wird über die 16 Bytes entschieden und nicht über den Text.
+        // Wichtig, weil eine IPv6-Adresse ihre letzten vier Bytes in
+        // Punkt-Schreibweise tragen darf: "2a00:1234::192.168.1.1" ist eine
+        // GLOBALE Adresse aus dem Internet und sieht im Text trotzdem nach einem
+        // privaten IPv4-Netz aus.
+        guard let bytes = IPv6Prefix.parse(host) else { return false }
+        if isPrivateIPv6(bytes) { return true }
+        // Echte IPv4-in-IPv6-Form: So meldet macOS eine IPv4-Gegenstelle auf
+        // einem Dual-Stack-Port. Nur diese eine Einbettung zählt.
+        if let ipv4 = mappedIPv4(bytes) { return isPrivateIPv4(ipv4) }
 
         // Bleibt eine öffentlich aussehende IPv6-Adresse. Sie zählt genau dann zum
         // Heimnetz, wenn sie im selben Netzbereich liegt wie eine Adresse dieses
         // Macs: Die FRITZ!Box gibt allen Geräten im Haus Adressen aus demselben
         // globalen Präfix, dem iPhone genauso wie diesem Mac. Ein Gegenüber aus
         // dem Internet hat ein anderes Präfix und fällt weiterhin durch.
-        guard let peer = IPv6Prefix.parse(host) else { return false }
-        return ownPrefixes().contains { $0.contains(peer) }
+        return ownPrefixes().contains { $0.contains(bytes) }
     }
 
     static func isPrivateIPv4(_ host: String) -> Bool {
@@ -292,16 +298,24 @@ public enum BridgePeer {
         }
     }
 
-    static func isPrivateIPv6(_ host: String) -> Bool {
-        if host == "::1" { return true }
-        // fc00::/7 sind eindeutige lokale Adressen, fe80::/10 Link-Local. Beide
-        // sind schon an der Adresse als heimnetz-intern erkennbar. Globale
-        // Präfixe sind das nicht — die entscheidet `isLocalNetwork` anhand der
-        // eigenen Schnittstellen.
-        let firstGroup = host.split(separator: ":").first.map(String.init) ?? ""
-        guard !firstGroup.isEmpty, let value = Int(firstGroup, radix: 16) else { return false }
-        if (0xFC00...0xFDFF).contains(value) { return true }   // fc00::/7
-        if (0xFE80...0xFEBF).contains(value) { return true }   // fe80::/10
+    /// Ist diese IPv6-Adresse schon an sich selbst als heimnetz-intern zu
+    /// erkennen? Globale Präfixe sind das nicht — die entscheidet
+    /// `isLocalNetwork` anhand der eigenen Schnittstellen.
+    static func isPrivateIPv6(_ bytes: [UInt8]) -> Bool {
+        guard bytes.count == 16 else { return false }
+        if bytes.dropLast().allSatisfy({ $0 == 0 }), bytes[15] == 1 { return true }  // ::1
+        if bytes[0] & 0xFE == 0xFC { return true }                       // fc00::/7
+        if bytes[0] == 0xFE, bytes[1] & 0xC0 == 0x80 { return true }     // fe80::/10
         return false
+    }
+
+    /// Der IPv4-Teil einer IPv4-in-IPv6-Adresse ("::ffff:192.168.1.5") als Text.
+    /// `nil` für jede andere Adresse — insbesondere für eine globale Adresse,
+    /// die ihre letzten vier Bytes bloß mit Punkten schreibt.
+    static func mappedIPv4(_ bytes: [UInt8]) -> String? {
+        guard bytes.count == 16,
+              bytes[0..<10].allSatisfy({ $0 == 0 }),
+              bytes[10] == 0xFF, bytes[11] == 0xFF else { return nil }
+        return bytes[12..<16].map(String.init).joined(separator: ".")
     }
 }

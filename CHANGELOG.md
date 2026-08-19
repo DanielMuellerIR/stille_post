@@ -14,6 +14,13 @@ Datei mit dem Versions-Bump fortgeschrieben.
 
 ### Behoben
 
+- Netzwerk-Brücke: Die Herkunftsprüfung entscheidet jetzt anhand der 16 Bytes
+  einer Adresse statt anhand ihrer Schreibweise. Eine IPv6-Adresse darf ihre
+  letzten vier Bytes mit Punkten schreiben („2a00:1234::192.168.1.1“ ist eine
+  gültige globale Adresse); bisher galt so eine Adresse aus dem Internet wegen
+  der Punkte als privates IPv4-Netz und kam an der ersten Hürde vorbei — das
+  Token schützte weiterhin. Umgekehrt zählt eine eingebettete private
+  IPv4-Adresse nun in beiden Schreibweisen als Heimnetz.
 - Bereinigung: Das erste Diktat nach einem Kaltstart verliert die Bereinigung
   nicht mehr. Lädt der Ollama-Server das Modell gerade erst, schweigt er länger
   als die 10 s Geduld des Streaming-Pfads (gemessen: 11,5 s für das 6-GB-Modell);
