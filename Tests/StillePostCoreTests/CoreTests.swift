@@ -1161,6 +1161,57 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(transport.normalCallCount, 1)
     }
 
+    func testPrimaryIdleTimeoutRetriesPatientlyWhileModelLoads() async {
+        // Kaltstart des Bereinigungsmodells: Der Server nimmt die Verbindung an
+        // und schweigt, bis das Leerlauf-Timeout des Streaming-Pfads zuschlaegt
+        // (gemessen: 11,5 s Ladezeit gegen 10 s Geduld). Ein zweiter Stream mit
+        // derselben kurzen Geduld liefe genauso ins Leere — erwartet wird die
+        // geduldige Komplett-Antwort, nachdem die Probe den Server als lebendig
+        // bestaetigt hat.
+        let raw = "also das ist ein vollständiger test für ein kalt startendes modell"
+        let cleaned = "Das ist ein vollständiger Test für ein kalt startendes Modell."
+        let transport = StubCleanupTransport(
+            outcomes: [.failure(URLError(.timedOut))], normalContent: cleaned
+        )
+        let service = CleanupService(config: Config.Cleanup(), transport: transport)
+        service.notePrimarySuccess()
+        var retryReported = false
+        service.onPrimaryRetry = { retryReported = true }
+
+        let result = await service.clean(raw)
+
+        XCTAssertEqual(result.text, cleaned)
+        XCTAssertFalse(result.usedFallback)
+        XCTAssertEqual(result.endpoint, Config.Cleanup().chain[0].label)
+        XCTAssertTrue(retryReported)
+        XCTAssertEqual(transport.streamCallCount, 1,
+                       "kein zweiter Stream mit derselben kurzen Geduld")
+        XCTAssertEqual(transport.probeCallCount, 1, "eine Probe klaert: lebt der Server?")
+        XCTAssertEqual(transport.normalCallCount, 1, "geduldige Komplett-Antwort")
+    }
+
+    func testPrimaryIdleTimeoutWithDeadServerSkipsSecondAttempt() async {
+        // Gleiche Ausgangslage, aber der Server ist wirklich weg. Dann darf der
+        // geduldige Versuch NICHT laufen: Er wuerde bis zu 120 s kosten, bevor
+        // die Kette weiterzieht.
+        let raw = "also das ist ein vollständiger test für einen wirklich toten endpoint"
+        let transport = StubCleanupTransport(
+            outcomes: [.failure(URLError(.timedOut))], probeSucceeds: false
+        )
+        let service = CleanupService(config: Config.Cleanup(), transport: transport)
+        service.notePrimarySuccess()
+
+        let result = await service.clean(raw)
+
+        XCTAssertTrue(result.usedFallback)
+        XCTAssertNil(result.endpoint)
+        XCTAssertEqual(transport.streamCallCount, 1)
+        XCTAssertEqual(transport.normalCallCount, 0,
+                       "kein 120-s-Versuch gegen einen toten Server")
+        XCTAssertTrue(result.fallbackReason?.contains("127.0.0.1:11434") ?? false,
+                      "der tote Endpoint muss im Grund stehen: \(result.fallbackReason ?? "")")
+    }
+
     func testStreamingCleanAgainstLocalOllamaIfAvailable() throws {
         // Integrationstest des Streaming-Pfads gegen ein ECHTES lokales Ollama —
         // wird übersprungen, wenn keins läuft oder das Default-Modell fehlt
@@ -1369,22 +1420,37 @@ private func wavSamples(_ data: Data) -> [Float] {
 }
 
 private final class StubCleanupTransport: CleanupTransport {
+    /// Was der naechste Streaming-Aufruf liefern soll: die geplanten NDJSON-Zeilen
+    /// oder einen Transportfehler (etwa das Leerlauf-Timeout des Primaerpfads).
+    enum StreamOutcome {
+        case frames([String])
+        case failure(Error)
+    }
+
     private let lock = NSLock()
-    private var streams: [[String]]
+    private var outcomes: [StreamOutcome]
     private let normalContent: String
+    private let probeSucceeds: Bool
     private(set) var streamCallCount = 0
     private(set) var probeCallCount = 0
     private(set) var normalCallCount = 0
 
-    init(streams: [[String]], normalContent: String = "") {
-        self.streams = streams
+    convenience init(streams: [[String]], normalContent: String = "") {
+        self.init(outcomes: streams.map { .frames($0) }, normalContent: normalContent)
+    }
+
+    init(outcomes: [StreamOutcome], normalContent: String = "", probeSucceeds: Bool = true) {
+        self.outcomes = outcomes
         self.normalContent = normalContent
+        self.probeSucceeds = probeSucceeds
     }
 
     func data(for request: URLRequest, probing: Bool) async throws -> (Data, URLResponse) {
         lock.withLock {
             if probing { probeCallCount += 1 } else { normalCallCount += 1 }
         }
+        // Ein toter Server meldet sich auch bei der Probe nicht.
+        if probing, !probeSucceeds { throw URLError(.cannotConnectToHost) }
         let body: Data
         if probing {
             body = Data(#"{"version":"test"}"#.utf8)
@@ -1398,9 +1464,14 @@ private final class StubCleanupTransport: CleanupTransport {
 
     func streamLines(for request: URLRequest, freshConnection: Bool) async throws
         -> (AsyncThrowingStream<String, Error>, URLResponse) {
-        let frames = lock.withLock {
+        let outcome = lock.withLock {
             streamCallCount += 1
-            return streams.isEmpty ? [] : streams.removeFirst()
+            return outcomes.isEmpty ? StreamOutcome.frames([]) : outcomes.removeFirst()
+        }
+        let frames: [String]
+        switch outcome {
+        case .failure(let error): throw error
+        case .frames(let planned): frames = planned
         }
         let stream = AsyncThrowingStream<String, Error> { continuation in
             frames.forEach { continuation.yield($0) }

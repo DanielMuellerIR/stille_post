@@ -113,18 +113,39 @@ public final class CleanupService {
                         // Endpoint war 14 s nach der gescheiterten Probe wieder da,
                         // der lokale Kaltstart kostete derweil 15 s). Stattdessen:
                         // Direktanfrage als STREAM (jedes Antwort-Häppchen beweist
-                        // "Verbindung lebt"; 10 s ohne Daten = wirklich tot) — und
-                        // bei Fehler SOFORT ein zweiter Versuch über eine frische
-                        // Verbindung (falls eine gestorbene Pool-Verbindung schuld war).
+                        // "Verbindung lebt") — und bei Fehler SOFORT ein zweiter
+                        // Versuch, dessen Form zur Ursache passt (siehe unten).
                         do {
                             cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
                                                                streaming: true,
                                                                freshConnection: false)
                         } catch {
                             onPrimaryRetry?()
-                            cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
-                                                               streaming: true,
-                                                               freshConnection: true)
+                            if Self.isIdleTimeout(error) {
+                                // 10 s lang kam kein einziges Häppchen. Antwortet der
+                                // Server auf die schnelle Probe, lebt er und lädt
+                                // gerade das Modell (kalt gemessen: 11,5 s für 6 GB,
+                                // auf RAM-knappen Rechnern ein Vielfaches davon) — ein
+                                // zweiter Stream mit derselben kurzen Geduld liefe
+                                // genauso ins Leere. Deshalb hier dieselbe Antwort wie
+                                // beim kalt startenden Fallback-Modell: die geduldige
+                                // Komplett-Antwort ohne Leerlauf-Timeout.
+                                guard await isReachable(ollamaURL: endpoint.ollamaURL) else {
+                                    // Server wirklich weg: nicht noch einmal 10 s
+                                    // verschenken, sofort zum nächsten Endpoint.
+                                    throw CleanupError.unreachable(endpoint.ollamaURL)
+                                }
+                                cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
+                                                                   streaming: false,
+                                                                   freshConnection: false)
+                            } else {
+                                // Abgebrochener Stream, kaputter Frame, Providerfehler:
+                                // frische Verbindung, falls eine gestorbene
+                                // Pool-Verbindung schuld war.
+                                cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
+                                                                   streaming: true,
+                                                                   freshConnection: true)
+                            }
                         }
                         notePrimarySuccess()
                     } else {
@@ -269,6 +290,14 @@ public final class CleanupService {
             }
         }
         return false
+    }
+
+    /// Lief die Anfrage in das Leerlauf-Timeout des Streaming-Pfads, statt mit
+    /// einem harten Netzwerkfehler abzubrechen? Nur dann ist "der Server lädt
+    /// vielleicht gerade das Modell" überhaupt eine Erklärung; "Verbindung
+    /// abgelehnt" oder "Netzwerk weg" melden sich mit einem anderen Code.
+    static func isIdleTimeout(_ error: Error) -> Bool {
+        (error as? URLError)?.code == .timedOut
     }
 
     // MARK: - Plausibilitäts- und Worttreue-Abgleich

@@ -40,11 +40,21 @@ Kontext, Satzgrenzen und konsistente Zeichensetzung verloren gehen.
 - `num_ctx` explizit auf 16384 setzen. Warm-up und Chat müssen denselben Wert
   verwenden; unterschiedliche Kontextgrößen können getrennte Modellinstanzen laden.
 - Primärer Endpunkt: direkter Streaming-Request. Scheitert er, folgt genau ein
-  sofortiger Versuch in einer frischen Sitzung — nicht nur bei Verbindungsfehlern,
-  sondern auch bei abgebrochenem Stream, ungültigem Frame und Providerfehler
-  („Modell wird neu geladen“ ist der häufigste und geht beim zweiten Versuch
-  durch). Danach die geordnete Fallback-Kette. Fallback-Probes bleiben
-  non-streaming; keine parallelen oder gehedgten Requests.
+  sofortiger zweiter Versuch — dessen Form richtet sich nach der Ursache:
+  - Abgebrochener Stream, ungültiger Frame, Providerfehler oder Verbindungsfehler
+    („Modell wird neu geladen“ ist der häufigste und geht beim zweiten Versuch
+    durch): Wiederholung als Stream über eine frische Sitzung.
+  - Leerlauf-Timeout, also 10 s ohne ein einziges Häppchen: Der Server hat die
+    Verbindung angenommen und schweigt — typischerweise lädt er gerade das Modell
+    (gemessen: 11,5 s für 6 GB nach dem Booten, auf RAM-knappen Rechnern ein
+    Vielfaches). Ein zweiter Stream mit derselben Geduld liefe genauso ins Leere.
+    Deshalb entscheidet hier die schnelle Erreichbarkeitsprobe: antwortet der
+    Server, folgt die geduldige Komplett-Antwort ohne Leerlauf-Timeout; antwortet
+    er nicht, geht es sofort zum nächsten Endpunkt, statt weitere 10 s zu
+    verschenken.
+
+  Danach die geordnete Fallback-Kette. Fallback-Probes bleiben non-streaming;
+  keine parallelen oder gehedgten Requests.
 - Fallback-Semantik: Netzwerk-/Dienstfehler → nächster Endpunkt. Plausibilitätsfehler
   des bereinigten Textes → den Rohtext liefern, nicht den nächsten Dienst
   ausprobieren. „Rohtext“ heißt dabei: keine Wortänderung und nichts aus der

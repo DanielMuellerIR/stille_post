@@ -10,6 +10,19 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.13] — unveröffentlicht
+
+### Behoben
+
+- Bereinigung: Das erste Diktat nach einem Kaltstart verliert die Bereinigung
+  nicht mehr. Lädt der Ollama-Server das Modell gerade erst, schweigt er länger
+  als die 10 s Geduld des Streaming-Pfads (gemessen: 11,5 s für das 6-GB-Modell);
+  bisher lief auch der zweite Versuch als Stream in dasselbe Timeout, und das
+  Diktat fiel auf einen Ausweich-Endpunkt oder den Rohtext zurück. Jetzt klärt
+  eine schnelle Probe, ob der Server lebt: dann wartet der zweite Versuch geduldig
+  auf die vollständige Antwort. Ist der Server wirklich weg, zieht die Kette
+  sofort weiter, statt weitere 10 s zu verschenken.
+
 ## [0.9.12] — 2026-08-16
 
 ### Behoben
