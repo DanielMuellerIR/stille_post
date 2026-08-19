@@ -293,6 +293,14 @@ einen chirurgischen Fix ist, und die Reste zweier Fixes.
   Referenz-Gegenprobe: VoiceInk (GPL-3) baut auf denselben Bausteinen
   (whisper.cpp + optional Parakeet via FluidAudio) — architektonisch kein
   Vorsprung gegenüber Stille Post, aber Ideenquelle (z. B. app-abhängige Modi).
+- Eingabegerät-Wechsel während der Aufnahme (Befund CodeQA 2026-08-19, ungeprüft
+  an echter Hardware): `AudioRecorder` hört nicht auf
+  `AVAudioEngineConfigurationChange`. Wird das Mikrofon mitten im Diktat abgezogen
+  oder wechselt macOS das Standardgerät, hört der Tap vermutlich still auf zu
+  liefern — die Aufnahme läuft weiter, und Whisper bekommt am Ende nur den Teil
+  bis zum Wechsel. Zuerst am Gerät reproduzieren (USB-Mikrofon abziehen, dann
+  Bluetooth-Headset trennen), erst danach über die Behandlung entscheiden:
+  Aufnahme mit klarer Meldung beenden ist ehrlicher als still weiterzulaufen.
 - Wörterbuch-Pflege in den Einstellungen (GUI) statt nur in `config.json`;
   Vorbelegung siehe `Config.Cleanup.defaultDictionary` (seit 0.9.0).
 

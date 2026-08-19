@@ -90,6 +90,29 @@ final class CoreTests: XCTestCase {
                        "Datei und Netz-WAV müssen Byte für Byte übereinstimmen")
     }
 
+    func testPcmConversionSurvivesNaNAndInfinity() {
+        // Die Umrechnung laeuft auf dem Audio-Thread, und `Int16(x)` bricht hart
+        // ab, sobald x ausserhalb des Wertebereichs liegt oder keine Zahl ist. Die
+        // Begrenzung `max(-1, min(1, sample))` faengt beides ab — auch NaN, weil
+        // jeder Vergleich mit NaN falsch ist und `min`/`max` deshalb den anderen
+        // Wert nehmen. Das ist nicht offensichtlich: Wer die beiden Aufrufe
+        // umdreht oder durch eine andere Begrenzung ersetzt, holt sich einen
+        // Absturz mitten in der Aufnahme zurueck. Deshalb steht es hier fest.
+        let samples: [Float] = [.nan, .infinity, -.infinity, .signalingNaN,
+                                .greatestFiniteMagnitude, -.greatestFiniteMagnitude]
+        let data = WavCodec.wavData(from: samples)
+
+        XCTAssertEqual(data.count, 44 + samples.count * 2)
+        let restored = wavSamples(data)
+        // NaN und +unendlich landen am oberen Anschlag, -unendlich am unteren.
+        XCTAssertEqual(restored[0], 1, accuracy: 0.001, "NaN muss begrenzt werden")
+        XCTAssertEqual(restored[1], 1, accuracy: 0.001)
+        XCTAssertEqual(restored[2], -1, accuracy: 0.001)
+        XCTAssertEqual(restored[3], 1, accuracy: 0.001, "auch signalisierendes NaN")
+        XCTAssertEqual(restored[4], 1, accuracy: 0.001)
+        XCTAssertEqual(restored[5], -1, accuracy: 0.001)
+    }
+
     func testWavFileWriterRetainsAndReportsFirstAppendFailure() throws {
         enum Expected: Error { case diskFull }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("writer-fail-\(UUID()).wav")
