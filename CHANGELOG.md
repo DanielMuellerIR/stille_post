@@ -12,6 +12,14 @@ Datei mit dem Versions-Bump fortgeschrieben.
 
 ## [0.9.13] — unveröffentlicht
 
+### Geändert
+
+- `stillepost-cli doctor` prüft die Bereinigungs-Endpunkte jetzt über dieselbe
+  Stelle im Kern, die auch die Bereinigung selbst benutzt. Die Diagnose kann
+  dadurch nicht mehr nach anderen Regeln urteilen als der Betrieb; ein Modell
+  gilt weiterhin auch dann als vorhanden, wenn Ollama es mit Tag meldet
+  (`gemma4:e4b-it-qat:latest`), ein bloß ähnlich beginnender Name dagegen nicht.
+
 ### Behoben
 
 - Verlauf: „Alle löschen“ räumt jetzt jede zurückbehaltene Aufnahme weg, auch

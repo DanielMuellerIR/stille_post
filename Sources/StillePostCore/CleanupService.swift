@@ -292,6 +292,57 @@ public final class CleanupService {
         return false
     }
 
+    /// Ergebnis der Endpunkt-Prüfung für die Diagnose (`stillepost-cli doctor`).
+    public enum EndpointCheck: Equatable, Sendable {
+        /// Adresse unbrauchbar oder Server antwortet nicht.
+        case unreachable
+        /// Server antwortet, aber das eingestellte Modell liegt dort nicht.
+        case modelMissing
+        /// Server antwortet und das Modell ist vorhanden.
+        case ready
+    }
+
+    /// Antwortet dieser Ollama-Endpunkt, und ist das eingestellte Modell dort
+    /// installiert?
+    ///
+    /// Gehört in den Kern und nicht in die Diagnose-Oberfläche: Adressbau,
+    /// Zeitgrenze und die Namensregel für Modell-Tags sind dieselben, nach denen
+    /// `clean()` später arbeitet. Stünden sie in der CLI, könnte die Diagnose
+    /// „alles gut“ melden, während die Bereinigung nach anderen Regeln scheitert.
+    ///
+    /// Zwei Versuche wie bei `isReachable` — ein einzelner Aussetzer im WLAN soll
+    /// keinen laufenden Rechner als tot melden.
+    public func checkOllamaEndpoint(_ endpoint: Config.Cleanup.Endpoint) async -> EndpointCheck {
+        guard let url = URL(string: "\(endpoint.ollamaURL)/api/tags") else { return .unreachable }
+        let request = URLRequest(url: url)
+        for _ in 0..<2 {
+            guard let (data, response) = try? await transport.data(for: request, probing: true),
+                  (response as? HTTPURLResponse)?.statusCode == 200 else { continue }
+            guard let installed = Self.installedModelNames(in: data) else { return .unreachable }
+            return installed.contains { Self.matchesModel($0, configured: endpoint.model) }
+                ? .ready : .modelMissing
+        }
+        return .unreachable
+    }
+
+    /// Modellnamen aus der Antwort von `/api/tags`. `nil`, wenn die Antwort nicht
+    /// die erwartete Form hat.
+    static func installedModelNames(in data: Data) -> [String]? {
+        struct Tags: Decodable {
+            struct Model: Decodable { let name: String }
+            let models: [Model]
+        }
+        return (try? JSONDecoder().decode(Tags.self, from: data))?.models.map(\.name)
+    }
+
+    /// Ollama meldet Modelle mit Tag. Ein eingestelltes `gemma4:e4b-it-qat` gilt
+    /// deshalb auch dann als vorhanden, wenn der Server `gemma4:e4b-it-qat:latest`
+    /// zurückgibt — aber nicht bei einem bloß ähnlich beginnenden Namen
+    /// (`gemma4:e4b-it-qat-gross` ist ein anderes Modell).
+    static func matchesModel(_ installed: String, configured: String) -> Bool {
+        installed == configured || installed.hasPrefix(configured + ":")
+    }
+
     /// Lief die Anfrage in das Leerlauf-Timeout des Streaming-Pfads, statt mit
     /// einem harten Netzwerkfehler abzubrechen? Nur dann ist "der Server lädt
     /// vielleicht gerade das Modell" überhaupt eine Erklärung; "Verbindung

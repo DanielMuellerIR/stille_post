@@ -130,6 +130,9 @@ case "doctor":
     if !config.cleanup.enabled {
         print(L10n.text("cli.doctor.cleanup_off"))
     } else {
+        // Ein Dienst für die ganze Kette: Er trägt keinen Zustand je Endpunkt,
+        // die zu prüfende Adresse kommt bei jedem Aufruf mit.
+        let cleanupService = CleanupService(config: config.cleanup)
         /// Prüft einen einzelnen Bereinigungs-Endpoint; true = benutzbar.
         func checkEndpoint(_ endpoint: Config.Cleanup.Endpoint, name: String) -> Bool {
             if endpoint.provider == "openai" {
@@ -145,30 +148,17 @@ case "doctor":
                 print(L10n.format("cli.doctor.cleanup_cloud_ok", name, endpoint.label))
                 return true
             }
-            // Ollama erreichbar + Modell vorhanden?
-            struct TagsResponse: Decodable { struct M: Decodable { let name: String }; let models: [M] }
-            // Eine handgeschriebene `ollamaURL` kann unbrauchbar sein (Leerzeichen
-            // im Hostnamen etwa). Das ist für `doctor` ein zu meldender Befund und
-            // kein Grund abzustürzen — ausgerechnet dieser Befehl wird ja wegen
-            // einer kaputten Konfiguration aufgerufen.
-            guard let tagsURL = URL(string: "\(endpoint.ollamaURL)/api/tags") else {
-                print(L10n.format("cli.doctor.cleanup_unreachable", name, endpoint.ollamaURL))
-                return false
-            }
-            // Kurze Frist statt der 60 Sekunden, die eine ungebremste Anfrage
-            // mitbringt: `doctor` prüft die ganze Kette, und ein abgeschalteter
-            // Rechner darf nicht jedes Mal eine Minute kosten.
-            var tagsRequest = URLRequest(url: tagsURL)
-            tagsRequest.timeoutInterval = 5
-            do {
-                let data = try runBlocking {
-                    try await URLSession.shared.data(for: tagsRequest).0
-                }
-                let tags = try JSONDecoder().decode(TagsResponse.self, from: data)
-                if tags.models.contains(where: { $0.name == endpoint.model || $0.name.hasPrefix(endpoint.model + ":") }) {
-                    print(L10n.format("cli.doctor.cleanup_ollama_ok", name, endpoint.label))
-                    return true
-                }
+            // Ollama erreichbar + Modell vorhanden? Die Prüfung liegt im Kern:
+            // Adressbau, Zeitgrenze und die Namensregel für Modell-Tags sind
+            // dieselben, nach denen die Bereinigung später arbeitet. Früher
+            // sprach `doctor` hier selbst HTTP und konnte deshalb „alles gut“
+            // melden, während `clean()` nach anderen Regeln scheiterte.
+            switch (try? runBlocking { await cleanupService.checkOllamaEndpoint(endpoint) })
+                ?? .unreachable {
+            case .ready:
+                print(L10n.format("cli.doctor.cleanup_ollama_ok", name, endpoint.label))
+                return true
+            case .modelMissing:
                 print(L10n.format(
                     "cli.doctor.cleanup_model_missing",
                     name,
@@ -176,7 +166,7 @@ case "doctor":
                     endpoint.model
                 ))
                 return false
-            } catch {
+            case .unreachable:
                 print(L10n.format("cli.doctor.cleanup_unreachable", name, endpoint.ollamaURL))
                 return false
             }

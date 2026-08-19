@@ -1293,6 +1293,63 @@ final class CoreTests: XCTestCase {
                       "der tote Endpoint muss im Grund stehen: \(result.fallbackReason ?? "")")
     }
 
+    func testEndpointCheckReportsReachabilityAndInstalledModel() async {
+        // Die Pruefung fuer `doctor` liegt im Kern, damit Diagnose und
+        // Bereinigung dieselbe Adresse, dieselbe Zeitgrenze und dieselbe
+        // Namensregel benutzen.
+        let endpoint = Config.Cleanup.Endpoint()
+
+        let present = CleanupService(
+            config: Config.Cleanup(),
+            transport: StubCleanupTransport(outcomes: [], installedModels: [endpoint.model])
+        )
+        let checkedPresent = await present.checkOllamaEndpoint(endpoint)
+        XCTAssertEqual(checkedPresent, .ready)
+
+        // Ollama meldet Modelle mit Tag — dieselbe Installation, andere Schreibweise.
+        let tagged = CleanupService(
+            config: Config.Cleanup(),
+            transport: StubCleanupTransport(outcomes: [],
+                                            installedModels: ["\(endpoint.model):latest"])
+        )
+        let checkedTagged = await tagged.checkOllamaEndpoint(endpoint)
+        XCTAssertEqual(checkedTagged, .ready, "Tag-Schreibweise ist dieselbe Installation")
+
+        let other = CleanupService(
+            config: Config.Cleanup(),
+            transport: StubCleanupTransport(outcomes: [], installedModels: ["ganz-anderes-modell"])
+        )
+        let checkedOther = await other.checkOllamaEndpoint(endpoint)
+        XCTAssertEqual(checkedOther, .modelMissing, "Server da, Modell nicht")
+
+        let dead = CleanupService(
+            config: Config.Cleanup(),
+            transport: StubCleanupTransport(outcomes: [], probeSucceeds: false)
+        )
+        let checkedDead = await dead.checkOllamaEndpoint(endpoint)
+        XCTAssertEqual(checkedDead, .unreachable)
+
+        var brokenAddress = endpoint
+        brokenAddress.ollamaURL = "kein server hier"
+        let broken = CleanupService(
+            config: Config.Cleanup(),
+            transport: StubCleanupTransport(outcomes: [], installedModels: [endpoint.model])
+        )
+        let checkedBroken = await broken.checkOllamaEndpoint(brokenAddress)
+        XCTAssertEqual(checkedBroken, .unreachable, "unbrauchbare Adresse darf nicht abstuerzen")
+    }
+
+    func testModelNameMatchingAcceptsTagsButNotSimilarNames() {
+        XCTAssertTrue(CleanupService.matchesModel("gemma4:e4b-it-qat", configured: "gemma4:e4b-it-qat"))
+        XCTAssertTrue(CleanupService.matchesModel("gemma4:e4b-it-qat:latest",
+                                                  configured: "gemma4:e4b-it-qat"))
+        // Nur der Doppelpunkt trennt Modell und Tag — ein laengerer Name ist ein
+        // anderes Modell und darf nicht als vorhanden durchgehen.
+        XCTAssertFalse(CleanupService.matchesModel("gemma4:e4b-it-qat-gross",
+                                                   configured: "gemma4:e4b-it-qat"))
+        XCTAssertFalse(CleanupService.matchesModel("gemma4", configured: "gemma4:e4b-it-qat"))
+    }
+
     func testStreamingCleanAgainstLocalOllamaIfAvailable() throws {
         // Integrationstest des Streaming-Pfads gegen ein ECHTES lokales Ollama —
         // wird übersprungen, wenn keins läuft oder das Default-Modell fehlt
@@ -1539,6 +1596,8 @@ private final class StubCleanupTransport: CleanupTransport {
     private var outcomes: [StreamOutcome]
     private let normalContent: String
     private let probeSucceeds: Bool
+    /// Was `/api/tags` melden soll — die Modellliste des gestellten Servers.
+    private let installedModels: [String]
     private(set) var streamCallCount = 0
     private(set) var probeCallCount = 0
     private(set) var normalCallCount = 0
@@ -1547,10 +1606,12 @@ private final class StubCleanupTransport: CleanupTransport {
         self.init(outcomes: streams.map { .frames($0) }, normalContent: normalContent)
     }
 
-    init(outcomes: [StreamOutcome], normalContent: String = "", probeSucceeds: Bool = true) {
+    init(outcomes: [StreamOutcome], normalContent: String = "", probeSucceeds: Bool = true,
+         installedModels: [String] = []) {
         self.outcomes = outcomes
         self.normalContent = normalContent
         self.probeSucceeds = probeSucceeds
+        self.installedModels = installedModels
     }
 
     func data(for request: URLRequest, probing: Bool) async throws -> (Data, URLResponse) {
@@ -1560,7 +1621,11 @@ private final class StubCleanupTransport: CleanupTransport {
         // Ein toter Server meldet sich auch bei der Probe nicht.
         if probing, !probeSucceeds { throw URLError(.cannotConnectToHost) }
         let body: Data
-        if probing {
+        if request.url?.path == "/api/tags" {
+            body = try JSONSerialization.data(withJSONObject: [
+                "models": installedModels.map { ["name": $0] }
+            ])
+        } else if probing {
             body = Data(#"{"version":"test"}"#.utf8)
         } else {
             body = try JSONSerialization.data(withJSONObject: [
