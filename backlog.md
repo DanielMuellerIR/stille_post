@@ -264,6 +264,37 @@ einen chirurgischen Fix ist, und die Reste zweier Fixes.
   als jede Sprache einzeln nachzupflegen wäre, Löschungen nur über eine
   sprachabhängige Positivliste sicherer Füllwörter zu erlauben.
 
+## Offen aus dem Code-Review vom 2026-08-20
+
+Der Report (17 Funde) ist abgearbeitet: 15 Funde sind behoben, zwei bleiben
+liegen, weil sie mehr als einen chirurgischen Eingriff brauchen.
+
+- **Halbschluss der Gegenstelle beendet eine gültige Anfrage.** `BridgeServer`
+  wertet ein TCP-FIN in der Empfangsrichtung als Abbruch: Eine vollständig
+  übertragene Anfrage wird verworfen, wenn der Client danach nur seine
+  Senderichtung schließt (`receive`-Callback mit `isComplete`, und
+  `receiveDisconnect` storniert dieselbe Anfrage später während der Arbeit).
+  HTTP erlaubt diesen Halbschluss ausdrücklich; ein solcher Client wartet
+  vergeblich auf seine Antwort. Die heutigen Gegenstellen (Kurzbefehl auf dem
+  iPhone, `curl`) machen das nicht, deshalb fällt es im Alltag nicht auf.
+  Der Fix ist keine Kleinigkeit: Das Stornieren bei Verbindungsende ist eine
+  bewusste Zusage aus 0.9.11/0.9.12 und in `AGENTS.md` festgeschrieben, und
+  `NWConnection` meldet „Gegenstelle ganz weg" nicht anders als „Gegenstelle
+  hört noch zu". Nötig wären: Antwort trotz Empfangs-EOF ausliefern, Abbruch nur
+  noch aus Reset/Fehler/gescheitertem Senden ableiten, der bestehende Test
+  `testClientHalfCloseCancelsInFlightRequest` müsste in zwei Tests zerfallen
+  (Halbschluss mit 200 und echter Abbruch).
+- **Der Modell-Download beweist nur die Dateigröße, nicht den Inhalt.** Die
+  Quelle zeigt auf `…/resolve/main/…`, also auf einen veränderlichen Stand, und
+  die Abschlussprüfung vergleicht ausschließlich die Bytezahl. Seit 2026-08-20
+  prüft die Wiederaufnahme immerhin `Content-Range` streng (Startversatz und
+  Gesamtgröße müssen zur Anfrage passen), und eine zu große Teildatei wird
+  verworfen. Was fehlt: die Quelle auf eine Revision festnageln und den
+  bekannten SHA-256 beider Modelle vor dem Verschieben prüfen. Dafür müssen die
+  Prüfsummen einmal an echten Downloads (1,6 GB und 3,1 GB) ermittelt und im
+  Katalog hinterlegt werden; danach ist ein Modellwechsel bei Hugging Face eine
+  bewusste Aktualisierung statt einer stillen Änderung.
+
 ## Weitere offene Arbeit
 
 - GitHub-Push-Stopp aufgehoben (2026-08-10). Die Bedingung „bis die App

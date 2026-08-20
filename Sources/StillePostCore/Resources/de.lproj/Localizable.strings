@@ -189,6 +189,7 @@
 "core.whisper.bad_response" = "Unerwartetes Antwortformat vom whisper-server";
 "core.model.unavailable" = "Modell \"%@\" ist bei Hugging Face nicht abrufbar — Netzverbindung prüfen";
 "core.model.incomplete" = "Download unvollständig (%lld von %lld Bytes). Die Teildatei bleibt liegen, ein erneuter Versuch setzt dort fort: %@";
+"core.model.target_not_replaceable" = "Am Modellpfad liegt kein Modell, sondern ein Verzeichnis oder eine Sonderdatei: %@ — bitte whisper.modelPath korrigieren; hier wird nichts gelöscht";
 "core.cleanup.failed" = "Bereinigung fehlgeschlagen — %@";
 "core.cleanup.empty" = "Bereinigung lieferte leeren Text";
 "core.cleanup.no_words" = "Bereinigte Fassung enthält kein einziges Wort mehr";
@@ -219,6 +220,7 @@
 "core.history.audio_delete_failed" = "Gespeicherte Aufnahme konnte nicht gelöscht werden: %@";
 "core.history.entry_missing" = "Der Verlaufseintrag existiert nicht mehr.";
 "core.history.unsafe_audio_name" = "Unsicherer Aufnahme-Dateiname im Verlauf.";
+"core.history.audio_delete_pending" = "Text gelöscht. Die Aufnahme ließ sich nicht löschen und liegt noch auf der Platte.";
 
 /* Netzwerk-Brücke (Diktat von eigenen Geräten im Heimnetz) */
 "core.bridge.keychain_error" = "Token konnte nicht im Schlüsselbund gespeichert werden (OSStatus %@)";
@@ -277,10 +279,12 @@
 "cli.doctor.model_download_help" = "  herunterladen mit: stillepost-cli install-model";
 "cli.doctor.server_running" = "✓ whisper-server läuft: %@";
 "cli.doctor.server_stopped" = "· whisper-server läuft nicht (wird bei Bedarf automatisch gestartet)";
+"cli.doctor.server_stopped_no_autostart" = "✗ whisper-server läuft nicht und whisper.autostart ist aus — jede Transkription scheitert: %@";
+"cli.doctor.start_files_unused" = "  (Der Server läuft schon — das blockiert gerade nichts, wohl aber einen späteren Selbststart.)";
 "cli.doctor.server_invalid" = "✗ Whisper-Server-Konfiguration ungültig: %@";
 "cli.doctor.language_auto" = "· Hinweis: whisper.language steht auf \"auto\" — Empfehlung: feste Sprache setzen (z. B. \"de\"), sonst übersetzt Whisper bei Fehl-Erkennung ungefragt";
 "cli.doctor.cleanup_off" = "· Textbereinigung: ausgeschaltet";
-"cli.doctor.cleanup_remote_config" = "✗ Bereinigung (%@): remote.baseURL/model fehlen in config.json";
+"cli.doctor.cleanup_remote_config" = "✗ Bereinigung (%@): remote.baseURL/model fehlen in config.json oder ergeben keine gültige Adresse";
 "cli.doctor.cleanup_no_key" = "✗ Bereinigung (%@): kein API-Key (Env %@ oder Schlüsselbund) — setzen: stillepost-cli set-cleanup-key";
 "cli.doctor.cleanup_cloud_ok" = "✓ Bereinigung (%@): Cloud konfiguriert — %@";
 "cli.doctor.cleanup_ollama_ok" = "✓ Bereinigung (%@): Ollama läuft, Modell vorhanden — %@";

@@ -58,6 +58,21 @@ if [ "$EXPECTED" -lt 1000000 ]; then
     exit 1
 fi
 
+# Fortsetzen darf nur, was wirklich der ANFANG der neuen Datei sein kann: eine
+# Teildatei, die höchstens so lang ist wie die erwartete. Ist sie länger, wurde das
+# Modell am Server durch eine kleinere Fassung ersetzt. `curl -C -` fordert dann
+# einen Versatz hinter dem Serverende an und bricht wegen `--fail` ab — und zwar
+# bei JEDEM weiteren Versuch, weil die Teildatei liegen bleibt. Genau dieser
+# Dauerblocker war in App und CLI schon behoben, im Skript aber nicht.
+if [ -f "$DEST.partial" ]; then
+    PARTIAL=$(wc -c < "$DEST.partial" | tr -d ' ')
+    if [ "$PARTIAL" -gt "$EXPECTED" ]; then
+        echo "Hinweis: Angefangene Datei ist größer als $MODEL heute ist — sie kann"
+        echo "         nicht dazu gehören und wird verworfen ($PARTIAL statt $EXPECTED Bytes)."
+        : > "$DEST.partial"
+    fi
+fi
+
 echo "Lade $MODEL ($((EXPECTED / 1024 / 1024)) MB) von Hugging Face …"
 # -L folgt Redirects; --fail bricht bei HTTP-Fehlern ab statt HTML zu speichern;
 # -C - setzt einen abgebrochenen Download an der Abbruchstelle fort.

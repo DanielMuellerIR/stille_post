@@ -74,6 +74,64 @@ final class ModelInstallerTests: XCTestCase {
         XCTAssertFalse(path.hasPrefix("~"), "Die Tilde muss expandiert sein")
     }
 
+    // MARK: - Zielpfad schuetzen
+
+    /// Der Installer darf am Modellpfad nur eine reguläre Datei oder einen Verweis
+    /// wegräumen. Alles andere gehört ihm nicht.
+    func testTargetKindSeparatesReplaceableFromUntouchable() throws {
+        let missing = directory.appendingPathComponent("gibt-es-nicht.bin").path
+        XCTAssertEqual(ModelInstaller.targetKind(atPath: missing), .nothing)
+
+        let file = directory.appendingPathComponent("modell.bin").path
+        try Data(repeating: 0, count: 8).write(to: URL(fileURLWithPath: file))
+        XCTAssertEqual(ModelInstaller.targetKind(atPath: file), .replaceable)
+
+        let link = directory.appendingPathComponent("verweis.bin").path
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: file)
+        XCTAssertEqual(ModelInstaller.targetKind(atPath: link), .replaceable,
+                       "ein Verweis wird ersetzt, sein Ziel bleibt unangetastet")
+
+        let folder = directory.appendingPathComponent("ordner").path
+        try FileManager.default.createDirectory(atPath: folder, withIntermediateDirectories: true)
+        XCTAssertEqual(ModelInstaller.targetKind(atPath: folder), .unsupported)
+    }
+
+    /// Der eigentliche Schaden: Zeigt `whisper.modelPath` durch einen
+    /// Konfigurationsfehler auf ein Verzeichnis, löschte `install-model --force`
+    /// dessen gesamten Inhalt rekursiv, bevor es die Modelldatei dorthin schob.
+    /// Jetzt bricht die Installation ab, ohne irgendetwas anzufassen — und zwar
+    /// schon vor dem Download.
+    func testInstallRefusesADirectoryAsModelPathWithoutDeletingAnything() async throws {
+        let folder = directory.appendingPathComponent("wichtige-daten")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let treasure = folder.appendingPathComponent("nicht-loeschen.txt")
+        try Data("wichtig".utf8).write(to: treasure)
+
+        do {
+            _ = try await ModelInstaller().install(ModelCatalog.turbo, to: folder.path)
+            XCTFail("ein Verzeichnis am Modellpfad darf keine Installation erlauben")
+        } catch let error as ModelInstaller.InstallError {
+            XCTAssertEqual(error, .targetNotReplaceable(folder.path))
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: treasure.path),
+                      "der Inhalt des Verzeichnisses muss unangetastet bleiben")
+    }
+
+    /// Bei einer 206-Antwort muss der Server GENAU den angeforderten Bereich
+    /// derselben Datei liefern. Ohne diese Prüfung hängt jeder beliebige
+    /// Teilbereich an die vorhandene Teildatei an.
+    func testContentRangeIsParsedStrictly() {
+        let parsed = ModelInstaller.contentRange("bytes 100-199/1234")
+        XCTAssertEqual(parsed?.start, 100)
+        XCTAssertEqual(parsed?.total, 1234)
+
+        XCTAssertNil(ModelInstaller.contentRange(nil))
+        XCTAssertNil(ModelInstaller.contentRange("100-199/1234"), "ohne Einheit unbrauchbar")
+        XCTAssertNil(ModelInstaller.contentRange("bytes */1234"), "ohne Bereich unbrauchbar")
+        XCTAssertNil(ModelInstaller.contentRange("bytes 100-199/*"),
+                     "ohne bekannte Gesamtgröße lässt sich nichts vergleichen")
+    }
+
     // MARK: - Katalog
 
     func testCatalogOffersOnlyTurboAndLargeV3() {

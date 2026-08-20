@@ -335,12 +335,18 @@ public final class CleanupService {
         return (try? JSONDecoder().decode(Tags.self, from: data))?.models.map(\.name)
     }
 
-    /// Ollama meldet Modelle mit Tag. Ein eingestelltes `gemma4:e4b-it-qat` gilt
-    /// deshalb auch dann als vorhanden, wenn der Server `gemma4:e4b-it-qat:latest`
-    /// zurückgibt — aber nicht bei einem bloß ähnlich beginnenden Namen
-    /// (`gemma4:e4b-it-qat-gross` ist ein anderes Modell).
+    /// Gleicht einen installierten Modellnamen mit dem eingestellten ab.
+    ///
+    /// Maßstab ist der Name, den die Bereinigung später WIRKLICH schickt: den
+    /// konfigurierten, unverändert. Deshalb zählt nur exakte Gleichheit — plus
+    /// der eine Alias, den Ollama selbst definiert: Ein Name ohne Tag meint
+    /// `:latest`. Früher galt jeder beliebige Tag als Treffer; ein eingestelltes
+    /// `gemma4` sah dadurch bei installiertem `gemma4:e4b-it-qat` grün aus,
+    /// während der Bereinigungs-Request kurz darauf an „Modell fehlt“ scheiterte.
     static func matchesModel(_ installed: String, configured: String) -> Bool {
-        installed == configured || installed.hasPrefix(configured + ":")
+        if installed == configured { return true }
+        guard !configured.contains(":") else { return false }
+        return installed == configured + ":latest"
     }
 
     /// Lief die Anfrage in das Leerlauf-Timeout des Streaming-Pfads, statt mit
@@ -1052,9 +1058,21 @@ public final class CleanupService {
 
     // MARK: - Provider: OpenAI-kompatibler Endpoint (z. B. MiniMax, beliebige Anbieter)
 
+    /// Die Adresse, an die der OpenAI-kompatible Endpunkt seine Anfrage schickt —
+    /// `nil`, wenn die Konfiguration unbenutzbar ist (leere Felder oder eine
+    /// Adresse, aus der sich gar keine URL bauen lässt).
+    ///
+    /// Steht hier im Kern, damit `doctor` GENAU dieselbe Prüfung fährt wie die
+    /// Bereinigung. Vorher sah die Diagnose nur nach, ob die Felder nicht leer
+    /// sind, und meldete „bereit“ für eine Adresse wie `http://[`, an der jedes
+    /// Diktat später auf den Rohtext zurückfiel.
+    public static func remoteChatURL(_ remote: Config.Cleanup.Remote) -> URL? {
+        guard !remote.baseURL.isEmpty, !remote.model.isEmpty else { return nil }
+        return URL(string: "\(remote.baseURL)/chat/completions")
+    }
+
     private func cleanViaOpenAICompatible(_ text: String, endpoint: Config.Cleanup.Endpoint) async throws -> String {
-        guard !endpoint.remote.baseURL.isEmpty, !endpoint.remote.model.isEmpty,
-              let url = URL(string: "\(endpoint.remote.baseURL)/chat/completions") else {
+        guard let url = Self.remoteChatURL(endpoint.remote) else {
             throw CleanupError.badConfig(L10n.text("core.cleanup.remote_config_missing"))
         }
         guard let apiKey = Self.remoteAPIKey(envVar: endpoint.remote.apiKeyEnvVar) else {

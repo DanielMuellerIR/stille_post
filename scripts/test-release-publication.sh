@@ -1,19 +1,49 @@
 #!/bin/bash
-# Regressionstest für den Signal-/Rollback-Vertrag in release.sh.
+# Regressionstest für den Signal-/Rollback-Vertrag und die Laufsperre in release.sh.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT INT TERM
+# Beide Helferblöcke aus release.sh holen und hier ausführen: So wird genau der
+# Code geprüft, der im echten Lauf steht — nicht eine Nachbildung davon.
+extract_block() {
+    awk -v begin="# BEGIN $1" -v end="# END $1" '
+      $0 ~ begin { capture=1; next }
+      $0 ~ end { capture=0 }
+      capture { print }
+    ' release.sh
+}
+
+LOCK_HELPERS="$TEST_ROOT/lock-helpers.sh"
+extract_block RELEASE_LOCK_HELPERS > "$LOCK_HELPERS"
+bash -n "$LOCK_HELPERS"
+# shellcheck source=/dev/null
+source "$LOCK_HELPERS"
+
 HELPERS="$TEST_ROOT/helpers.sh"
-awk '
-  /# BEGIN RELEASE_PUBLICATION_HELPERS/ { capture=1; next }
-  /# END RELEASE_PUBLICATION_HELPERS/ { capture=0 }
-  capture { print }
-' release.sh > "$HELPERS"
+extract_block RELEASE_PUBLICATION_HELPERS > "$HELPERS"
 bash -n "$HELPERS"
 # shellcheck source=/dev/null
 source "$HELPERS"
+
+# --- Laufsperre: zwei gleichzeitige Release-Läufe schließen sich aus ----------
+LOCK="$TEST_ROOT/release-lock"
+acquire_release_lock "$LOCK"
+[[ -d "$LOCK" ]]
+if ( acquire_release_lock "$LOCK" ); then
+    echo "FEHLER: zweiter Release-Lauf bekam dieselbe Sperre" >&2
+    exit 1
+fi
+release_lock
+if [[ -e "$LOCK" ]]; then
+    echo "FEHLER: Sperre wurde nach dem Lauf nicht freigegeben" >&2
+    exit 1
+fi
+# Nach der Freigabe darf der nächste Lauf wieder ran.
+acquire_release_lock "$LOCK"
+release_lock
+echo "✓ Release-Läufe serialisieren sich über die Sperre in build/"
 
 STAGED_DMG="$TEST_ROOT/staged.dmg"
 FINAL_DMG="$TEST_ROOT/final.dmg"

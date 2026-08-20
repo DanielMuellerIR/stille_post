@@ -333,7 +333,7 @@ final class BridgeTests: XCTestCase {
         let router = makeRouter(cleanupCounter: counter)
         let response = await router.respond(to: BridgeRequest(
             method: "POST", path: "/v1/cleanup", bearerToken: "richtig",
-            contentType: "text/plain; charset=utf-8", body: Data("äh also so".utf8)
+            body: Data("äh also so".utf8)
         ))
         XCTAssertEqual(response.status, 200)
         XCTAssertEqual(try object(response)["text"] as? String, "Sauberer Text.")
@@ -699,6 +699,80 @@ final class BridgeTests: XCTestCase {
         guard case .complete = BridgeHTTP.parse(request, maxBodyBytes: maxBody) else {
             return XCTFail("exakt maximale Anfrage muss vollständig zerlegbar sein")
         }
+    }
+
+    func testHeaderAtTheLimitSurvivesAFragmentedSeparator() {
+        // TCP zerteilt beliebig: Die vier Trenner-Bytes `\r\n\r\n` koennen
+        // stueckweise ankommen. Ein Kopf von exakt maxHeaderBytes wurde dadurch
+        // sporadisch als 400 verworfen — je nachdem, wie die Pakete fielen.
+        var header = "POST /v1/dictate HTTP/1.1\r\n"
+            + "Authorization: Bearer richtig\r\n"
+            + "Content-Length: 0\r\n"
+            + "X-Pad: "
+        header += String(repeating: "a", count: BridgeHTTP.maxHeaderBytes - header.utf8.count)
+        XCTAssertEqual(header.utf8.count, BridgeHTTP.maxHeaderBytes)
+
+        for prefix in ["", "\r", "\r\n", "\r\n\r"] {
+            XCTAssertEqual(BridgeHTTP.parse(Data((header + prefix).utf8), maxBodyBytes: 1024),
+                           .incomplete,
+                           "angefangener Trenner ist noch kein Fehler")
+        }
+        guard case .complete = BridgeHTTP.parse(Data((header + "\r\n\r\n").utf8),
+                                                maxBodyBytes: 1024) else {
+            return XCTFail("der vollstaendige Kopf am Limit muss durchgehen")
+        }
+        // Andere Bytes jenseits des Kopf-Limits bleiben ein Fehler.
+        guard case .failure = BridgeHTTP.parse(Data((header + "aaaa").utf8), maxBodyBytes: 1024) else {
+            return XCTFail("ueberlanger Kopf ohne Trenner muss 400 ergeben")
+        }
+    }
+
+    func testTotalBufferBudgetRefusesPiledUpBodies() throws {
+        // Die Groessengrenze je Anfrage sagt nichts ueber ihre ANZAHL: Acht offene
+        // Verbindungen durften bisher acht volle Bodys gleichzeitig puffern,
+        // obwohl der Router hoechstens drei schwere Anfragen annimmt. Ueberlast
+        // muss abgelehnt werden, BEVOR sie im Speicher liegt.
+        let (server, port) = try startServer(router: makeRouter())
+        defer { server.stop() }
+
+        let announced = 1024 * 1024
+        let chunkBytes = 900 * 1024
+        // Drei Teil-Bodys passen ins Budget, der vierte nicht.
+        XCTAssertGreaterThan(3 * chunkBytes + chunkBytes, server.maxBufferedBytesTotal)
+        XCTAssertLessThan(3 * chunkBytes, server.maxBufferedBytesTotal)
+
+        let refused = expectation(description: "eine Verbindung wird abgewiesen")
+        refused.assertForOverFulfill = false
+        var connections: [NWConnection] = []
+        defer { connections.forEach { $0.cancel() } }
+
+        for index in 0..<4 {
+            let connection = NWConnection(
+                host: "127.0.0.1", port: NWEndpoint.Port(rawValue: UInt16(port))!, using: .tcp
+            )
+            connections.append(connection)
+            let ready = expectation(description: "Verbindung \(index) bereit")
+            connection.stateUpdateHandler = { state in
+                if case .ready = state { ready.fulfill() }
+            }
+            connection.start(queue: DispatchQueue(label: "de.stillepost.test.budget.\(index)"))
+            wait(for: [ready], timeout: 5)
+            connection.receiveMessage { data, _, _, _ in
+                if let data, String(data: data, encoding: .utf8)?.contains("503") == true {
+                    refused.fulfill()
+                }
+            }
+
+            let header = "POST /v1/dictate HTTP/1.1\r\n"
+                + "Authorization: Bearer richtig\r\n"
+                + "Content-Length: \(announced)\r\n\r\n"
+            let sent = expectation(description: "Teil-Body \(index) raus")
+            connection.send(content: Data(header.utf8) + Data(repeating: 0x61, count: chunkBytes),
+                            completion: .contentProcessed { _ in sent.fulfill() })
+            wait(for: [sent], timeout: 10)
+        }
+
+        wait(for: [refused], timeout: 10)
     }
 
     // MARK: - Protokoll

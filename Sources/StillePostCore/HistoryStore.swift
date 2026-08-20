@@ -75,7 +75,6 @@ public final class HistoryStore {
     private let audioDir: URL
     private let lockFile: URL
     private let atomicWrite: (Data, URL) throws -> Void
-    private var entries: [Entry] = []
     /// Serielle Queue: Alle Zugriffe laufen hierüber, damit App-Thread und
     /// Pipeline-Tasks sich nicht in die Quere kommen.
     private let queue = DispatchQueue(label: "stillepost.history")
@@ -102,8 +101,10 @@ public final class HistoryStore {
     public func list() throws -> [Entry] {
         try queue.sync {
             try withFileLock {
-                entries = try loadFromDiskLocked()
-                return entries.sorted { $0.date > $1.date }
+                // Maßgeblich ist immer der Plattenstand: App und CLI schreiben
+                // beide in dieselbe Datei. Einen Zwischenspeicher gibt es
+                // deshalb bewusst nicht.
+                try loadFromDiskLocked().sorted { $0.date > $1.date }
             }
         }
     }
@@ -140,7 +141,6 @@ public final class HistoryStore {
                 var fresh = try loadFromDiskLocked()
                 fresh.append(entry)
                 try saveLocked(fresh)
-                entries = fresh
             }
         }
         onChange?()
@@ -156,7 +156,6 @@ public final class HistoryStore {
                 }
                 fresh[index] = entry
                 try saveLocked(fresh)
-                entries = fresh
             }
         }
         onChange?()
@@ -174,7 +173,6 @@ public final class HistoryStore {
                 // Erst der bestätigte atomare Plattenstand macht das Löschen der
                 // nicht rekonstruierbaren Aufnahmen zulässig.
                 try saveLocked([])
-                entries = []
                 historyWasCleared = true
                 // Jede Aufnahme einzeln versuchen. Bricht die Schleife beim ersten
                 // Problem ab (unsicherer Name aus einer von Hand bearbeiteten
@@ -184,13 +182,30 @@ public final class HistoryStore {
                 // Aufnahme zurücklassen. Der erste Fehler wird nach der Schleife
                 // gemeldet, damit das Scheitern trotzdem sichtbar bleibt.
                 var firstFailure: Error?
+                var survivors: [Entry] = []
                 for entry in fresh {
                     guard let name = entry.audioFileName else { continue }
                     do {
                         try removeAudioFile(named: name)
+                    } catch PersistenceError.unsafeAudioFileName {
+                        // Ein Name, der aus dem Aufnahme-Ordner ausbricht, gehört
+                        // uns nicht: Die Datei wird nie angefasst, und ein
+                        // Platzhalter dafür würde den fremden Pfad für immer im
+                        // Verlauf festhalten. Gemeldet wird der Fall trotzdem.
+                        if firstFailure == nil { firstFailure = PersistenceError.unsafeAudioFileName }
                     } catch {
                         if firstFailure == nil { firstFailure = error }
+                        // Eine echte eigene Aufnahme, die sich gerade nicht löschen
+                        // ließ (Rechte, gesperrte Datei). Ihren Namen kennt nach dem
+                        // Leeren sonst niemand mehr — ein zweiter Klick auf
+                        // "Alle löschen" fände sie nicht. Deshalb bleibt ein
+                        // minimaler Platzhalter zurück: nur der Dateiname, ohne den
+                        // gelöschten Text.
+                        survivors.append(Self.audioOnlyRemnant(of: entry))
                     }
+                }
+                if !survivors.isEmpty {
+                    try saveLocked(survivors)
                 }
                 if let firstFailure { throw firstFailure }
             }
@@ -201,6 +216,17 @@ public final class HistoryStore {
     public func deleteAudio(for entry: Entry) throws {
         guard let name = entry.audioFileName else { return }
         try removeAudioFile(named: name)
+    }
+
+    /// Der Rest eines Eintrags, dessen Aufnahme sich nicht löschen ließ: Text
+    /// und Diagnosewerte sind weg (das war der Auftrag), der Verweis auf die
+    /// verbliebene Datei bleibt.
+    private static func audioOnlyRemnant(of entry: Entry) -> Entry {
+        Entry(id: entry.id, date: entry.date, rawText: "", cleanText: "",
+              status: "failed",
+              errorMessage: L10n.text("core.history.audio_delete_pending"),
+              audioFileName: entry.audioFileName,
+              durationSec: entry.durationSec)
     }
 
     private func loadFromDiskLocked() throws -> [Entry] {

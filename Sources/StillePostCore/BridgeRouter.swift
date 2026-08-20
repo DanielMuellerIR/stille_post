@@ -51,7 +51,11 @@ public actor BridgeRouter {
     /// Speicher; die Größengrenze pro Anfrage deckt das nicht ab, weil sie nichts
     /// über die ANZAHL sagt. Ein Heimnetz braucht mehr als „eine läuft, zwei
     /// warten“ nicht.
-    private let maxPipelineDepth = 3
+    ///
+    /// `static`, weil der Server dieselbe Zahl braucht: Mehr Anfragen als diese
+    /// nimmt der Router ohnehin nicht an, also lohnt es sich auch nicht, mehr
+    /// Bodys gleichzeitig zu puffern.
+    static let maxPipelineDepth = 3
     /// Aktuell eingereihte schwere Anfragen (laufende plus wartende).
     private var pipelineDepth = 0
 
@@ -118,7 +122,7 @@ public actor BridgeRouter {
     private func serialized(
         _ work: @escaping @Sendable () async -> BridgeResponse
     ) async -> BridgeResponse {
-        guard pipelineDepth < maxPipelineDepth else {
+        guard pipelineDepth < Self.maxPipelineDepth else {
             return .error(status: 503, message: L10n.text("core.bridge.busy"))
         }
         pipelineDepth += 1

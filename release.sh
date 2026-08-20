@@ -71,6 +71,45 @@ STAGED_DMG="build/StillePost-$VERSION.dmg"
 FINAL_DMG="StillePost-$VERSION.dmg"
 FINAL_CHECKSUM="$FINAL_DMG.sha256"
 
+# Genau EIN Release-Lauf je Arbeitsverzeichnis.
+#
+# Alle Läufe hier teilen sich `build/StillePost.app` und das Staging-DMG, und
+# beide werden unterwegs gelöscht und neu gebaut (`release.sh` weiter unten,
+# `scripts/build-app.sh`). Ein zweiter Lauf konnte dem ersten deshalb das DMG
+# austauschen, NACHDEM es geprüft war — veröffentlicht wurde dann ein weder
+# notarisiertes noch geprüftes Artefakt samt frisch dazu berechneter Prüfsumme.
+# Der Hardlink am Ende schützt nur den Namen, nicht den Inhalt.
+# BEGIN RELEASE_LOCK_HELPERS
+release_lock_path=""
+# Nimmt die Sperre. `mkdir` ist der atomare Teil: Es scheitert, wenn das
+# Verzeichnis schon existiert — zwei gleichzeitige Läufe können es nie beide anlegen.
+acquire_release_lock() {
+    local dir="$1"
+    mkdir "$dir" 2>/dev/null || return 1
+    release_lock_path="$dir"
+    return 0
+}
+# Gibt die Sperre wieder frei. Ohne gehaltene Sperre folgenlos.
+release_lock() {
+    [[ -n "$release_lock_path" ]] || return 0
+    rmdir "$release_lock_path" 2>/dev/null || true
+    release_lock_path=""
+}
+# END RELEASE_LOCK_HELPERS
+
+mkdir -p build
+RELEASE_LOCK="$PWD/build/.release-lock"
+if ! acquire_release_lock "$RELEASE_LOCK"; then
+    echo "FEHLER: In diesem Arbeitsverzeichnis läuft bereits ein Release." >&2
+    echo "        Sperre: $RELEASE_LOCK" >&2
+    echo "        Läuft nachweislich kein Release mehr, von Hand entfernen:" >&2
+    echo "          rmdir \"$RELEASE_LOCK\"" >&2
+    exit 6
+fi
+trap 'release_lock' EXIT
+trap 'release_lock; exit 130' INT
+trap 'release_lock; exit 143' TERM
+
 # Vor dem ersten teuren Schritt prüfen: ein fertiges Release dieser Version darf
 # nicht überschrieben werden. Sonst merkt man es erst nach zwei Apple-Roundtrips.
 for artifact in "$FINAL_DMG" "$FINAL_CHECKSUM"; do
@@ -167,11 +206,14 @@ abort_release() {
     local status=$1
     rollback_checksum
     trap - EXIT INT TERM
+    release_lock
     exit "$status"
 }
 # END RELEASE_PUBLICATION_HELPERS
 
-trap rollback_checksum EXIT
+# Ab hier gehört die Rücknahme der halben Veröffentlichung mit in die Handler —
+# die Sperre bleibt trotzdem bis zum Schluss Teil jedes Ausgangs.
+trap 'rollback_checksum; release_lock' EXIT
 trap 'abort_release 130' INT
 trap 'abort_release 143' TERM
 # Für die Prüfsumme bleibt der Staging-Hardlink bis NACH dem Eigentumsmarker
@@ -194,5 +236,6 @@ release_pair_complete=1
 rm -f "$STAGED_DMG"
 published_checksum=""
 trap - EXIT INT TERM
+release_lock
 
 echo "RELEASE OK: $PWD/$FINAL_DMG ($VERSION)"

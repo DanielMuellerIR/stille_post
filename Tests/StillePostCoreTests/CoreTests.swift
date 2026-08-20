@@ -829,6 +829,37 @@ final class CoreTests: XCTestCase {
     }
 
     @MainActor
+    func testCancelDuringProcessingRemovesTheRecording() async throws {
+        // Beim Stoppen nimmt die Engine dem Writer die fertige WAV-Datei ab.
+        // Wurde danach abgebrochen, kannte sie niemand mehr: Der Verlauf bekommt
+        // bei einem Abbruch keinen Eintrag, der Writer war schon weg — eine
+        // vollstaendige Aufnahme blieb unauffindbar auf der Platte liegen.
+        let baseDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sp-cancel-wav-\(UUID())")
+        try FileManager.default.createDirectory(at: baseDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: baseDir) }
+        let wavURL = baseDir.appendingPathComponent("aufnahme.wav")
+        try Data("RIFF".utf8).write(to: wavURL)
+
+        let cleanupGate = CleanupGate()
+        let history = HistoryStore(baseDir: baseDir.appendingPathComponent("verlauf"))
+        let engine = DictationEngine(config: Config(), history: history) { rawText in
+            await cleanupGate.clean(rawText)
+        }
+
+        engine.processForTesting(rawText: "abgebrochen", wavURL: wavURL)
+        await cleanupGate.waitUntilStarted()
+        engine.cancel()
+        await cleanupGate.release()
+        await cleanupGate.waitUntilFinished()
+        await Task.yield()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wavURL.path),
+                       "die Aufnahme der abgebrochenen Verarbeitung muss weg sein")
+        XCTAssertTrue(try history.list().isEmpty, "und im Verlauf steht auch nichts")
+    }
+
+    @MainActor
     func testUndeletableRecordingStillDeliversTheDictation() async throws {
         // Der Text ist transkribiert, bereinigt und im Verlauf gespeichert; nur
         // das Wegraeumen der Diagnoseaufnahme scheitert (hier: schreibgeschuetzter
@@ -888,10 +919,11 @@ final class CoreTests: XCTestCase {
 
     @MainActor
     func testResultIsDeliveredOnMainThread() async throws {
-        // Regression 0.8.13: finishSession ist nonisolated async und läuft off-main;
-        // onResult fasst aber im App-Callback AppKit an (Overlay-Panel). Lieferte die
-        // Engine off-main aus, brach AppKit ab macOS 26 hart ab. Der Vertrag lautet
-        // "onResult auf Main-Thread" — genau das prüft dieser Test.
+        // Regression 0.8.13: Die Nachverarbeitung lief off-main; onResult fasst aber
+        // im App-Callback AppKit an (Overlay-Panel), und AppKit bricht ab macOS 26
+        // hart ab, wenn das off-main geschieht. Der Vertrag lautet "onResult auf
+        // Main-Thread" — genau das prüft dieser Test, unabhängig davon, wo die
+        // Verarbeitung selbst gerade läuft.
         let baseDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("sp-deliver-\(UUID())")
         defer { try? FileManager.default.removeItem(at: baseDir) }
@@ -1306,14 +1338,28 @@ final class CoreTests: XCTestCase {
         let checkedPresent = await present.checkOllamaEndpoint(endpoint)
         XCTAssertEqual(checkedPresent, .ready)
 
-        // Ollama meldet Modelle mit Tag — dieselbe Installation, andere Schreibweise.
+        // Ein eingestellter Name OHNE Tag meint bei Ollama `:latest` — nur dieser
+        // eine Alias zaehlt zusaetzlich.
+        var untagged = endpoint
+        untagged.model = "gemma4"
         let tagged = CleanupService(
             config: Config.Cleanup(),
-            transport: StubCleanupTransport(outcomes: [],
-                                            installedModels: ["\(endpoint.model):latest"])
+            transport: StubCleanupTransport(outcomes: [], installedModels: ["gemma4:latest"])
         )
-        let checkedTagged = await tagged.checkOllamaEndpoint(endpoint)
-        XCTAssertEqual(checkedTagged, .ready, "Tag-Schreibweise ist dieselbe Installation")
+        let checkedTagged = await tagged.checkOllamaEndpoint(untagged)
+        XCTAssertEqual(checkedTagged, .ready, "ohne Tag meint Ollama :latest")
+
+        // Ein beliebiger anderer Tag ist ein ANDERES Modell: Die Bereinigung
+        // schickt spaeter "gemma4" und bekaeme "Modell fehlt" zurueck. Frueher
+        // meldete `doctor` hier trotzdem gruen.
+        let otherTag = CleanupService(
+            config: Config.Cleanup(),
+            transport: StubCleanupTransport(outcomes: [],
+                                            installedModels: ["gemma4:e4b-it-qat"])
+        )
+        let checkedOtherTag = await otherTag.checkOllamaEndpoint(untagged)
+        XCTAssertEqual(checkedOtherTag, .modelMissing,
+                       "fremder Tag ist nicht dasselbe Modell")
 
         let other = CleanupService(
             config: Config.Cleanup(),
@@ -1339,10 +1385,16 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(checkedBroken, .unreachable, "unbrauchbare Adresse darf nicht abstuerzen")
     }
 
-    func testModelNameMatchingAcceptsTagsButNotSimilarNames() {
+    func testModelNameMatchingAcceptsOnlyTheLatestAlias() {
         XCTAssertTrue(CleanupService.matchesModel("gemma4:e4b-it-qat", configured: "gemma4:e4b-it-qat"))
-        XCTAssertTrue(CleanupService.matchesModel("gemma4:e4b-it-qat:latest",
-                                                  configured: "gemma4:e4b-it-qat"))
+        // Ohne eigenen Tag meint Ollama `:latest` — dieser eine Alias zaehlt.
+        XCTAssertTrue(CleanupService.matchesModel("gemma4:latest", configured: "gemma4"))
+        // Jeder ANDERE Tag ist ein anderes Modell. Die Bereinigung schickt den
+        // konfigurierten Namen unveraendert; ein Treffer hier waere eine falsche
+        // Entwarnung in `doctor`.
+        XCTAssertFalse(CleanupService.matchesModel("gemma4:e4b-it-qat", configured: "gemma4"))
+        XCTAssertFalse(CleanupService.matchesModel("gemma4:e4b-it-qat:latest",
+                                                   configured: "gemma4:e4b-it-qat"))
         // Nur der Doppelpunkt trennt Modell und Tag — ein laengerer Name ist ein
         // anderes Modell und darf nicht als vorhanden durchgehen.
         XCTAssertFalse(CleanupService.matchesModel("gemma4:e4b-it-qat-gross",
@@ -1491,6 +1543,39 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(try store.list().count, 0, "der Verlauf ist leer")
         XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path),
                        "die zweite Aufnahme muss trotzdem weg sein")
+    }
+
+    func testDeleteAllKeepsAReferenceToAnUndeletableRecording() throws {
+        // "Alle loeschen" schreibt zuerst den leeren Verlauf und loescht danach die
+        // Aufnahmen. Scheitert das Loeschen einer legitimen Aufnahme (Rechte,
+        // gesperrte Datei), kannte danach niemand mehr ihren Namen — ein zweiter
+        // Klick fand sie nicht, und die Datei blieb fuer immer liegen.
+        let baseDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sp-deleteall-blocked-\(UUID())")
+        let store = HistoryStore(baseDir: baseDir)
+        let audioURL = store.newRecordingURL()
+        try Data("wav".utf8).write(to: audioURL)
+        try store.append(.init(rawText: "geheim", cleanText: "geheim", status: "failed",
+                               audioFileName: audioURL.lastPathComponent, durationSec: 3))
+
+        // Ohne Schreibrecht am Aufnahme-Ordner laesst sich die Datei nicht loeschen.
+        let recordings = store.recordingsDir
+        try FileManager.default.setAttributes([.posixPermissions: 0o555],
+                                              ofItemAtPath: recordings.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755],
+                                                   ofItemAtPath: recordings.path)
+            try? FileManager.default.removeItem(at: baseDir)
+        }
+
+        XCTAssertThrowsError(try store.deleteAll(), "das gescheiterte Loeschen muss gemeldet werden")
+
+        let remaining = try store.list()
+        XCTAssertEqual(remaining.count, 1, "der Verweis auf die Aufnahme bleibt")
+        XCTAssertEqual(remaining.first?.audioFileName, audioURL.lastPathComponent)
+        XCTAssertEqual(remaining.first?.cleanText, "", "der Text ist trotzdem geloescht")
+        XCTAssertEqual(remaining.first?.rawText, "")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
     }
 
     func testHistoryStoresReloadInsideCrossProcessLock() throws {

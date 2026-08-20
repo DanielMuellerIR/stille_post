@@ -132,6 +132,13 @@ public final class ModelInstaller {
         let partialPath = Self.partialPath(for: model, at: path)
         let manager = FileManager.default
 
+        // Erst fragen, ob am Zielpfad überhaupt eine Modelldatei landen kann —
+        // vor dem Download von 1,6 GB und vor jeder Änderung auf der Platte.
+        // Dieselbe Prüfung steht unten noch einmal, direkt vor dem Verschieben.
+        if Self.targetKind(atPath: path) == .unsupported {
+            throw InstallError.targetNotReplaceable(path)
+        }
+
         try manager.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
                                     withIntermediateDirectories: true)
 
@@ -156,8 +163,21 @@ public final class ModelInstaller {
 
         // Was hier liegt, muss weg, bevor verschoben wird — und zwar der Verweis
         // selbst, nicht dessen Ziel. Der fremde Cache bleibt unangetastet.
-        if Self.exists(atPath: path) {
-            try? manager.removeItem(atPath: path)
+        //
+        // Entfernt wird dabei NUR eine reguläre Datei oder ein Verweis. Vorher
+        // räumte diese Stelle alles weg, was am Modellpfad lag: Zeigte
+        // `whisper.modelPath` durch einen Konfigurationsfehler auf ein
+        // Verzeichnis, löschte `install-model --force` dessen gesamten Inhalt
+        // rekursiv. Ein gescheitertes Entfernen wird außerdem nicht mehr
+        // verschluckt — sonst scheiterte gleich darauf das Verschieben mit einer
+        // Meldung, die die Ursache nicht nennt.
+        switch Self.targetKind(atPath: path) {
+        case .nothing:
+            break
+        case .replaceable:
+            try manager.removeItem(atPath: path)
+        case .unsupported:
+            throw InstallError.targetNotReplaceable(path)
         }
         try manager.moveItem(atPath: partialPath, toPath: path)
         return path
@@ -287,6 +307,19 @@ public final class ModelInstaller {
                 completionHandler(.cancel)
                 return
             }
+            // Bei 206 muss der Server GENAU den angeforderten Bereich derselben
+            // Datei liefern. Ohne diese Prüfung hängt jeder beliebige Teilbereich
+            // an die vorhandene Teildatei an — hinterher stimmt nur noch die
+            // Gesamtgröße, und die allein beweist nichts über den Inhalt.
+            if http.statusCode == 206 {
+                guard let range = ModelInstaller.contentRange(
+                        http.value(forHTTPHeaderField: "Content-Range")),
+                      range.start == requestedOffset, range.total == expected else {
+                    lock.lock(); failure = InstallError.unavailable(modelName); lock.unlock()
+                    completionHandler(.cancel)
+                    return
+                }
+            }
             // Ignoriert der Server den Range-Wunsch (200 statt 206), enthält die
             // Antwort die GANZE Datei — dann darf nicht angehängt werden, sonst
             // entsteht Datenmüll aus altem Anfang plus vollständiger Datei.
@@ -352,25 +385,59 @@ public final class ModelInstaller {
         }
     }
 
+    /// Zerlegt den Kopf `Content-Range: bytes 100-199/1234` in Startversatz und
+    /// Gesamtgröße. `nil` heißt: unbrauchbar — dann wird nicht angehängt.
+    static func contentRange(_ header: String?) -> (start: Int64, total: Int64)? {
+        guard let header else { return nil }
+        let value = header.trimmingCharacters(in: .whitespaces)
+        guard value.lowercased().hasPrefix("bytes ") else { return nil }
+        let parts = value.dropFirst("bytes ".count).split(separator: "/")
+        guard parts.count == 2,
+              let total = Int64(parts[1].trimmingCharacters(in: .whitespaces)) else { return nil }
+        let bounds = parts[0].split(separator: "-")
+        guard bounds.count == 2,
+              let start = Int64(bounds[0].trimmingCharacters(in: .whitespaces)) else { return nil }
+        return (start, total)
+    }
+
     /// Größe der Datei am Pfad, oder 0 wenn dort nichts liegt.
     private static func fileSize(atPath path: String) -> Int64 {
         (try? FileManager.default.attributesOfItem(atPath: path))
             .flatMap { ($0[.size] as? NSNumber)?.int64Value } ?? 0
     }
 
-    /// Liegt am Pfad überhaupt etwas — eine Datei ODER ein Verweis, auch ein toter?
-    ///
+    /// Was liegt am Zielpfad — und darf der Installer es ersetzen?
+    enum TargetKind: Equatable {
+        /// Nichts da, der Weg ist frei.
+        case nothing
+        /// Reguläre Datei oder Verweis: darf vor dem Verschieben entfernt werden.
+        case replaceable
+        /// Verzeichnis oder Sonderdatei: wird nie angefasst.
+        case unsupported
+    }
+
     /// Bewusst nicht `fileExists`: Das folgt Symlinks und meldet für einen Verweis
     /// ins Leere "nichts da", obwohl der Verweis sehr wohl im Weg liegt.
     /// `attributesOfItem` (lstat) folgt nicht und sieht ihn — dieselbe Eigenschaft,
     /// auf der auch `state(atPath:)` beruht.
-    private static func exists(atPath path: String) -> Bool {
-        (try? FileManager.default.attributesOfItem(atPath: path)) != nil
+    static func targetKind(atPath path: String) -> TargetKind {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path) else {
+            return .nothing
+        }
+        switch attributes[.type] as? FileAttributeType {
+        case .typeRegular, .typeSymbolicLink:
+            return .replaceable
+        default:
+            return .unsupported
+        }
     }
 
     public enum InstallError: Error, LocalizedError, Equatable {
         case unavailable(String)
         case incomplete(got: Int64, expected: Int64, partialPath: String)
+        /// Am Modellpfad liegt etwas, das kein Modell sein kann (z. B. ein
+        /// Verzeichnis). Der Installer räumt dort nichts weg.
+        case targetNotReplaceable(String)
 
         public var errorDescription: String? {
             switch self {
@@ -378,6 +445,8 @@ public final class ModelInstaller {
                 return L10n.format("core.model.unavailable", name)
             case .incomplete(let got, let expected, let partialPath):
                 return L10n.format("core.model.incomplete", got, expected, partialPath)
+            case .targetNotReplaceable(let path):
+                return L10n.format("core.model.target_not_replaceable", path)
             }
         }
     }

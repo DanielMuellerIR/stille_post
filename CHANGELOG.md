@@ -15,13 +15,70 @@ Datei mit dem Versions-Bump fortgeschrieben.
 ### Geändert
 
 - `stillepost-cli doctor` prüft die Bereinigungs-Endpunkte jetzt über dieselbe
-  Stelle im Kern, die auch die Bereinigung selbst benutzt. Die Diagnose kann
-  dadurch nicht mehr nach anderen Regeln urteilen als der Betrieb; ein Modell
-  gilt weiterhin auch dann als vorhanden, wenn Ollama es mit Tag meldet
-  (`gemma4:e4b-it-qat:latest`), ein bloß ähnlich beginnender Name dagegen nicht.
+  Stelle im Kern, die auch die Bereinigung selbst benutzt — inklusive des Baus
+  der Cloud-Adresse. Die Diagnose kann dadurch nicht mehr nach anderen Regeln
+  urteilen als der Betrieb.
+- `stillepost-cli doctor` prüft whisper-server jetzt in derselben Reihenfolge wie
+  der Betrieb: Erst zählt, ob der Server antwortet. Läuft er, sind fehlendes
+  Binary oder Modell kein Problem mehr, sondern ein Hinweis für den nächsten
+  Kaltstart; läuft er nicht und ist `whisper.autostart` aus, ist das jetzt ein
+  gemeldetes Problem statt einer Entwarnung.
+- Ein Ollama-Modell gilt nur noch dann als vorhanden, wenn der Name exakt
+  stimmt — plus dem einen Alias, den Ollama selbst definiert: Ein eingestellter
+  Name ohne Tag meint `:latest`. Vorher passte zu `gemma4` jeder beliebige
+  installierte Tag, und die Diagnose meldete „bereit“ für ein Modell, das der
+  spätere Bereinigungs-Request gar nicht kennt.
 
 ### Behoben
 
+- Sicherheit: Der über `stillepost-cli set-cleanup-key` eingetippte API-Schlüssel
+  wird im Terminal nicht mehr angezeigt. Die Aufforderung verspricht das seit
+  jeher, die Eingabe lief aber mit normaler Anzeige — der Schlüssel stand danach
+  im Scrollback. Die Anzeige wird auch nach Abbruch mit Ctrl-C wieder
+  eingeschaltet; eine Eingabe aus einer Pipe funktioniert unverändert.
+- Modell-Installation: Zeigt `whisper.modelPath` versehentlich auf ein
+  Verzeichnis, bricht die Installation jetzt ab, statt dessen Inhalt zu löschen
+  und das Verzeichnis durch die Modelldatei zu ersetzen. Geprüft wird vor dem
+  Download, und ein gescheitertes Aufräumen am Zielpfad wird gemeldet statt
+  verschluckt.
+- Release-Skript: Zwei gleichzeitige `./release.sh`-Läufe im selben
+  Arbeitsverzeichnis schließen sich jetzt über eine Sperre aus. Beide benutzten
+  dieselben Pfade unter `build/`; ein zweiter Lauf konnte dem ersten das DMG
+  nach der Prüfung austauschen, sodass ein ungeprüftes Artefakt samt frisch
+  berechneter Prüfsumme veröffentlicht wurde.
+- Diktat: Ein Abbruch während der Verarbeitung löscht jetzt auch die fertige
+  Aufnahme. Bisher kannte sie nach dem Stoppen niemand mehr — der Verlauf
+  bekommt bei einem Abbruch keinen Eintrag —, und eine vollständige Aufnahme
+  blieb unauffindbar auf der Platte liegen.
+- Diktat: Lässt sich die Aufnahme nach einem erfolgreichen Diktat nicht löschen,
+  wird ihr Name jetzt im Verlaufseintrag nachgetragen. Ohne diesen Verweis fand
+  „Alle löschen“ sie später nicht mehr. Dasselbe gilt für „Erneut
+  transkribieren“, wenn dort das Löschen scheitert.
+- Diktat: Die Nachverarbeitung läuft jetzt vollständig auf dem Hauptthread. Sie
+  las und schrieb dieselben Felder (Zustand, Sitzungsnummer), die Start, Stopp
+  und Abbruch dort anfassen; ein alter Lauf konnte deshalb den Zustand eines
+  neuen überschreiben oder trotz Abbruch noch ausliefern. Die eigentliche
+  Bereinigung läuft weiterhin außerhalb des Hauptthreads.
+- Diktat: Ein verspätet fertig gewordenes Segment kann nicht mehr in der
+  Sammlung einer bereits neu begonnenen Aufnahme landen.
+- Verlauf: Lässt sich beim „Alle löschen“ eine Aufnahme nicht löschen (Rechte,
+  gesperrte Datei), bleibt jetzt ein Platzhalter mit ihrem Dateinamen stehen —
+  ohne den gelöschten Text. Bisher war der Verweis weg, und ein zweiter Klick
+  fand die Datei nicht mehr.
+- Netzwerk-Brücke: Alle Verbindungen zusammen dürfen nur noch so viele
+  Anfrage-Bytes puffern, wie die Warteschlange überhaupt annimmt. Acht offene
+  Verbindungen konnten vorher acht vollständige Bodys gleichzeitig im Speicher
+  halten, obwohl fünf davon anschließend nur ein 503 bekommen hätten. Ein
+  vollständig gelesener Inhalt wird außerdem nicht mehr doppelt gehalten.
+- Netzwerk-Brücke: Ein Kopf an der Größengrenze wird nicht mehr abgelehnt, nur
+  weil die vier Trennbytes zwischen Kopf und Inhalt in zwei Paketen ankamen.
+- Modell-Download: Eine fortgesetzte Übertragung wird nur noch angenommen, wenn
+  der Server genau den angeforderten Bereich derselben Datei liefert
+  (`Content-Range` mit passendem Startversatz und passender Gesamtgröße).
+- `scripts/install-model.sh`: Eine angefangene Datei, die größer ist als das
+  Modell heute, wird verworfen statt fortgesetzt. Sonst forderte `curl` einen
+  Versatz hinter dem Dateiende an und scheiterte bei jedem weiteren Versuch —
+  derselbe Dauerblocker, der in App und CLI schon behoben war.
 - Verlauf: „Alle löschen“ räumt jetzt jede zurückbehaltene Aufnahme weg, auch
   wenn eine davon nicht zu löschen ist. Bisher brach der Vorgang beim ersten
   Problem ab; der Verlauf war zu diesem Zeitpunkt schon leer, und alle weiteren

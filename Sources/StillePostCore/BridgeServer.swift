@@ -53,6 +53,8 @@ public final class BridgeServer: @unchecked Sendable {
     /// mit halboffenen Verbindungen zusetzt.
     private var openConnections = 0
     private let maxOpenConnections = 8
+    /// Summe aller gerade gepufferten Anfrage-Bytes über ALLE Verbindungen.
+    private var bufferedBytes = 0
     /// So lange darf eine Anfrage zum Übertragen brauchen. Die Verarbeitungszeit
     /// danach (Whisper, Bereinigung) zählt nicht mit.
     private let readTimeoutSeconds: TimeInterval = 30
@@ -260,6 +262,7 @@ public final class BridgeServer: @unchecked Sendable {
             }
             if let data, !data.isEmpty {
                 session.buffer.append(data)
+                self.bufferedBytes += data.count
                 // Harte Obergrenze: Kopf plus erlaubter Inhalt. Ein Gegenüber, das
                 // mehr schickt als angekündigt, wird hier gestoppt.
                 if session.buffer.count > self.maxBufferBytes {
@@ -267,6 +270,17 @@ public final class BridgeServer: @unchecked Sendable {
                         "core.bridge.too_large",
                         ByteSize.megabytes(Int64(self.maxBodyBytes))
                     )), on: session)
+                    return
+                }
+                // Zweite Grenze, diesmal über alle Verbindungen zusammen: Die
+                // Größe je Anfrage sagt nichts über ihre ANZAHL. Acht offene
+                // Verbindungen könnten sonst acht volle Bodys gleichzeitig im
+                // Speicher halten, obwohl der Router höchstens drei schwere
+                // Anfragen annimmt und den Rest mit 503 abweist. Überlast also
+                // ablehnen, bevor sie gepuffert ist.
+                if self.bufferedBytes > self.maxBufferedBytesTotal {
+                    self.send(.error(status: 503, message: L10n.text("core.bridge.busy")),
+                              on: session)
                     return
                 }
             }
@@ -305,6 +319,10 @@ public final class BridgeServer: @unchecked Sendable {
                 self.send(response, on: session)
             case .complete(let request):
                 session.timeout?.cancel()
+                // Der Body steckt jetzt in `request`; der Rohpuffer daneben wird
+                // nicht mehr gebraucht und hielte den Inhalt sonst ein zweites
+                // Mal im Speicher fest.
+                self.releaseBuffer(session)
                 // Ein geordneter TCP-Halbschluss kann zusammen mit den letzten
                 // Request-Bytes eintreffen. Für eine bereits verlassene
                 // Verbindung keine teure Arbeit mehr beginnen.
@@ -422,7 +440,7 @@ public final class BridgeServer: @unchecked Sendable {
         session.finished = true
         // Puffer sofort freigeben: Bis zur Deallokation der Session hielte er
         // sonst noch einen kompletten Request-Body fest.
-        session.buffer = Data()
+        releaseBuffer(session)
         session.timeout = nil
         // Angefangene Arbeit stornieren. Nach einer normal ausgelieferten
         // Antwort ist die Task längst fertig und das bleibt folgenlos; bei einem
@@ -433,8 +451,19 @@ public final class BridgeServer: @unchecked Sendable {
         openConnections = max(0, openConnections - 1)
     }
 
+    /// Gibt den Rohpuffer einer Verbindung frei und bucht ihn aus dem
+    /// gemeinsamen Speicherbudget aus. Mehrfach aufrufbar: Ein leerer Puffer
+    /// bucht nichts mehr aus.
+    private func releaseBuffer(_ session: Session) {
+        bufferedBytes = max(0, bufferedBytes - session.buffer.count)
+        session.buffer = Data()
+    }
+
     // Intern (statt private) für die Grenzwert-Tests.
     var maxBodyBytes: Int { config.maxRequestMegabytes * 1_048_576 }
+    /// Wie viele Anfrage-Bytes die Brücke insgesamt gleichzeitig puffern darf.
+    /// Mehr, als die Warteschlange des Routers annimmt, muss sie nie halten.
+    var maxBufferedBytesTotal: Int { maxBufferBytes * BridgeRouter.maxPipelineDepth }
     /// Kopf, Trennzeile und erlaubter Inhalt: Der Parser akzeptiert zwischen
     /// Kopf und Body zusätzlich die vier Bytes `\r\n\r\n` — die zählen hier mit,
     /// sonst würde eine exakt maximale gültige Anfrage fälschlich abgewiesen.

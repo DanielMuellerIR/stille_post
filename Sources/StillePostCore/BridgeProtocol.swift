@@ -16,16 +16,18 @@ public struct BridgeRequest: Equatable, Sendable {
     public var query: [String: String]
     /// Inhalt des `Authorization: Bearer …`-Kopfes, falls vorhanden.
     public var bearerToken: String?
-    public var contentType: String?
     public var body: Data
 
+    // Einen `contentType` gibt es hier bewusst nicht: Audio erkennt der Decoder
+    // am Inhalt, und die Bereinigungs-Route versucht direkt UTF-8. Das Feld war
+    // geparst, aber von keiner Route gelesen — ein Medientyp-Versprechen, das
+    // nirgends eingelöst wurde.
     public init(method: String, path: String, query: [String: String] = [:],
-                bearerToken: String? = nil, contentType: String? = nil, body: Data = Data()) {
+                bearerToken: String? = nil, body: Data = Data()) {
         self.method = method
         self.path = path
         self.query = query
         self.bearerToken = bearerToken
-        self.contentType = contentType
         self.body = body
     }
 }
@@ -136,7 +138,13 @@ public enum BridgeHTTP {
     public static func parse(_ buffer: Data, maxBodyBytes: Int) -> ParseResult {
         let separator = Data("\r\n\r\n".utf8)
         guard let headerEnd = buffer.range(of: separator) else {
-            if buffer.count > maxHeaderBytes {
+            // Solange der Trenner fehlt, dürfen die letzten bis zu drei Bytes
+            // sein angefangenes Präfix sein (TCP zerteilt beliebig). Ohne diesen
+            // Zuschlag scheiterte ein Kopf von exakt `maxHeaderBytes` allein
+            // daran, dass `\r\n\r\n` in zwei Paketen ankam. Sobald der Trenner
+            // da ist, misst die Prüfung weiter unten den Kopf selbst — die
+            // eigentliche Grenze bleibt also unverändert.
+            if buffer.count > maxHeaderBytes + headerSeparatorBytes - 1 {
                 return .failure(.error(status: 400, message: L10n.text("core.bridge.bad_request")))
             }
             return .incomplete
@@ -187,8 +195,7 @@ public enum BridgeHTTP {
         let (path, query) = splitTarget(target)
         return .complete(BridgeRequest(
             method: method, path: path, query: query,
-            bearerToken: bearerToken(in: headers),
-            contentType: headers["content-type"], body: body
+            bearerToken: bearerToken(in: headers), body: body
         ))
     }
 

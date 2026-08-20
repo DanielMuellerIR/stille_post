@@ -81,6 +81,11 @@ public final class DictationEngine {
     private var sessionGeneration: UInt64 = 0
     /// Segment-Ergebnisse in Aufnahme-Reihenfolge (Index -> Text).
     private var segmentResults: SegmentCollector?
+    /// Die WAV-Datei, die gerade verarbeitet wird. `stop()` nimmt sie dem Writer
+    /// ab; bis sie nachweislich gelöscht oder im Verlauf vermerkt ist, muss die
+    /// Engine sie kennen — sonst hinterlässt ein Abbruch während `.processing`
+    /// eine Aufnahme, auf die danach nichts mehr zeigt.
+    private var processingWavURL: URL?
 
     public convenience init(config: Config, history: HistoryStore? = nil) {
         self.init(config: config, history: history, cleanupText: nil)
@@ -205,8 +210,13 @@ public final class DictationEngine {
         // Bereinigung passiert absichtlich NICHT hier, sondern einmal am Ende über
         // den Gesamttext — nur so kann das LLM Satzgrenzen zwischen Segmenten
         // reparieren statt jedes Fragment als eigenen Satz zu behandeln.
+        // `collector` wird hier bewusst als lokaler Wert eingefangen und NICHT
+        // über `self.segmentResults` gelesen: Der Callback läuft auf dem
+        // Audio-Thread, während Start, Stopp und Abbruch dasselbe Feld auf dem
+        // Hauptthread ersetzen. Neben dem Datenrennen konnte ein verspätetes
+        // Segment so im Sammler einer schon neu begonnenen Aufnahme landen.
         segmenter.onSegment = { [weak self] segment in
-            guard let self, let collector = self.segmentResults else { return }
+            guard let self else { return }
             // Reine Stille-Segmente überspringen: Whisper bekommt sie NIE zu sehen —
             // das ist die Abwesenheits-/Stille-Erkennung gegen Halluzinationen.
             guard segment.hadSpeech else { return }
@@ -265,6 +275,7 @@ public final class DictationEngine {
 
         let writer = wavWriter
         self.wavWriter = nil
+        processingWavURL = writer?.url
         let wavURL: URL?
         do {
             try writer?.finish()
@@ -272,6 +283,9 @@ public final class DictationEngine {
         } catch {
             // Unvollständiges Audio als Diagnose behalten, aber niemals als
             // angeblich erneut transkribierbare Aufnahme in den Verlauf hängen.
+            // Die Datei bleibt absichtlich liegen; deshalb hier auch kein
+            // Verweis, den ein späterer Abbruch wegräumen würde.
+            processingWavURL = nil
             segmentResults = nil
             sessionGeneration &+= 1
             let retainedPath = writer?.url.path ?? "–"
@@ -310,6 +324,15 @@ public final class DictationEngine {
         }
     }
 
+    /// `@MainActor` ist hier Pflicht und kein Beiwerk: Die Funktion liest und
+    /// schreibt `sessionGeneration`, `state` und `recordingStart` — dieselben
+    /// Felder, die `start()`, `stop()` und `cancel()` auf dem Hauptthread
+    /// anfassen. Als `nonisolated async`-Funktion lief sie auf dem globalen
+    /// Concurrency-Executor; Zustandswechsel und der Abbruch-Wächter waren damit
+    /// Datenrennen, und ein alter Verarbeitungslauf konnte einen neuen Zustand
+    /// überschreiben. Die teure Arbeit bleibt trotzdem draußen: Die Bereinigung
+    /// wird über `await` aufgerufen und läuft weiterhin außerhalb des Hauptthreads.
+    @MainActor
     private func finishSession(segments: [String?], duration: TimeInterval,
                                wavURL: URL?, generation: UInt64) async {
         guard isCurrentSession(generation), !Task.isCancelled else { return }
@@ -339,6 +362,9 @@ public final class DictationEngine {
                 )))
                 return
             }
+            // Ab jetzt zeigt der Verlaufs-Eintrag auf die Aufnahme; die Engine
+            // muss sie nicht mehr selbst im Auge behalten.
+            processingWavURL = nil
             guard isCurrentSession(generation), !Task.isCancelled else { return }
             setState(.error(L10n.text("core.dictation.transcription_failed")))
             deliverResult(DictationResult(text: "", entry: entry))
@@ -347,7 +373,11 @@ public final class DictationEngine {
 
         if rawJoined.isEmpty {
             // Nur Stille aufgenommen: nichts einfügen, keinen Verlaufs-Müll erzeugen.
-            if let wavURL { try? FileManager.default.removeItem(at: wavURL) }
+            // Erst die bestätigte Löschung gibt die Datei aus der Obhut der
+            // Engine frei. Klappt sie nicht, bleibt der Verweis stehen, und
+            // "Abbrechen" oder das Beenden der App räumt sie später weg.
+            let removed = wavURL.map { (try? FileManager.default.removeItem(at: $0)) != nil } ?? true
+            if removed { processingWavURL = nil }
             guard isCurrentSession(generation), !Task.isCancelled else { return }
             setState(.idle)
             deliverResult(DictationResult(text: "", entry: nil))
@@ -383,7 +413,15 @@ public final class DictationEngine {
         if let wavURL {
             do {
                 try FileManager.default.removeItem(at: wavURL)
+                processingWavURL = nil
             } catch {
+                // Die Aufnahme ließ sich nicht wegräumen. Damit sie nicht ohne
+                // jeden Verweis liegen bleibt, bekommt der eben gespeicherte
+                // Eintrag ihren Dateinamen nachgetragen — "Alle löschen" findet
+                // sie dadurch auch nach einem Neustart noch.
+                var withAudio = entry
+                withAudio.audioFileName = wavURL.lastPathComponent
+                if (try? history.update(withAudio)) != nil { processingWavURL = nil }
                 guard isCurrentSession(generation) else { return }
                 // Der Text ist fertig, bereinigt und liegt schon im Verlauf. Dass
                 // die Diagnoseaufnahme nicht wegzuräumen war, ist ein
@@ -398,6 +436,7 @@ public final class DictationEngine {
             }
         }
         guard isCurrentSession(generation), !Task.isCancelled else { return }
+        processingWavURL = nil
         setState(.idle)
         deliverResult(DictationResult(text: cleaned.text, entry: entry))
     }
@@ -415,6 +454,13 @@ public final class DictationEngine {
             try? writer.finish()
             try? FileManager.default.removeItem(at: writer.url)
             wavWriter = nil
+        }
+        // Abbruch WÄHREND der Verarbeitung: Der Writer ist da längst weg, die
+        // fertige WAV-Datei liegt aber noch auf der Platte. Ohne diesen Zweig
+        // bliebe eine vollständige Aufnahme zurück, die im Verlauf nie auftaucht.
+        if let pending = processingWavURL {
+            try? FileManager.default.removeItem(at: pending)
+            processingWavURL = nil
         }
         recordingStart = nil
         setState(.idle)
@@ -458,7 +504,17 @@ public final class DictationEngine {
         // Wieder disk first: Der Verlauf darf erst auf „ohne Audio“ zeigen, wenn
         // dieser Zustand atomar gespeichert ist; erst danach wird die WAV gelöscht.
         try history.update(updated)
-        try history.deleteAudio(for: entry)
+        do {
+            try history.deleteAudio(for: entry)
+        } catch {
+            // Die alte Aufnahme ließ sich nicht löschen. Ohne den Verweis im
+            // Verlauf kennt danach niemand mehr ihren Namen, und "Alle löschen"
+            // findet sie nie wieder — also den Dateinamen zurückschreiben.
+            var keepsAudio = updated
+            keepsAudio.audioFileName = entry.audioFileName
+            try? history.update(keepsAudio)
+            throw error
+        }
         return updated
     }
 
@@ -505,14 +561,12 @@ public final class DictationEngine {
 
     /// Ruft `work` auf dem Main-Thread auf — sofort, wenn wir schon dort sind.
     ///
-    /// Warum jede Rückmeldung der Engine hier durchmuss: `finishSession` ist eine
-    /// `nonisolated async`-Funktion und läuft deshalb auf dem globalen
-    /// Concurrency-Executor (Cooperative-Pool) — AUCH wenn `stop()` den Aufruf in
-    /// `Task { @MainActor in … }` kapselt: Swift hebt eine nonisolated-async-Funktion
-    /// nach dem Await bewusst vom Aufrufer-Actor herunter. `onStateChange` und
-    /// `onResult` fassen aber AppKit an (Statusicon, Overlay-Panel); AppKit bricht ab
-    /// macOS 26 hart ab („Must only be used from the main thread“), wenn das off-main
-    /// geschieht.
+    /// Warum jede Rückmeldung der Engine hier durchmuss: `onStateChange` und
+    /// `onResult` fassen AppKit an (Statusicon, Overlay-Panel); AppKit bricht ab
+    /// macOS 26 hart ab („Must only be used from the main thread“), wenn das
+    /// off-main geschieht. Die Nachverarbeitung läuft seit dem `@MainActor` an
+    /// `finishSession` selbst auf dem Hauptthread — diese Weiche bleibt als
+    /// Sicherung für jeden künftigen Aufrufer, der es nicht ist.
     ///
     /// Die Weiche stand vorher zweimal wortgleich da — einmal je Rückmeldung.
     private static func onMain(_ work: @escaping @Sendable () -> Void) {
@@ -534,6 +588,9 @@ public final class DictationEngine {
         sessionTask?.cancel()
         sessionGeneration &+= 1
         let generation = sessionGeneration
+        // Wie in `stop()`: Bis die Aufnahme nachweislich gelöscht oder im Verlauf
+        // vermerkt ist, gehört sie der Engine.
+        processingWavURL = wavURL
         setState(.processing)
         sessionTask = Task { @MainActor in
             defer {

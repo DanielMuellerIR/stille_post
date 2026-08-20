@@ -45,6 +45,51 @@ final class Atomic<T>: @unchecked Sendable {
     }
 }
 
+/// Schaltet die Anzeige der Tastatureingabe im Terminal ab und wieder an.
+///
+/// `readLine` kann das nicht: Es liest nur, das Anzeigen macht das Terminal
+/// selbst. Ohne diesen Schalter steht ein eingetippter API-Schlüssel sichtbar im
+/// Fenster und bleibt im Scrollback stehen — obwohl die Aufforderung davor
+/// ausdrücklich verspricht, dass die Eingabe nicht angezeigt wird. Kommt die
+/// Eingabe aus einer Pipe, gibt es kein Terminal und nichts abzuschalten.
+enum TerminalEcho {
+    /// Die Terminal-Einstellungen VOR dem Abschalten. `nil` = nichts verändert.
+    private static var saved: termios?
+
+    /// True, solange die Anzeige wegen uns aus ist.
+    static var isDisabled: Bool { saved != nil }
+
+    static func disable() {
+        guard isatty(STDIN_FILENO) == 1 else { return }
+        var settings = termios()
+        guard tcgetattr(STDIN_FILENO, &settings) == 0 else { return }
+        saved = settings
+        settings.c_lflag &= ~tcflag_t(ECHO)
+        // TCSAFLUSH: erst alles Getippte verwerfen, dann umschalten — sonst
+        // könnte schon vorher Eingetipptes noch sichtbar durchrutschen.
+        _ = tcsetattr(STDIN_FILENO, TCSAFLUSH, &settings)
+        // Bricht der Nutzer mitten in der Eingabe ab (Ctrl-C) oder wird der
+        // Prozess beendet, stirbt er mit stummgeschaltetem Terminal — der
+        // Handler stellt es vorher wieder her.
+        signal(SIGINT) { _ in
+            TerminalEcho.restore()
+            _exit(130)
+        }
+        signal(SIGTERM) { _ in
+            TerminalEcho.restore()
+            _exit(143)
+        }
+    }
+
+    static func restore() {
+        guard var previous = saved else { return }
+        saved = nil
+        _ = tcsetattr(STDIN_FILENO, TCSAFLUSH, &previous)
+        signal(SIGINT, SIG_DFL)
+        signal(SIGTERM, SIG_DFL)
+    }
+}
+
 let usage = L10n.text("cli.usage")
 
 let arguments = Array(CommandLine.arguments.dropFirst())
@@ -83,14 +128,39 @@ case "doctor":
         print(L10n.format("cli.doctor.server_invalid", error.localizedDescription))
     }
 
-    // whisper-server-Binary + Modell-Datei
-    let binary = Config.expandPath(config.whisper.binaryPath)
-    print(FileManager.default.isExecutableFile(atPath: binary)
-        ? L10n.format("cli.doctor.binary_ok", binary)
-        : {
+    // Reihenfolge wie in `WhisperServerManager.ensureRunning`, und das ist keine
+    // Kosmetik: Dort zählt zuerst, ob der Server ANTWORTET. Tut er das, braucht
+    // Stille Post weder Binary noch Modelldatei — fehlende Startdateien sind dann
+    // kein Problem, sondern ein Hinweis für den nächsten Kaltstart. Läuft er
+    // dagegen nicht und ist der Selbststart aus, scheitert jede Transkription,
+    // auch wenn alle Dateien da sind. Vorher urteilte `doctor` genau andersherum
+    // und lieferte in beiden Lagen den falschen Exit-Code.
+    var serverReachable = false
+    if whisperEndpoint != nil {
+        serverReachable = try runBlocking { await whisperClient.isReachable() }
+        if serverReachable {
+            print(L10n.format("cli.doctor.server_running", config.whisper.serverURL))
+        } else if config.whisper.autostart {
+            print(L10n.text("cli.doctor.server_stopped"))
+        } else {
             problems += 1
-            return L10n.format("cli.doctor.binary_missing", binary)
-        }())
+            print(L10n.format("cli.doctor.server_stopped_no_autostart",
+                              config.whisper.serverURL))
+        }
+    }
+
+    // whisper-server-Binary + Modell-Datei: nur nötig, wenn Stille Post den
+    // Server selbst starten muss.
+    let startFilesNeeded = !serverReachable
+    var startFilesComplete = true
+    let binary = Config.expandPath(config.whisper.binaryPath)
+    if FileManager.default.isExecutableFile(atPath: binary) {
+        print(L10n.format("cli.doctor.binary_ok", binary))
+    } else {
+        startFilesComplete = false
+        if startFilesNeeded { problems += 1 }
+        print(L10n.format("cli.doctor.binary_missing", binary))
+    }
     // Bewusst über den Zustandsbegriff statt `fileExists`: Letzteres folgt Symlinks
     // und meldet auch dann "✓ Modell da", wenn hier nur ein Verweis auf einen
     // fremden Cache liegt — dann ist das Modell weg, sobald das fremde Programm
@@ -99,23 +169,20 @@ case "doctor":
     case .installed(let path, let bytes):
         print(L10n.format("cli.doctor.model_ok", path, ByteSize.megabytes(bytes)))
     case .borrowed(let path, let target):
-        problems += 1
+        startFilesComplete = false
+        if startFilesNeeded { problems += 1 }
         print(L10n.format("cli.doctor.model_borrowed", path))
         print(L10n.format("cli.doctor.model_target", target))
         print(L10n.text("cli.doctor.model_borrowed_help"))
         print("  stillepost-cli install-model")
     case .missing(let path):
-        problems += 1
+        startFilesComplete = false
+        if startFilesNeeded { problems += 1 }
         print(L10n.format("cli.doctor.model_missing", path))
         print(L10n.text("cli.doctor.model_download_help"))
     }
-
-    // Läuft der Server? (Falls nicht: kein Fehler — die App startet ihn selbst.)
-    if whisperEndpoint != nil {
-        let reachable = try runBlocking { await whisperClient.isReachable() }
-        print(reachable
-            ? L10n.format("cli.doctor.server_running", config.whisper.serverURL)
-            : L10n.text("cli.doctor.server_stopped"))
+    if !startFilesComplete && !startFilesNeeded {
+        print(L10n.text("cli.doctor.start_files_unused"))
     }
 
     // Häufigster Anfänger-Stolperstein: language=auto rät die Sprache pro
@@ -137,7 +204,11 @@ case "doctor":
         func checkEndpoint(_ endpoint: Config.Cleanup.Endpoint, name: String) -> Bool {
             if endpoint.provider == "openai" {
                 let remote = endpoint.remote
-                if remote.baseURL.isEmpty || remote.model.isEmpty {
+                // Dieselbe Prüfung, die auch die Bereinigung fährt: Sie baut die
+                // Adresse genauso. Ein nichtleerer, aber unbrauchbarer Wert wie
+                // `http://[` galt hier früher als eingerichtet — und jedes Diktat
+                // fiel danach still auf den Rohtext zurück.
+                if CleanupService.remoteChatURL(remote) == nil {
                     print(L10n.format("cli.doctor.cleanup_remote_config", name))
                     return false
                 }
@@ -436,7 +507,14 @@ case "set-cleanup-key":
     // Der Key wird bewusst NUR von stdin gelesen: Als Argument würde er in der
     // Shell-History und in Prozesslisten landen.
     log(L10n.text("cli.key.prompt"))
-    guard let line = readLine(strippingNewline: true), !line.isEmpty else {
+    TerminalEcho.disable()
+    let typedLine = readLine(strippingNewline: true)
+    let inputWasHidden = TerminalEcho.isDisabled
+    TerminalEcho.restore()
+    // Das abschließende Enter war ebenfalls nicht zu sehen; ohne diesen
+    // Zeilenumbruch klebte die nächste Meldung hinter der Eingabeaufforderung.
+    if inputWasHidden { FileHandle.standardError.write(Data("\n".utf8)) }
+    guard let line = typedLine, !line.isEmpty else {
         fail(L10n.text("cli.key.empty"), code: 2)
     }
     do {
