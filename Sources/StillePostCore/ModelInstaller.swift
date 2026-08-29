@@ -99,6 +99,13 @@ public final class ModelInstaller {
             let target = (try? manager.destinationOfSymbolicLink(atPath: path)) ?? "unbekannt"
             return .borrowed(path: path, target: target)
         }
+        // Nur eine reguläre Datei kann whisper-server als Modell öffnen. Ein
+        // Verzeichnis oder eine Spezialdatei gilt deshalb als fehlend; der
+        // anschließende Installationsversuch benennt mit `targetNotReplaceable`
+        // konkret, warum der Zielpfad nicht beschrieben werden darf.
+        guard attributes[.type] as? FileAttributeType == .typeRegular else {
+            return .missing(path: path)
+        }
         let bytes = (attributes[.size] as? NSNumber)?.int64Value ?? 0
         return .installed(path: path, bytes: bytes)
     }

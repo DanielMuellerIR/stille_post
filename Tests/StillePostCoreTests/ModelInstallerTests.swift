@@ -36,6 +36,19 @@ final class ModelInstallerTests: XCTestCase {
         XCTAssertEqual(bytes, 4242, "Die Größe muss gemeldet werden")
     }
 
+    /// Ein Verzeichnis am Modellpfad ist kein installiertes Modell. Würde es als
+    /// `.installed` durchgehen, bieten App und CLI keinen Download an; der lokale
+    /// whisper-server scheitert erst später mit dem irreführenden Verzeichnispfad.
+    func testDirectoryAtModelPathIsNotReportedAsInstalled() throws {
+        let path = directory.appendingPathComponent("ggml-large-v3-turbo.bin").path
+        try FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)
+
+        guard case .missing(let reportedPath) = ModelInstaller.state(atPath: path) else {
+            return XCTFail("Ein Verzeichnis darf nicht als installiertes Modell durchgehen")
+        }
+        XCTAssertEqual(reportedPath, path)
+    }
+
     /// Der eigentliche Bug: `fileExists` und `[ -f ]` folgen Symlinks und melden für
     /// einen geliehenen Verweis "ist da". Auf dem Entwicklungsrechner zeigte der Modellpfad in den
     /// OpenWhispr-Cache — Stille Post hätte sein Modell verloren, sobald OpenWhispr

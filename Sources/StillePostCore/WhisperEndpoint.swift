@@ -25,6 +25,7 @@ public struct WhisperEndpoint: Equatable, Sendable {
               let host = components.host,
               Self.isExplicitLoopback(host),
               let port = components.port,
+              (1...65_535).contains(port),
               (components.path.isEmpty || components.path == "/") else {
             throw ValidationError.notLoopback(serverURL)
         }
