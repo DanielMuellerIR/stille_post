@@ -75,6 +75,6 @@ expect_usage_error set-cleanup-key --unbekannt
 cleanup_output=$(run_cli cleanup 'Hallo CLI' 2> "$TEST_ROOT/cleanup.stderr")
 [[ "$cleanup_output" == "Hallo CLI" ]]
 history_json=$(run_cli history list --json)
-grep -Fq '[]' <<<"$history_json"
+[[ "$(tr -d '[:space:]' <<<"$history_json")" == "[]" ]]
 
 echo "✓ CLI weist unbekannte Argumente vor jeder Nebenwirkung ab"
