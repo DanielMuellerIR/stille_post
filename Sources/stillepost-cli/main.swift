@@ -64,13 +64,11 @@ enum TerminalEcho {
         var settings = termios()
         guard tcgetattr(STDIN_FILENO, &settings) == 0 else { return }
         saved = settings
-        settings.c_lflag &= ~tcflag_t(ECHO)
-        // TCSAFLUSH: erst alles Getippte verwerfen, dann umschalten — sonst
-        // könnte schon vorher Eingetipptes noch sichtbar durchrutschen.
-        _ = tcsetattr(STDIN_FILENO, TCSAFLUSH, &settings)
         // Bricht der Nutzer mitten in der Eingabe ab (Ctrl-C) oder wird der
         // Prozess beendet, stirbt er mit stummgeschaltetem Terminal — der
-        // Handler stellt es vorher wieder her.
+        // Handler stellt es vorher wieder her. Die Handler stehen schon VOR dem
+        // Abschalten: So bleibt auch das winzige Fenster während `tcsetattr`
+        // abgesichert.
         signal(SIGINT) { _ in
             TerminalEcho.restore()
             _exit(130)
@@ -78,6 +76,15 @@ enum TerminalEcho {
         signal(SIGTERM) { _ in
             TerminalEcho.restore()
             _exit(143)
+        }
+        settings.c_lflag &= ~tcflag_t(ECHO)
+        // TCSAFLUSH: erst alles Getippte verwerfen, dann umschalten — sonst
+        // könnte schon vorher Eingetipptes noch sichtbar durchrutschen.
+        guard tcsetattr(STDIN_FILENO, TCSAFLUSH, &settings) == 0 else {
+            // `saved` darf nur bedeuten, dass die Anzeige wirklich aus ist.
+            // Zugleich die eben installierten Signal-Handler zurücknehmen.
+            restore()
+            return
         }
     }
 
@@ -97,6 +104,57 @@ guard let command = arguments.first else {
     print(usage)
     exit(2)
 }
+
+/// Prüft die vollständige Befehlsform, bevor schon `Config.load()` bei einer
+/// fehlenden Konfiguration eine Datei anlegt. Vor allem dürfen vertippte Optionen
+/// weder Verlauf löschen noch Schlüsselbund, Netz oder Server berühren.
+func argumentsAreValid(_ arguments: [String]) -> Bool {
+    guard let command = arguments.first else { return false }
+    switch command {
+    case "doctor", "set-cleanup-key":
+        return arguments.count == 1
+    case "install-model":
+        let supplied = Array(arguments.dropFirst())
+        let models = supplied.filter { !$0.hasPrefix("--") }
+        let options = supplied.filter { $0.hasPrefix("--") }
+        return models.count <= 1
+            && options.allSatisfy { $0 == "--force" }
+            && options.filter { $0 == "--force" }.count <= 1
+    case "transcribe":
+        return arguments.count == 2
+            || (arguments.count == 3 && arguments[2] == "--raw")
+    case "cleanup":
+        return arguments.count == 2
+    case "bridge":
+        guard arguments.count >= 2 else { return false }
+        switch arguments[1] {
+        case "status", "serve":
+            return arguments.count == 2
+        case "token":
+            let options = Array(arguments.dropFirst(2))
+            return options.count <= 2
+                && Set(options).count == options.count
+                && options.allSatisfy { $0 == "--new" || $0 == "--reveal" }
+        default:
+            return false
+        }
+    case "history":
+        guard arguments.count >= 2 else { return false }
+        switch arguments[1] {
+        case "list":
+            let options = Array(arguments.dropFirst(2))
+            return options.isEmpty || options == ["--json"]
+        case "clear":
+            return arguments.count == 2
+        default:
+            return false
+        }
+    default:
+        return false
+    }
+}
+
+guard argumentsAreValid(arguments) else { fail(usage, code: 2) }
 
 let config = Config.load()
 
@@ -149,40 +207,45 @@ case "doctor":
         }
     }
 
-    // whisper-server-Binary + Modell-Datei: nur nötig, wenn Stille Post den
-    // Server selbst starten muss.
-    let startFilesNeeded = !serverReachable
-    var startFilesComplete = true
-    let binary = Config.expandPath(config.whisper.binaryPath)
-    if FileManager.default.isExecutableFile(atPath: binary) {
-        print(L10n.format("cli.doctor.binary_ok", binary))
-    } else {
-        startFilesComplete = false
-        if startFilesNeeded { problems += 1 }
-        print(L10n.format("cli.doctor.binary_missing", binary))
-    }
-    // Bewusst über den Zustandsbegriff statt `fileExists`: Letzteres folgt Symlinks
-    // und meldet auch dann "✓ Modell da", wenn hier nur ein Verweis auf einen
-    // fremden Cache liegt — dann ist das Modell weg, sobald das fremde Programm
-    // aufräumt.
-    switch ModelInstaller.state(atPath: config.whisper.modelPath) {
-    case .installed(let path, let bytes):
-        print(L10n.format("cli.doctor.model_ok", path, ByteSize.megabytes(bytes)))
-    case .borrowed(let path, let target):
-        startFilesComplete = false
-        if startFilesNeeded { problems += 1 }
-        print(L10n.format("cli.doctor.model_borrowed", path))
-        print(L10n.format("cli.doctor.model_target", target))
-        print(L10n.text("cli.doctor.model_borrowed_help"))
-        print("  stillepost-cli install-model")
-    case .missing(let path):
-        startFilesComplete = false
-        if startFilesNeeded { problems += 1 }
-        print(L10n.format("cli.doctor.model_missing", path))
-        print(L10n.text("cli.doctor.model_download_help"))
-    }
-    if !startFilesComplete && !startFilesNeeded {
-        print(L10n.text("cli.doctor.start_files_unused"))
+    // whisper-server-Binary + Modell-Datei braucht nur der Selbststart. Ist der
+    // Server aus UND autostart abgeschaltet, hat `doctor` den aktiven Blocker
+    // oben bereits genau einmal gemeldet; unbenutzte Startdateien wären keine
+    // weiteren Probleme. Bei einem laufenden Server zeigen wir ihren Zustand
+    // weiterhin als Hinweis für einen möglichen späteren Kaltstart.
+    if config.whisper.autostart || serverReachable {
+        let startFilesNeeded = !serverReachable
+        var startFilesComplete = true
+        let binary = Config.expandPath(config.whisper.binaryPath)
+        if FileManager.default.isExecutableFile(atPath: binary) {
+            print(L10n.format("cli.doctor.binary_ok", binary))
+        } else {
+            startFilesComplete = false
+            if startFilesNeeded { problems += 1 }
+            print(L10n.format("cli.doctor.binary_missing", binary))
+        }
+        // Bewusst über den Zustandsbegriff statt `fileExists`: Letzteres folgt
+        // Symlinks und meldet auch dann "✓ Modell da", wenn hier nur ein Verweis
+        // auf einen fremden Cache liegt — dann ist das Modell weg, sobald das
+        // fremde Programm aufräumt.
+        switch ModelInstaller.state(atPath: config.whisper.modelPath) {
+        case .installed(let path, let bytes):
+            print(L10n.format("cli.doctor.model_ok", path, ByteSize.megabytes(bytes)))
+        case .borrowed(let path, let target):
+            startFilesComplete = false
+            if startFilesNeeded { problems += 1 }
+            print(L10n.format("cli.doctor.model_borrowed", path))
+            print(L10n.format("cli.doctor.model_target", target))
+            print(L10n.text("cli.doctor.model_borrowed_help"))
+            print("  stillepost-cli install-model")
+        case .missing(let path):
+            startFilesComplete = false
+            if startFilesNeeded { problems += 1 }
+            print(L10n.format("cli.doctor.model_missing", path))
+            print(L10n.text("cli.doctor.model_download_help"))
+        }
+        if !startFilesComplete && !startFilesNeeded {
+            print(L10n.text("cli.doctor.start_files_unused"))
+        }
     }
 
     // Häufigster Anfänger-Stolperstein: language=auto rät die Sprache pro
@@ -266,7 +329,9 @@ case "doctor":
 
 // MARK: install-model — Whisper-Modell selbst beschaffen
 case "install-model":
-    let modelName = arguments.dropFirst().first { !$0.hasPrefix("--") } ?? ModelCatalog.turbo.name
+    let installArguments = Array(arguments.dropFirst())
+    let modelArguments = installArguments.filter { !$0.hasPrefix("--") }
+    let modelName = modelArguments.first ?? ModelCatalog.turbo.name
     guard let model = ModelCatalog.model(named: modelName) else {
         let known = ModelCatalog.offered.map(\.name).joined(separator: ", ")
         fail(L10n.format("cli.model.unknown", modelName, known), code: 2)
@@ -317,7 +382,6 @@ case "install-model":
 
 // MARK: transcribe — WAV-Datei durch die Pipeline schicken
 case "transcribe":
-    guard arguments.count >= 2 else { fail(usage, code: 2) }
     let wavPath = arguments[1]
     let rawOnly = arguments.contains("--raw")
     guard FileManager.default.fileExists(atPath: wavPath) else {
@@ -356,7 +420,6 @@ case "transcribe":
 
 // MARK: cleanup — nur die Textbereinigung
 case "cleanup":
-    guard arguments.count >= 2 else { fail(usage, code: 2) }
     let input: String
     if arguments[1] == "-" {
         input = String(data: FileHandle.standardInput.readDataToEndOfFile(), encoding: .utf8) ?? ""
