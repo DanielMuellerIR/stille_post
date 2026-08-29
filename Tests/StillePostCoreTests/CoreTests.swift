@@ -1383,6 +1383,19 @@ final class CoreTests: XCTestCase {
         )
         let checkedBroken = await broken.checkOllamaEndpoint(brokenAddress)
         XCTAssertEqual(checkedBroken, .unreachable, "unbrauchbare Adresse darf nicht abstuerzen")
+
+        var trailingSlash = endpoint
+        trailingSlash.ollamaURL += "/"
+        let checkedTrailingSlash = await present.checkOllamaEndpoint(trailingSlash)
+        XCTAssertEqual(checkedTrailingSlash, .ready,
+                       "ein abschließender Schrägstrich darf den API-Pfad nicht verdoppeln")
+
+        for unusable in ["ftp://api.example.com", "file:///tmp/ollama"] {
+            var invalid = endpoint
+            invalid.ollamaURL = unusable
+            let checkedInvalid = await present.checkOllamaEndpoint(invalid)
+            XCTAssertEqual(checkedInvalid, .unreachable, "muss ablehnen: \(unusable)")
+        }
     }
 
     func testModelNameMatchingAcceptsOnlyTheLatestAlias() {
@@ -1400,6 +1413,31 @@ final class CoreTests: XCTestCase {
         XCTAssertFalse(CleanupService.matchesModel("gemma4:e4b-it-qat-gross",
                                                    configured: "gemma4:e4b-it-qat"))
         XCTAssertFalse(CleanupService.matchesModel("gemma4", configured: "gemma4:e4b-it-qat"))
+    }
+
+    func testRemoteChatURLAcceptsOnlyCompleteHTTPAddresses() {
+        var remote = Config.Cleanup.Remote()
+        remote.model = "cloud-modell"
+
+        remote.baseURL = "https://api.example.com/v1/"
+        XCTAssertEqual(CleanupService.remoteChatURL(remote)?.absoluteString,
+                       "https://api.example.com/v1/chat/completions",
+                       "ein abschließender Schrägstrich darf keinen doppelten erzeugen")
+
+        remote.baseURL = "http://127.0.0.1:8080/v1"
+        XCTAssertEqual(CleanupService.remoteChatURL(remote)?.absoluteString,
+                       "http://127.0.0.1:8080/v1/chat/completions")
+
+        for unusable in [
+            "api.example.com/v1",          // Schema fehlt
+            "file:///tmp/v1",              // kein HTTP-Transport
+            "ftp://api.example.com/v1",    // kein HTTP-Transport
+            "https:///v1",                 // Host fehlt
+            "https://api.example.com/v1?version=1", // Pfad würde in der Query landen
+        ] {
+            remote.baseURL = unusable
+            XCTAssertNil(CleanupService.remoteChatURL(remote), "muss ablehnen: \(unusable)")
+        }
     }
 
     func testStreamingCleanAgainstLocalOllamaIfAvailable() throws {

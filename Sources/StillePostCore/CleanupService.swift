@@ -234,7 +234,8 @@ public final class CleanupService {
     /// ACHTUNG: num_ctx muss identisch zum Bereinigungs-Request sein — Ollama lädt
     /// sonst pro num_ctx-Wert eine EIGENE Modell-Instanz (doppelter RAM!).
     private func sendWarmUpRequest(_ endpoint: Config.Cleanup.Endpoint) {
-        guard let url = URL(string: "\(endpoint.ollamaURL)/api/generate") else { return }
+        guard let url = Self.endpointURL(baseURL: endpoint.ollamaURL,
+                                         path: ["api", "generate"]) else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -281,7 +282,8 @@ public final class CleanupService {
     /// (Power-Save-Latenzspitzen) — ein einmaliger Aussetzer soll nicht sofort den
     /// Fallback samt Kaltstart des Ausweich-Modells auslösen.
     private func isReachable(ollamaURL: String) async -> Bool {
-        guard let url = URL(string: "\(ollamaURL)/api/version") else { return false }
+        guard let url = Self.endpointURL(baseURL: ollamaURL,
+                                         path: ["api", "version"]) else { return false }
         let request = URLRequest(url: url)
         for _ in 0..<2 {
             if let (_, response) = try? await transport.data(for: request, probing: true),
@@ -313,7 +315,8 @@ public final class CleanupService {
     /// Zwei Versuche wie bei `isReachable` — ein einzelner Aussetzer im WLAN soll
     /// keinen laufenden Rechner als tot melden.
     public func checkOllamaEndpoint(_ endpoint: Config.Cleanup.Endpoint) async -> EndpointCheck {
-        guard let url = URL(string: "\(endpoint.ollamaURL)/api/tags") else { return .unreachable }
+        guard let url = Self.endpointURL(baseURL: endpoint.ollamaURL,
+                                         path: ["api", "tags"]) else { return .unreachable }
         let request = URLRequest(url: url)
         for _ in 0..<2 {
             guard let (data, response) = try? await transport.data(for: request, probing: true),
@@ -970,7 +973,8 @@ public final class CleanupService {
     private func cleanViaOllama(_ text: String, endpoint: Config.Cleanup.Endpoint,
                                 streaming: Bool,
                                 freshConnection: Bool) async throws -> String {
-        guard let url = URL(string: "\(endpoint.ollamaURL)/api/chat") else {
+        guard let url = Self.endpointURL(baseURL: endpoint.ollamaURL,
+                                         path: ["api", "chat"]) else {
             throw CleanupError.badConfig(L10n.format("core.cleanup.invalid_ollama_url", endpoint.ollamaURL))
         }
         var request = URLRequest(url: url)
@@ -1067,8 +1071,33 @@ public final class CleanupService {
     /// sind, und meldete „bereit“ für eine Adresse wie `http://[`, an der jedes
     /// Diktat später auf den Rohtext zurückfiel.
     public static func remoteChatURL(_ remote: Config.Cleanup.Remote) -> URL? {
-        guard !remote.baseURL.isEmpty, !remote.model.isEmpty else { return nil }
-        return URL(string: "\(remote.baseURL)/chat/completions")
+        guard !remote.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return endpointURL(baseURL: remote.baseURL, path: ["chat", "completions"])
+    }
+
+    /// Baut die HTTP-Adresse eines konfigurierten Bereinigungs-Endpunkts.
+    ///
+    /// `URL(string:)` allein ist dafür zu großzügig: Es akzeptiert auch relative
+    /// Pfade, `file://` und `ftp://`. Die Diagnose würde so einen Endpunkt als
+    /// benutzbar ansehen, obwohl der spätere HTTP-Request scheitert. Die zentrale
+    /// Prüfung gilt deshalb für Ollama und OpenAI-kompatible Anbieter gemeinsam.
+    private static func endpointURL(baseURL rawBaseURL: String,
+                                    path: [String]) -> URL? {
+        let trimmed = rawBaseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              components.host?.isEmpty == false,
+              components.query == nil, components.fragment == nil,
+              components.user == nil, components.password == nil,
+              components.port.map({ (1...65_535).contains($0) }) ?? true,
+              let baseURL = components.url else { return nil }
+        return path.reduce(baseURL) { url, component in
+            url.appendingPathComponent(component)
+        }
     }
 
     private func cleanViaOpenAICompatible(_ text: String, endpoint: Config.Cleanup.Endpoint) async throws -> String {
