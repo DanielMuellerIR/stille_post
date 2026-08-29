@@ -22,6 +22,19 @@ DEST_DIR="$HOME/Library/Application Support/StillePost/models"
 DEST="$DEST_DIR/ggml-$MODEL.bin"
 URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-$MODEL.bin"
 
+# Reguläre Dateien und Verweise sind ersetzbar. Ein Verzeichnis oder eine
+# Spezialdatei am Modellpfad gehört dem Installer dagegen nicht. Diese Prüfung
+# läuft vor dem ersten Netzaufruf, damit ein unbrauchbares Ziel nicht erst nach
+# 1,6 GB auffällt.
+unsupported_path() {
+    local path=$1
+    [[ -e "$path" || -L "$path" ]] && [[ ! -f "$path" && ! -L "$path" ]]
+}
+if unsupported_path "$DEST"; then
+    echo "Fehler: Am Modellpfad liegt keine ersetzbare Datei: $DEST" >&2
+    exit 1
+fi
+
 # Ist schon eine eigene Kopie da?
 #
 # Bewusst `-L` VOR `-f` prüfen: `-f` folgt Symlinks und ist deshalb auch dann wahr,
@@ -40,6 +53,14 @@ elif [ -f "$DEST" ] && [ "$FORCE" -eq 0 ]; then
 fi
 
 mkdir -p "$DEST_DIR"
+
+# curl folgt beim Schreiben einem Symlink. Eine Teildatei darf deshalb nur eine
+# eigene reguläre Datei sein; sonst könnte eine Wiederaufnahme fremde Daten
+# verändern. Verzeichnisse und andere Spezialdateien sind ebenso unbrauchbar.
+if [[ -L "$DEST.partial" ]] || unsupported_path "$DEST.partial"; then
+    echo "Fehler: Die Teildatei ist keine eigene reguläre Datei: $DEST.partial" >&2
+    exit 1
+fi
 
 # Erwartete Größe vorab holen — nur so lässt sich hinterher belegen, dass die Datei
 # vollständig ist (eine abgebrochene Wiederaufnahme sieht sonst aus wie Erfolg).
@@ -86,7 +107,13 @@ if [ "$ACTUAL" -ne "$EXPECTED" ]; then
     exit 1
 fi
 
-# `mv` ersetzt einen vorhandenen Symlink, nicht dessen Ziel — der fremde Cache
-# bleibt also unangetastet.
-mv "$DEST.partial" "$DEST"
+# Direkt vor dem Verschieben dieselben Typen erneut prüfen: Während des Downloads
+# kann sich der Pfad geändert haben. `mv -h` ist auf macOS zusätzlich nötig, weil
+# ein gewöhnliches `mv quelle symlink-auf-ordner` dem Verweis folgt und die Datei
+# IN den fremden Ordner legt, statt den Verweis zu ersetzen.
+if [[ ! -f "$DEST.partial" || -L "$DEST.partial" ]] || unsupported_path "$DEST"; then
+    echo "Fehler: Modell- oder Zielpfad hat sich während des Downloads geändert." >&2
+    exit 1
+fi
+mv -f -h "$DEST.partial" "$DEST"
 echo "Fertig: $DEST"
