@@ -217,3 +217,17 @@ Artefakte sind nicht autoritativ und dürfen keine versteckten Projektregeln tra
   Versions-Bump fortzuschreiben.
 - [docs/ios-bridge.md](docs/ios-bridge.md) — Diktat vom iPhone über das Heimnetz:
   getroffene Entscheidungen, Aufbau der Brücke, Kurzbefehl-Anleitung, Messwerte.
+
+## Offene Abnahmen (2026-08-29, aus der Handoff-Frontier)
+
+Übernommen aus den Sessions c-7f45623a, c-715b96ff und c-0c80d7f2:
+
+- **0.9.13 veröffentlichen:** gebaut, getestet und committet, aber ohne Tag,
+  ohne DMG, und der Changelog-Abschnitt trägt noch kein Datum.
+- **Echter Sparkle-Updatelauf** von einer älteren Fassung bis zum Neustart wurde
+  nie am Gerät durchgespielt.
+- **Mehrtägiger Realbetrieb auf beiden Macs** steht weiterhin aus.
+- **Interaktiver API-Schlüssel-Schreibpfad** ist noch nicht durch einen echten
+  macOS-Schlüsselbund-Dialog bestätigt.
+- **/Applications ist veraltet:** Dort liegt 0.9.9, veröffentlicht ist 0.9.12
+  (0.9.13 gebaut) — nach der 0.9.13-Veröffentlichung aktualisieren.
