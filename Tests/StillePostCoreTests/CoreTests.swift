@@ -918,6 +918,49 @@ final class CoreTests: XCTestCase {
     }
 
     @MainActor
+    func testUndeletableSilentRecordingStaysReachableInHistory() async throws {
+        // Reine Stille erzeugt normalerweise keinen Verlaufseintrag. Lässt sich
+        // ihre WAV aber nicht löschen, darf der einzige Verweis nicht nur im RAM
+        // der Engine bleiben: Das nächste Diktat würde ihn überschreiben, und nach
+        // einem Neustart fände "Alle löschen" die Aufnahme nie wieder.
+        let baseDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sp-silent-undeletable-\(UUID())")
+        let blocked = baseDir.appendingPathComponent("gesperrt")
+        try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
+        let wavURL = blocked.appendingPathComponent("aufnahme.wav")
+        try Data("RIFF".utf8).write(to: wavURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555],
+                                              ofItemAtPath: blocked.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755],
+                                                   ofItemAtPath: blocked.path)
+            try? FileManager.default.removeItem(at: baseDir)
+        }
+
+        let history = HistoryStore(baseDir: baseDir.appendingPathComponent("verlauf"))
+        let engine = DictationEngine(config: Config(), history: history)
+        let delivered = expectation(description: "stilles Ergebnis ausgeliefert")
+        var deliveredEntry: HistoryStore.Entry?
+        engine.onResult = {
+            deliveredEntry = $0.entry
+            delivered.fulfill()
+        }
+
+        engine.processForTesting(rawText: "", wavURL: wavURL)
+        await fulfillment(of: [delivered], timeout: 5)
+
+        XCTAssertNotNil(deliveredEntry, "der Dateiverweis muss den Neustart überleben")
+        let stored = try history.list()
+        XCTAssertEqual(stored.count, 1)
+        XCTAssertEqual(stored.first?.audioFileName, wavURL.lastPathComponent)
+        XCTAssertTrue(stored.first?.rawText.isEmpty == true)
+        XCTAssertTrue(stored.first?.cleanText.isEmpty == true)
+        guard case .error = engine.state else {
+            return XCTFail("das gescheiterte Löschen muss sichtbar sein")
+        }
+    }
+
+    @MainActor
     func testResultIsDeliveredOnMainThread() async throws {
         // Regression 0.8.13: Die Nachverarbeitung lief off-main; onResult fasst aber
         // im App-Callback AppKit an (Overlay-Panel), und AppKit bricht ab macOS 26

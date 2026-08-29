@@ -373,11 +373,44 @@ public final class DictationEngine {
 
         if rawJoined.isEmpty {
             // Nur Stille aufgenommen: nichts einfügen, keinen Verlaufs-Müll erzeugen.
-            // Erst die bestätigte Löschung gibt die Datei aus der Obhut der
-            // Engine frei. Klappt sie nicht, bleibt der Verweis stehen, und
-            // "Abbrechen" oder das Beenden der App räumt sie später weg.
-            let removed = wavURL.map { (try? FileManager.default.removeItem(at: $0)) != nil } ?? true
-            if removed { processingWavURL = nil }
+            // Scheitert ausnahmsweise das Löschen, ist ein textfreier Fehler-Eintrag
+            // aber kein Müll: Er hält den einzigen dauerhaften Verweis auf die WAV,
+            // damit "Alle löschen" sie auch nach einem Neustart erneut versucht.
+            if let wavURL {
+                do {
+                    try FileManager.default.removeItem(at: wavURL)
+                    processingWavURL = nil
+                } catch {
+                    let deletionError = error
+                    let retained = HistoryStore.Entry(
+                        rawText: "", cleanText: "", status: "failed",
+                        errorMessage: L10n.format(
+                            "core.history.audio_delete_failed",
+                            deletionError.localizedDescription
+                        ),
+                        audioFileName: wavURL.lastPathComponent,
+                        durationSec: duration
+                    )
+                    do {
+                        try history.append(retained)
+                        processingWavURL = nil
+                    } catch {
+                        guard isCurrentSession(generation) else { return }
+                        setState(.error(L10n.format(
+                            "core.history.persistence_failed", error.localizedDescription
+                        )))
+                        return
+                    }
+                    guard isCurrentSession(generation), !Task.isCancelled else { return }
+                    deliverResult(DictationResult(text: "", entry: retained))
+                    setState(.error(L10n.format(
+                        "core.history.audio_delete_failed", deletionError.localizedDescription
+                    )))
+                    return
+                }
+            } else {
+                processingWavURL = nil
+            }
             guard isCurrentSession(generation), !Task.isCancelled else { return }
             setState(.idle)
             deliverResult(DictationResult(text: "", entry: nil))
