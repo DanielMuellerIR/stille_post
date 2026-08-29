@@ -10,6 +10,40 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.14] — unveröffentlicht
+
+### Geändert
+
+- `stillepost-cli` prüft die vollständige Befehlsform jetzt vor dem Laden der
+  Konfiguration. Unbekannte oder zusätzliche Optionen werden mit Exit-Code 2
+  abgewiesen, bevor der Befehl Verlauf, Schlüsselbund, Netz oder Server berührt.
+- `stillepost-cli doctor` zählt bei ausgeschaltetem Whisper-Selbststart nur den
+  nicht erreichbaren Server als Problem. Fehlendes Binary und Modell werden in
+  dieser Konfiguration nicht benutzt und deshalb nicht als weitere Fehler
+  ausgegeben.
+
+### Behoben
+
+- Bereinigung: Cloud- und Ollama-Endpunkte akzeptieren nur noch vollständige
+  HTTP- oder HTTPS-Adressen ohne Zugangsdaten, Query oder Fragment. Ein
+  abschließender Schrägstrich erzeugt außerdem keinen doppelten Pfadtrenner mehr.
+- Diktat: Enthält eine Aufnahme nur Stille und lässt sich ihre WAV-Datei nicht
+  löschen, bleibt ihr Name jetzt in einem textfreien Fehler-Eintrag im Verlauf
+  erreichbar. Bisher lag der einzige Verweis im Arbeitsspeicher und ging beim
+  nächsten Diktat oder Neustart verloren.
+- Whisper: Verzeichnisse und Spezialdateien am Modellpfad gelten nicht mehr als
+  installiertes Modell. App und CLI bieten dadurch wieder die Installation an,
+  die den ungeeigneten Zieltyp mit einer konkreten Fehlermeldung abweist.
+- Whisper: Die lokale Serveradresse lehnt Port 0 sowie Werte über 65535 ab,
+  bevor sie an URLSession oder den Selbststart weitergereicht werden.
+- `scripts/install-model.sh` prüft Ziel und Teildatei vor dem Download und erneut
+  vor dem Verschieben. Das Skript folgt keinem Symlink auf ein Verzeichnis mehr
+  und kann über einen Teildatei-Symlink keine fremde Datei überschreiben.
+- `stillepost-cli set-cleanup-key` installiert seine Abbruchbehandlung jetzt vor
+  dem Abschalten der Terminal-Anzeige und nimmt sie zurück, falls das Terminal
+  die Umschaltung ablehnt. Ein Abbruchfenster mit dauerhaft stummer Eingabe ist
+  damit geschlossen.
+
 ## [0.9.13] — unveröffentlicht
 
 ### Geändert
