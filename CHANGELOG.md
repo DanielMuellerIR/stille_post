@@ -10,6 +10,17 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.16] — unveröffentlicht
+
+### Behoben
+
+- Das Verlaufsfenster liest und leert den Verlauf jetzt außerhalb des
+  Main-Threads. Ein paralleler CLI-Zugriff oder das Löschen vieler Aufnahmen
+  blockiert dadurch weder Fenster noch Menüleiste.
+- Ein fertig transkribiertes Diktat wird auch dann ausgeliefert, wenn nur das
+  abschließende Entfernen eines bereits überflüssigen WAV-Verweises im Verlauf
+  nicht gespeichert werden kann; der Fehler bleibt sichtbar.
+
 ## [0.9.15] — unveröffentlicht
 
 ### Behoben

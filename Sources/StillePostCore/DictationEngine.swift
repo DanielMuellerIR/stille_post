@@ -457,6 +457,16 @@ public final class DictationEngine {
             )))
             return
         }
+        if let persistenceError = finalized.persistenceError {
+            // Text und erster Plattenstand sind bereits sicher, die WAV ist weg.
+            // Ein Fehler nur beim Entfernen des nun veralteten Audio-Verweises
+            // darf das fertige Diktat deshalb nicht verschlucken.
+            deliverResult(DictationResult(text: cleaned.text, entry: finalized.entry))
+            setState(.error(L10n.format(
+                "core.history.persistence_failed", persistenceError
+            )))
+            return
+        }
         setState(.idle)
         deliverResult(DictationResult(text: cleaned.text, entry: finalized.entry))
     }
@@ -467,6 +477,7 @@ public final class DictationEngine {
     private struct PersistedEntryResult {
         let entry: HistoryStore.Entry
         let deletionError: String?
+        let persistenceError: String?
     }
 
     /// Speichert einen Erfolg zunächst mit Audio-Verweis, löscht danach die
@@ -484,7 +495,9 @@ public final class DictationEngine {
             } else {
                 try await history.appendAsync(entry)
             }
-            return PersistedEntryResult(entry: entry, deletionError: nil)
+            return PersistedEntryResult(
+                entry: entry, deletionError: nil, persistenceError: nil
+            )
         }
 
         var withAudio = entry
@@ -500,14 +513,34 @@ public final class DictationEngine {
         } catch {
             return PersistedEntryResult(
                 entry: withAudio,
-                deletionError: error.localizedDescription
+                deletionError: error.localizedDescription,
+                persistenceError: nil
             )
         }
 
         var withoutAudio = withAudio
         withoutAudio.audioFileName = nil
-        try await history.updateAsync(withoutAudio)
-        return PersistedEntryResult(entry: withoutAudio, deletionError: nil)
+        do {
+            try await history.updateAsync(withoutAudio)
+            return PersistedEntryResult(
+                entry: withoutAudio, deletionError: nil, persistenceError: nil
+            )
+        } catch HistoryStore.PersistenceError.entryNoLongerExists {
+            // „Alle löschen“ hat den Eintrag parallel bewusst entfernt. Die WAV
+            // ist ebenfalls weg; es gibt nichts mehr zu reparieren.
+            return PersistedEntryResult(
+                entry: withoutAudio, deletionError: nil, persistenceError: nil
+            )
+        } catch {
+            // Der erste Stand mit Text und Audionamen liegt weiterhin auf der
+            // Platte, nur der nun überflüssige Verweis konnte nicht entfernt
+            // werden. Das ist sichtbar zu melden, aber kein Grund, Text zu verlieren.
+            return PersistedEntryResult(
+                entry: withAudio,
+                deletionError: nil,
+                persistenceError: error.localizedDescription
+            )
+        }
     }
 
     /// Dateisystemarbeit darf `finishSession` nicht auf dem MainActor festhalten.
@@ -618,10 +651,18 @@ public final class DictationEngine {
         if let deletionError = finalized.deletionError {
             throw AudioDeletionError(message: deletionError)
         }
+        if let persistenceError = finalized.persistenceError {
+            throw PersistenceCompletionError(message: persistenceError)
+        }
         return finalized.entry
     }
 
     private struct AudioDeletionError: LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
+    }
+
+    private struct PersistenceCompletionError: LocalizedError {
         let message: String
         var errorDescription: String? { message }
     }

@@ -45,6 +45,11 @@ final class HistoryViewModel: ObservableObject {
     /// IDs der Einträge, bei denen gerade "Erneut transkribieren" läuft.
     @Published var retrying: Set<UUID> = []
     @Published var errorMessage: String?
+    @Published var deletingAll = false
+    /// Nur das Ergebnis des neuesten Leseauftrags darf die Liste ersetzen.
+    /// Zwei schnell aufeinanderfolgende Reloads können off-main andersherum
+    /// fertig werden, obwohl beide korrekt gelesen haben.
+    private var reloadGeneration: UInt64 = 0
 
     let engine: DictationEngine
 
@@ -56,10 +61,20 @@ final class HistoryViewModel: ObservableObject {
     }
 
     func reload() {
-        do {
-            entries = try engine.history.list()
-        } catch {
-            errorMessage = error.localizedDescription
+        reloadGeneration &+= 1
+        let generation = reloadGeneration
+        let history = engine.history
+        Task { @MainActor [weak self] in
+            let result = await Task.detached(priority: .userInitiated) {
+                Result { try history.list() }
+            }.value
+            guard let self, generation == self.reloadGeneration else { return }
+            switch result {
+            case .success(let entries):
+                self.entries = entries
+            case .failure(let error):
+                self.errorMessage = error.localizedDescription
+            }
         }
     }
 
@@ -82,12 +97,20 @@ final class HistoryViewModel: ObservableObject {
     }
 
     func deleteAll() {
-        do {
-            try engine.history.deleteAll()
-        } catch {
-            errorMessage = error.localizedDescription
+        guard !deletingAll else { return }
+        deletingAll = true
+        let history = engine.history
+        Task { @MainActor [weak self] in
+            defer { self?.deletingAll = false }
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    try history.deleteAll()
+                }.value
+            } catch {
+                self?.errorMessage = error.localizedDescription
+            }
+            self?.reload()
         }
-        reload()
     }
 }
 
@@ -124,7 +147,7 @@ struct HistoryView: View {
                 } label: {
                     Label(L10n.text("history.delete_all"), systemImage: "trash")
                 }
-                .disabled(model.entries.isEmpty)
+                .disabled(model.entries.isEmpty || model.deletingAll)
                 .confirmationDialog(L10n.text("history.delete_all.confirm"),
                                     isPresented: $confirmDeleteAll) {
                     Button(L10n.text("history.delete_all"), role: .destructive) { model.deleteAll() }

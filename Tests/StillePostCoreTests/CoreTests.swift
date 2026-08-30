@@ -1067,6 +1067,53 @@ final class CoreTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testFinalHistoryWriteFailureStillDeliversCompletedDictation() async throws {
+        enum Expected: Error { case secondWriteFailure }
+        let baseDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sp-final-write-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: baseDir) }
+        let lock = NSLock()
+        var writes = 0
+        let history = HistoryStore(baseDir: baseDir) { data, url in
+            let attempt = lock.withLock { () -> Int in
+                writes += 1
+                return writes
+            }
+            if attempt == 2 { throw Expected.secondWriteFailure }
+            try data.write(to: url, options: .atomic)
+        }
+        let wavURL = history.newRecordingURL()
+        try Data("RIFF".utf8).write(to: wavURL)
+        let engine = DictationEngine(config: Config(), history: history) { rawText in
+            CleanupService.Result(text: rawText, usedFallback: false,
+                                  fallbackReason: nil, endpoint: nil)
+        }
+        let delivered = expectation(description: "fertiger Text ausgeliefert")
+        let reported = expectation(description: "abschließender Write-Fehler gemeldet")
+        var deliveredText: String?
+        var deliveredEntry: HistoryStore.Entry?
+        engine.onResult = {
+            deliveredText = $0.text
+            deliveredEntry = $0.entry
+            delivered.fulfill()
+        }
+        engine.onStateChange = { state in
+            if case .error = state { reported.fulfill() }
+        }
+
+        engine.processForTesting(rawText: "fertiges Diktat", wavURL: wavURL)
+        await fulfillment(of: [delivered, reported], timeout: 5)
+
+        XCTAssertEqual(deliveredText, "fertiges Diktat")
+        XCTAssertEqual(deliveredEntry?.audioFileName, wavURL.lastPathComponent,
+                       "das Ergebnis bildet den weiterhin persistierten Stand ab")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wavURL.path),
+                       "die bereits bestätigt gelöschte WAV bleibt gelöscht")
+        XCTAssertEqual(try history.list().first?.audioFileName, wavURL.lastPathComponent,
+                       "der erste sichere Stand bleibt beim zweiten Write-Fehler lesbar")
+    }
+
     func testRetryKeepsAudioReferenceWhenDeletionFails() async throws {
         let baseDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("sp-retry-disk-first-\(UUID())")

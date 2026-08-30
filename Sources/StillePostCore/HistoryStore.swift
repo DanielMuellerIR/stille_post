@@ -136,57 +136,48 @@ public final class HistoryStore: @unchecked Sendable {
 
     /// Fügt einen Eintrag hinzu und speichert.
     public func append(_ entry: Entry) throws {
-        try queue.sync {
-            try withFileLock {
-                var fresh = try loadFromDiskLocked()
-                fresh.append(entry)
-                try saveLocked(fresh)
-            }
-        }
+        try queue.sync { try appendOnQueue(entry) }
         onChange?()
     }
 
     /// Asynchrone Variante für die Diktier-Pipeline. Datei-Lock, JSON-Lesen und
     /// atomarer Write laufen auf der History-Queue statt auf dem Main-Thread.
     public func appendAsync(_ entry: Entry) async throws {
-        try await onQueue {
-            try self.withFileLock {
-                var fresh = try self.loadFromDiskLocked()
-                fresh.append(entry)
-                try self.saveLocked(fresh)
-            }
-        }
+        try await onQueue { try self.appendOnQueue(entry) }
         onChange?()
     }
 
     /// Ersetzt einen Eintrag (z. B. nach "Erneut transkribieren") und speichert.
     public func update(_ entry: Entry) throws {
-        try queue.sync {
-            try withFileLock {
-                var fresh = try loadFromDiskLocked()
-                guard let index = fresh.firstIndex(where: { $0.id == entry.id }) else {
-                    throw PersistenceError.entryNoLongerExists
-                }
-                fresh[index] = entry
-                try saveLocked(fresh)
-            }
-        }
+        try queue.sync { try updateOnQueue(entry) }
         onChange?()
     }
 
     /// Asynchrone Variante von `update`; siehe `appendAsync`.
     public func updateAsync(_ entry: Entry) async throws {
-        try await onQueue {
-            try self.withFileLock {
-                var fresh = try self.loadFromDiskLocked()
-                guard let index = fresh.firstIndex(where: { $0.id == entry.id }) else {
-                    throw PersistenceError.entryNoLongerExists
-                }
-                fresh[index] = entry
-                try self.saveLocked(fresh)
-            }
-        }
+        try await onQueue { try self.updateOnQueue(entry) }
         onChange?()
+    }
+
+    /// Gemeinsamer Kern für synchrone und asynchrone Aufrufer. So können
+    /// Lock-, Reload- und atomare Write-Reihenfolge nicht auseinanderlaufen.
+    private func appendOnQueue(_ entry: Entry) throws {
+        try withFileLock {
+            var fresh = try loadFromDiskLocked()
+            fresh.append(entry)
+            try saveLocked(fresh)
+        }
+    }
+
+    private func updateOnQueue(_ entry: Entry) throws {
+        try withFileLock {
+            var fresh = try loadFromDiskLocked()
+            guard let index = fresh.firstIndex(where: { $0.id == entry.id }) else {
+                throw PersistenceError.entryNoLongerExists
+            }
+            fresh[index] = entry
+            try saveLocked(fresh)
+        }
     }
 
     /// Löscht ALLE Einträge samt zurückbehaltener Audio-Dateien ("Alle löschen"-Button).
