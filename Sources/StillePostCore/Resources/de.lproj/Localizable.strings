@@ -190,6 +190,7 @@
 "core.model.unavailable" = "Modell \"%@\" ist bei Hugging Face nicht abrufbar — Netzverbindung prüfen";
 "core.model.incomplete" = "Download unvollständig (%lld von %lld Bytes). Die Teildatei bleibt liegen, ein erneuter Versuch setzt dort fort: %@";
 "core.model.target_not_replaceable" = "Am Modellpfad liegt kein Modell, sondern ein Verzeichnis oder eine Sonderdatei: %@ — bitte whisper.modelPath korrigieren; hier wird nichts gelöscht";
+"core.model.partial_not_replaceable" = "Die Download-Teildatei ist kein sicheres reguläres Schreibziel: %@";
 "core.cleanup.failed" = "Bereinigung fehlgeschlagen — %@";
 "core.cleanup.empty" = "Bereinigung lieferte leeren Text";
 "core.cleanup.no_words" = "Bereinigte Fassung enthält kein einziges Wort mehr";
@@ -313,6 +314,7 @@
 "cli.history.cleared" = "Verlauf und zurückbehaltene Aufnahmen gelöscht.";
 "cli.history.persistence_failed" = "Verlaufsoperation fehlgeschlagen: %@";
 "cli.key.prompt" = "API-Key eingeben (Eingabe wird nicht angezeigt, Ende mit Enter):";
+"cli.key.echo_failed" = "Terminal-Anzeige konnte nicht sicher abgeschaltet werden; es wurde kein API-Key gelesen.";
 "cli.key.empty" = "Kein Key eingegeben.";
 "cli.key.saved" = "Key im Schlüsselbund gespeichert (Eintrag: %@).";
 "cli.key.save_failed" = "Speichern fehlgeschlagen: %@";

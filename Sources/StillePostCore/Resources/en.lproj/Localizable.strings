@@ -190,6 +190,7 @@
 "core.model.unavailable" = "Model \"%@\" is unavailable from Hugging Face — check the network connection";
 "core.model.incomplete" = "Download incomplete (%lld of %lld bytes). The partial file remains in place; another attempt will resume it: %@";
 "core.model.target_not_replaceable" = "The model path holds a directory or a special file instead of a model: %@ — please correct whisper.modelPath; nothing is deleted here";
+"core.model.partial_not_replaceable" = "The partial download is not a safe regular-file target: %@";
 "core.cleanup.failed" = "Cleanup failed — %@";
 "core.cleanup.empty" = "Cleanup returned empty text";
 "core.cleanup.no_words" = "The cleaned version no longer contains a single word";
@@ -313,6 +314,7 @@
 "cli.history.cleared" = "History and retained recordings deleted.";
 "cli.history.persistence_failed" = "History operation failed: %@";
 "cli.key.prompt" = "Enter the API key (input is hidden; press Enter when finished):";
+"cli.key.echo_failed" = "Terminal echo could not be disabled safely; no API key was read.";
 "cli.key.empty" = "No key entered.";
 "cli.key.saved" = "Key saved in Keychain (entry: %@).";
 "cli.key.save_failed" = "Could not save: %@";

@@ -77,4 +77,15 @@ cleanup_output=$(run_cli cleanup 'Hallo CLI' 2> "$TEST_ROOT/cleanup.stderr")
 history_json=$(run_cli history list --json)
 [[ "$(tr -d '[:space:]' <<<"$history_json")" == "[]" ]]
 
+# Ein TTY-Fehler darf nicht auf sichtbare Eingabe zurückfallen. Der Testhaken
+# simuliert genau den Fehlerstatus und muss VOR `readLine` mit Exit 1 enden.
+set +e
+echo_failure_output=$(printf 'darf-nie-gelesen-werden\n' \
+    | STILLEPOST_TEST_TERMINAL_ECHO_FAILURE=1 run_cli set-cleanup-key 2>&1)
+echo_failure_status=$?
+set -e
+[[ "$echo_failure_status" -eq 1 ]]
+grep -Fq 'Terminal-Anzeige konnte nicht sicher abgeschaltet werden' \
+    <<<"$echo_failure_output"
+
 echo "✓ CLI weist unbekannte Argumente vor jeder Nebenwirkung ab"

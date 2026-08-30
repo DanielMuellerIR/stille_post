@@ -354,7 +354,7 @@ public final class DictationEngine {
             )
             guard isCurrentSession(generation), !Task.isCancelled else { return }
             do {
-                try history.append(entry)
+                try await history.appendAsync(entry)
             } catch {
                 guard isCurrentSession(generation) else { return }
                 setState(.error(L10n.format(
@@ -378,7 +378,7 @@ public final class DictationEngine {
             // damit "Alle löschen" sie auch nach einem Neustart erneut versucht.
             if let wavURL {
                 do {
-                    try FileManager.default.removeItem(at: wavURL)
+                    try await Self.removeFileAsync(at: wavURL)
                     processingWavURL = nil
                 } catch {
                     let deletionError = error
@@ -392,7 +392,7 @@ public final class DictationEngine {
                         durationSec: duration
                     )
                     do {
-                        try history.append(retained)
+                        try await history.appendAsync(retained)
                         processingWavURL = nil
                     } catch {
                         guard isCurrentSession(generation) else { return }
@@ -431,10 +431,14 @@ public final class DictationEngine {
             cleanupEndpoint: cleaned.endpoint,
             cleanupSec: Date().timeIntervalSince(cleanupStarted)
         )
+        let finalized: PersistedEntryResult
         do {
-            // Disk first: Nur ein wirklich persistierter Erfolg darf die
-            // Diagnoseaufnahme irreversibel entfernen.
-            try history.append(entry)
+            finalized = try await Self.persistSuccessfulEntry(
+                entry,
+                wavURL: wavURL,
+                replacingExisting: false,
+                history: history
+            )
         } catch {
             guard isCurrentSession(generation) else { return }
             setState(.error(L10n.format(
@@ -443,39 +447,87 @@ public final class DictationEngine {
             return
         }
         guard isCurrentSession(generation), !Task.isCancelled else { return }
-        if let wavURL {
-            do {
-                try FileManager.default.removeItem(at: wavURL)
-                processingWavURL = nil
-            } catch {
-                // Die Aufnahme ließ sich nicht wegräumen. Damit sie nicht ohne
-                // jeden Verweis liegen bleibt, bekommt der eben gespeicherte
-                // Eintrag ihren Dateinamen nachgetragen — "Alle löschen" findet
-                // sie dadurch auch nach einem Neustart noch.
-                var withAudio = entry
-                withAudio.audioFileName = wavURL.lastPathComponent
-                if (try? history.update(withAudio)) != nil { processingWavURL = nil }
-                guard isCurrentSession(generation) else { return }
-                // Der Text ist fertig, bereinigt und liegt schon im Verlauf. Dass
-                // die Diagnoseaufnahme nicht wegzuräumen war, ist ein
-                // Aufräumproblem und darf das Diktat nicht zurückhalten — sonst
-                // fällt die eigentliche Arbeit wegen einer Nebensache unter den
-                // Tisch. Also erst ausliefern, dann den Fehler melden.
-                deliverResult(DictationResult(text: cleaned.text, entry: entry))
-                setState(.error(L10n.format(
-                    "core.history.audio_delete_failed", error.localizedDescription
-                )))
-                return
-            }
-        }
-        guard isCurrentSession(generation), !Task.isCancelled else { return }
+        // Entweder ist die WAV gelöscht oder der bereits persistierte Eintrag
+        // hält ihren Namen. In beiden Fällen darf die RAM-Verantwortung enden.
         processingWavURL = nil
+        if let deletionError = finalized.deletionError {
+            deliverResult(DictationResult(text: cleaned.text, entry: finalized.entry))
+            setState(.error(L10n.format(
+                "core.history.audio_delete_failed", deletionError
+            )))
+            return
+        }
         setState(.idle)
-        deliverResult(DictationResult(text: cleaned.text, entry: entry))
+        deliverResult(DictationResult(text: cleaned.text, entry: finalized.entry))
+    }
+
+    /// Ergebnis der gemeinsamen Disk-first-Operation für Live-Diktat und
+    /// Wiederholung. Ein Löschfehler ist kein Persistenzfehler: Der Eintrag ist
+    /// dann bereits MIT Audionamen gespeichert und bleibt erneut löschbar.
+    private struct PersistedEntryResult {
+        let entry: HistoryStore.Entry
+        let deletionError: String?
+    }
+
+    /// Speichert einen Erfolg zunächst mit Audio-Verweis, löscht danach die
+    /// WAV und entfernt den Verweis erst nach bestätigtem Löschen. So kann kein
+    /// zweiter Schreibfehler eine vorhandene Aufnahme verwaisen lassen.
+    private static func persistSuccessfulEntry(
+        _ entry: HistoryStore.Entry,
+        wavURL: URL?,
+        replacingExisting: Bool,
+        history: HistoryStore
+    ) async throws -> PersistedEntryResult {
+        guard let wavURL else {
+            if replacingExisting {
+                try await history.updateAsync(entry)
+            } else {
+                try await history.appendAsync(entry)
+            }
+            return PersistedEntryResult(entry: entry, deletionError: nil)
+        }
+
+        var withAudio = entry
+        withAudio.audioFileName = wavURL.lastPathComponent
+        if replacingExisting {
+            try await history.updateAsync(withAudio)
+        } else {
+            try await history.appendAsync(withAudio)
+        }
+
+        do {
+            try await removeFileAsync(at: wavURL)
+        } catch {
+            return PersistedEntryResult(
+                entry: withAudio,
+                deletionError: error.localizedDescription
+            )
+        }
+
+        var withoutAudio = withAudio
+        withoutAudio.audioFileName = nil
+        try await history.updateAsync(withoutAudio)
+        return PersistedEntryResult(entry: withoutAudio, deletionError: nil)
+    }
+
+    /// Dateisystemarbeit darf `finishSession` nicht auf dem MainActor festhalten.
+    private static func removeFileAsync(at url: URL) async throws {
+        try await Task.detached(priority: .utility) {
+            guard FileManager.default.fileExists(atPath: url.path) else { return }
+            try FileManager.default.removeItem(at: url)
+        }.value
     }
 
     /// Bricht eine laufende Aufnahme ab, ohne Text zu erzeugen (Menüpunkt "Abbrechen").
     public func cancel() {
+        let priorState = state
+        let discardsActiveAudio: Bool
+        switch priorState {
+        case .starting, .recording, .processing:
+            discardsActiveAudio = true
+        case .idle, .error:
+            discardsActiveAudio = false
+        }
         sessionGeneration &+= 1
         sessionTask?.cancel()
         sessionTask = nil
@@ -483,20 +535,44 @@ public final class DictationEngine {
         recorder = nil
         segmenter = nil
         segmentResults = nil
+        var deletionFailure: Error?
         if let writer = wavWriter {
-            try? writer.finish()
-            try? FileManager.default.removeItem(at: writer.url)
+            if discardsActiveAudio {
+                do {
+                    try writer.finish()
+                    try FileManager.default.removeItem(at: writer.url)
+                } catch {
+                    // Den einzigen bekannten Verweis nicht wegwerfen, solange
+                    // weder das Löschen noch eine dauerhafte Ablage gelang.
+                    processingWavURL = writer.url
+                    deletionFailure = error
+                }
+            }
             wavWriter = nil
         }
         // Abbruch WÄHREND der Verarbeitung: Der Writer ist da längst weg, die
         // fertige WAV-Datei liegt aber noch auf der Platte. Ohne diesen Zweig
         // bliebe eine vollständige Aufnahme zurück, die im Verlauf nie auftaucht.
-        if let pending = processingWavURL {
-            try? FileManager.default.removeItem(at: pending)
-            processingWavURL = nil
+        if discardsActiveAudio, deletionFailure == nil, let pending = processingWavURL {
+            do {
+                try FileManager.default.removeItem(at: pending)
+                processingWavURL = nil
+            } catch {
+                deletionFailure = error
+            }
         }
         recordingStart = nil
-        setState(.idle)
+        if let deletionFailure {
+            setState(.error(L10n.format(
+                "core.history.audio_delete_failed", deletionFailure.localizedDescription
+            )))
+        } else if case .error = priorState {
+            // Ein Fehlerzustand besitzt seine Diagnoseaufnahme weiterhin. Vor
+            // allem `shutdown()` und Einstellungen-Anwenden dürfen sie nicht als
+            // vermeintlich aktiv abgebrochene Aufnahme löschen.
+        } else {
+            setState(.idle)
+        }
     }
 
     // MARK: - Erneut transkribieren (aus dem Verlauf)
@@ -508,7 +584,7 @@ public final class DictationEngine {
               FileManager.default.fileExists(atPath: audioURL.path) else {
             var updated = entry
             updated.errorMessage = L10n.text("core.dictation.audio_missing")
-            try history.update(updated)
+            try await history.updateAsync(updated)
             return updated
         }
         let raw: String
@@ -519,7 +595,7 @@ public final class DictationEngine {
         } catch {
             var updated = entry
             updated.errorMessage = L10n.format("core.dictation.retry_failed", error.localizedDescription)
-            try history.update(updated)
+            try await history.updateAsync(updated)
             return updated
         }
         let cleanupStarted = Date()
@@ -533,22 +609,21 @@ public final class DictationEngine {
         updated.cleanupFallbackReason = cleaned.fallbackReason
         updated.cleanupEndpoint = cleaned.endpoint
         updated.cleanupSec = Date().timeIntervalSince(cleanupStarted)
-        updated.audioFileName = nil
-        // Wieder disk first: Der Verlauf darf erst auf „ohne Audio“ zeigen, wenn
-        // dieser Zustand atomar gespeichert ist; erst danach wird die WAV gelöscht.
-        try history.update(updated)
-        do {
-            try history.deleteAudio(for: entry)
-        } catch {
-            // Die alte Aufnahme ließ sich nicht löschen. Ohne den Verweis im
-            // Verlauf kennt danach niemand mehr ihren Namen, und "Alle löschen"
-            // findet sie nie wieder — also den Dateinamen zurückschreiben.
-            var keepsAudio = updated
-            keepsAudio.audioFileName = entry.audioFileName
-            try? history.update(keepsAudio)
-            throw error
+        let finalized = try await Self.persistSuccessfulEntry(
+            updated,
+            wavURL: audioURL,
+            replacingExisting: true,
+            history: history
+        )
+        if let deletionError = finalized.deletionError {
+            throw AudioDeletionError(message: deletionError)
         }
-        return updated
+        return finalized.entry
+    }
+
+    private struct AudioDeletionError: LocalizedError {
+        let message: String
+        var errorDescription: String? { message }
     }
 
     /// Hält das Bereinigungs-Modell geladen. Die App ruft das beim Start und

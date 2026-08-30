@@ -870,9 +870,9 @@ final class CoreTests: XCTestCase {
         // Tisch. Der Fehler wird zusaetzlich gemeldet.
         let baseDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("sp-undeletable-\(UUID())")
-        let blocked = baseDir.appendingPathComponent("gesperrt")
-        try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
-        let wavURL = blocked.appendingPathComponent("aufnahme.wav")
+        let history = HistoryStore(baseDir: baseDir.appendingPathComponent("verlauf"))
+        let blocked = history.recordingsDir
+        let wavURL = history.newRecordingURL()
         try Data("RIFF".utf8).write(to: wavURL)
         // Ohne Schreibrecht am Ordner laesst sich die Datei darin nicht loeschen.
         try FileManager.default.setAttributes([.posixPermissions: 0o555],
@@ -883,7 +883,6 @@ final class CoreTests: XCTestCase {
             try? FileManager.default.removeItem(at: baseDir)
         }
 
-        let history = HistoryStore(baseDir: baseDir.appendingPathComponent("verlauf"))
         let engine = DictationEngine(config: Config(), history: history) { rawText in
             CleanupService.Result(text: rawText, usedFallback: false,
                                   fallbackReason: nil, endpoint: nil)
@@ -914,6 +913,8 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(deliveredText, "das diktat darf nicht verloren gehen")
         XCTAssertNotNil(deliveredEntry, "der Verlaufseintrag gehoert mit ausgeliefert")
         XCTAssertEqual(try history.list().count, 1, "im Verlauf steht der Eintrag")
+        XCTAssertEqual(deliveredEntry?.audioFileName, wavURL.lastPathComponent,
+                       "der ausgelieferte Eintrag hält den dauerhaften WAV-Verweis")
         XCTAssertTrue(FileManager.default.fileExists(atPath: wavURL.path),
                       "die Aufnahme bleibt liegen — genau darum geht es")
         XCTAssertNotNil(reportedError, "das gescheiterte Aufraeumen muss gemeldet werden")
@@ -927,9 +928,9 @@ final class CoreTests: XCTestCase {
         // einem Neustart fände "Alle löschen" die Aufnahme nie wieder.
         let baseDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("sp-silent-undeletable-\(UUID())")
-        let blocked = baseDir.appendingPathComponent("gesperrt")
-        try FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
-        let wavURL = blocked.appendingPathComponent("aufnahme.wav")
+        let history = HistoryStore(baseDir: baseDir.appendingPathComponent("verlauf"))
+        let blocked = history.recordingsDir
+        let wavURL = history.newRecordingURL()
         try Data("RIFF".utf8).write(to: wavURL)
         try FileManager.default.setAttributes([.posixPermissions: 0o555],
                                               ofItemAtPath: blocked.path)
@@ -939,7 +940,6 @@ final class CoreTests: XCTestCase {
             try? FileManager.default.removeItem(at: baseDir)
         }
 
-        let history = HistoryStore(baseDir: baseDir.appendingPathComponent("verlauf"))
         let engine = DictationEngine(config: Config(), history: history)
         let delivered = expectation(description: "stilles Ergebnis ausgeliefert")
         var deliveredEntry: HistoryStore.Entry?
@@ -991,6 +991,125 @@ final class CoreTests: XCTestCase {
 
         XCTAssertEqual(deliveredOnMainThread, true,
                        "onResult MUSS auf dem Main-Thread ausgeliefert werden (Overlay/AppKit)")
+    }
+
+    @MainActor
+    func testSuccessfulAudioIsPersistedBeforeDeletionAndWritesOffMainThread() async throws {
+        let baseDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sp-disk-first-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: baseDir) }
+
+        let lock = NSLock()
+        var firstWrittenEntry: HistoryStore.Entry?
+        var writerRanOnMainThread: Bool?
+        let history = HistoryStore(baseDir: baseDir) { data, url in
+            lock.withLock {
+                if firstWrittenEntry == nil {
+                    let decoder = JSONDecoder()
+                    decoder.dateDecodingStrategy = .iso8601
+                    firstWrittenEntry = try? decoder.decode(
+                        [HistoryStore.Entry].self, from: data
+                    ).first
+                    writerRanOnMainThread = Thread.isMainThread
+                }
+            }
+            try data.write(to: url, options: .atomic)
+        }
+        let wavURL = history.newRecordingURL()
+        try Data("RIFF".utf8).write(to: wavURL)
+        let engine = DictationEngine(config: Config(), history: history) { rawText in
+            CleanupService.Result(text: rawText, usedFallback: false,
+                                  fallbackReason: nil, endpoint: nil)
+        }
+        let delivered = expectation(description: "Diktat fertig")
+        engine.onResult = { _ in delivered.fulfill() }
+
+        engine.processForTesting(rawText: "disk first", wavURL: wavURL)
+        await fulfillment(of: [delivered], timeout: 5)
+
+        let (first, wasMain) = lock.withLock {
+            (firstWrittenEntry, writerRanOnMainThread)
+        }
+        XCTAssertEqual(first?.audioFileName, wavURL.lastPathComponent,
+                       "der erste bestätigte Plattenstand muss die WAV kennen")
+        XCTAssertEqual(wasMain, false, "JSON/Lock/Write dürfen den MainActor nicht blockieren")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wavURL.path))
+        XCTAssertNil(try history.list().first?.audioFileName,
+                     "erst nach bestätigtem Löschen verschwindet der Verweis")
+    }
+
+    @MainActor
+    func testShutdownPreservesRecordingAfterPersistenceFailure() async throws {
+        enum Expected: Error { case writeFailure }
+        let baseDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sp-shutdown-error-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: baseDir) }
+        let history = HistoryStore(baseDir: baseDir) { _, _ in throw Expected.writeFailure }
+        let wavURL = history.newRecordingURL()
+        try Data("RIFF".utf8).write(to: wavURL)
+        let engine = DictationEngine(config: Config(), history: history) { rawText in
+            CleanupService.Result(text: rawText, usedFallback: false,
+                                  fallbackReason: nil, endpoint: nil)
+        }
+        let failed = expectation(description: "Persistenzfehler sichtbar")
+        engine.onStateChange = { state in
+            if case .error = state { failed.fulfill() }
+        }
+
+        engine.processForTesting(rawText: "Diagnose behalten", wavURL: wavURL)
+        await fulfillment(of: [failed], timeout: 5)
+        engine.shutdown()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: wavURL.path),
+                      "shutdown darf die Aufnahme des Fehlerzustands nicht löschen")
+        guard case .error = engine.state else {
+            return XCTFail("shutdown darf den zugehörigen Fehlerzustand nicht verwischen")
+        }
+    }
+
+    func testRetryKeepsAudioReferenceWhenDeletionFails() async throws {
+        let baseDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sp-retry-disk-first-\(UUID())")
+        let history = HistoryStore(baseDir: baseDir)
+        let wavURL = history.newRecordingURL()
+        try Data("RIFF".utf8).write(to: wavURL)
+        let failedEntry = HistoryStore.Entry(
+            rawText: "", cleanText: "", status: "failed",
+            errorMessage: "alter Fehler", audioFileName: wavURL.lastPathComponent,
+            durationSec: 1
+        )
+        try history.append(failedEntry)
+        try FileManager.default.setAttributes([.posixPermissions: 0o555],
+                                              ofItemAtPath: history.recordingsDir.path)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755],
+                                                   ofItemAtPath: history.recordingsDir.path)
+            try? FileManager.default.removeItem(at: baseDir)
+        }
+
+        let transcriber = RetryTranscriber()
+        let cleanup = RetryCleanup()
+        let dependencies = DictationDependencies(
+            transcriber: transcriber,
+            server: RetryServer(),
+            cleanup: cleanup,
+            makeRecorder: { _ in fatalError("im Retry unbenutzt") },
+            makeSegmenter: { _ in fatalError("im Retry unbenutzt") },
+            makeWavWriter: { _ in fatalError("im Retry unbenutzt") }
+        )
+        let engine = DictationEngine(config: Config(), history: history,
+                                     dependencies: dependencies)
+
+        do {
+            _ = try await engine.retry(entry: failedEntry)
+            XCTFail("das gescheiterte Löschen muss gemeldet werden")
+        } catch {}
+
+        let retained = try XCTUnwrap(history.list().first)
+        XCTAssertEqual(retained.status, "ok", "die Transkription war erfolgreich")
+        XCTAssertEqual(retained.audioFileName, wavURL.lastPathComponent,
+                       "der WAV-Verweis darf vor bestätigtem Löschen nicht verschwinden")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: wavURL.path))
     }
 
     // MARK: Config
@@ -1691,6 +1810,58 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(try working.list().count, 1)
         XCTAssertTrue(FileManager.default.fileExists(atPath: audioURL.path))
     }
+
+    func testDeleteAllSecondWriteFailureKeepsThePredeclaredAudioRemnant() throws {
+        enum Expected: Error { case secondWriteFailure }
+        let baseDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sp-deleteall-second-write-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: baseDir) }
+        let working = HistoryStore(baseDir: baseDir)
+        let audioURL = working.newRecordingURL()
+        try Data("wav".utf8).write(to: audioURL)
+        try working.append(.init(rawText: "geheim", cleanText: "geheim", status: "failed",
+                                 audioFileName: audioURL.lastPathComponent, durationSec: 1))
+
+        let lock = NSLock()
+        var writes = 0
+        let failing = HistoryStore(baseDir: baseDir) { data, url in
+            lock.lock()
+            writes += 1
+            let attempt = writes
+            lock.unlock()
+            if attempt == 2 { throw Expected.secondWriteFailure }
+            try data.write(to: url, options: .atomic)
+        }
+        XCTAssertThrowsError(try failing.deleteAll())
+
+        let persisted = try working.list()
+        XCTAssertEqual(persisted.count, 1,
+                       "der erste Write muss den Namen auch bei zweitem Write-Fehler bewahren")
+        XCTAssertEqual(persisted.first?.audioFileName, audioURL.lastPathComponent)
+        XCTAssertEqual(persisted.first?.rawText, "", "der angeforderte Text ist trotzdem gelöscht")
+        XCTAssertEqual(persisted.first?.cleanText, "")
+    }
+}
+
+private final class RetryTranscriber: DictationTranscriber {
+    func transcribe(samples: [Float]) async throws -> String { "erneut erkannt" }
+    func transcribe(wavFile: URL) async throws -> String { "erneut erkannt" }
+    func isReachable() async -> Bool { true }
+}
+
+private final class RetryServer: DictationServer {
+    func ensureRunning(reachability: any DictationTranscriber) async throws {}
+    func stop() {}
+}
+
+private final class RetryCleanup: DictationCleanup {
+    var onFallbackEndpoint: ((String) -> Void)?
+    var onPrimaryRetry: (() -> Void)?
+    func clean(_ rawText: String) async -> CleanupService.Result {
+        CleanupService.Result(text: rawText, usedFallback: false,
+                              fallbackReason: nil, endpoint: "test")
+    }
+    func warmUp() {}
 }
 
 /// Steuerbare asynchrone Bereinigung für den Lifecycle-Test. Der Actor vermeidet

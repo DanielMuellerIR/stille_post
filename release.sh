@@ -205,8 +205,8 @@ rollback_checksum() {
 abort_release() {
     local status=$1
     rollback_checksum
-    trap - EXIT INT TERM
     release_lock
+    trap - EXIT INT TERM
     exit "$status"
 }
 # END RELEASE_PUBLICATION_HELPERS
@@ -235,7 +235,7 @@ fi
 release_pair_complete=1
 rm -f "$STAGED_DMG"
 published_checksum=""
-trap - EXIT INT TERM
 release_lock
+trap - EXIT INT TERM
 
 echo "RELEASE OK: $PWD/$FINAL_DMG ($VERSION)"

@@ -205,6 +205,46 @@ final class ModelInstallerTests: XCTestCase {
         XCTAssertEqual(ModelInstaller.resumeOffset(existing: 140, expected: 100), 0)
     }
 
+    func testPartialWriterNeverFollowsASymlink() throws {
+        let foreign = directory.appendingPathComponent("fremd.bin")
+        try Data("nicht anfassen".utf8).write(to: foreign)
+        let partial = directory.appendingPathComponent("modell.partial")
+        try FileManager.default.createSymbolicLink(at: partial, withDestinationURL: foreign)
+
+        XCTAssertThrowsError(try ModelInstaller.openPartialFile(
+            atPath: partial.path, append: false, requestedOffset: 0
+        )) { error in
+            XCTAssertEqual(error as? ModelInstaller.InstallError,
+                           .partialNotReplaceable(partial.path))
+        }
+        XCTAssertEqual(try Data(contentsOf: foreign), Data("nicht anfassen".utf8),
+                       "der Symlink darf die fremde Datei weder kürzen noch beschreiben")
+    }
+
+    func testPartialWriterChecksAndUsesTheSameRegularFileDescriptor() throws {
+        let partial = directory.appendingPathComponent("modell.partial")
+        try Data("anfang".utf8).write(to: partial)
+
+        let appending = try ModelInstaller.openPartialFile(
+            atPath: partial.path, append: true, requestedOffset: 6
+        )
+        try appending.write(contentsOf: Data("-ende".utf8))
+        try appending.close()
+        XCTAssertEqual(String(decoding: try Data(contentsOf: partial), as: UTF8.self),
+                       "anfang-ende")
+
+        XCTAssertThrowsError(try ModelInstaller.openPartialFile(
+            atPath: partial.path, append: true, requestedOffset: 2
+        ), "ein inzwischen geänderter Versatz darf nicht an dieselbe Datei schreiben")
+
+        let truncating = try ModelInstaller.openPartialFile(
+            atPath: partial.path, append: false, requestedOffset: 0
+        )
+        try truncating.write(contentsOf: Data("neu".utf8))
+        try truncating.close()
+        XCTAssertEqual(String(decoding: try Data(contentsOf: partial), as: UTF8.self), "neu")
+    }
+
     func testProgressFraction() {
         XCTAssertEqual(ModelInstaller.Progress(receivedBytes: 50, totalBytes: 200).fraction, 0.25)
         XCTAssertNil(ModelInstaller.Progress(receivedBytes: 50, totalBytes: 0).fraction,

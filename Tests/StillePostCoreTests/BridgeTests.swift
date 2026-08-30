@@ -222,7 +222,8 @@ final class BridgeTests: XCTestCase {
         token: String? = "richtig",
         cleanupEnabled: Bool = true,
         transcribe: @escaping @Sendable (Data) async throws -> String = { _ in "roher text" },
-        cleanupCounter: Counter? = nil
+        cleanupCounter: Counter? = nil,
+        maxBodyBytes: Int = 1024
     ) -> BridgeRouter {
         let handlers = BridgeHandlers(
             transcribe: transcribe,
@@ -234,7 +235,8 @@ final class BridgeTests: XCTestCase {
             cleanupEnabled: cleanupEnabled,
             version: "test"
         )
-        return BridgeRouter(handlers: handlers, maxBodyBytes: 1024, tokenProvider: { token })
+        return BridgeRouter(handlers: handlers, maxBodyBytes: maxBodyBytes,
+                            tokenProvider: { token })
     }
 
     private func object(_ response: BridgeResponse) throws -> [String: Any] {
@@ -773,6 +775,85 @@ final class BridgeTests: XCTestCase {
         }
 
         wait(for: [refused], timeout: 10)
+    }
+
+    func testParsedBlockedRequestsStillConsumeTheTotalBufferBudget() throws {
+        // Drei vollständige Requests sitzen in der Router-Pipeline. Ihr
+        // Rohpuffer ist zwar freigegeben, die Router-Tasks halten die Bodys aber
+        // weiterhin. Eine vierte, noch unvollständige Anfrage darf deshalb
+        // nicht ein zweites gemeinsames Budget daneben aufbauen.
+        let (server, port) = try startServer(router: makeRouter(
+            transcribe: { _ in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 10_000_000)
+                }
+                throw CancellationError()
+            },
+            maxBodyBytes: 1024 * 1024
+        ))
+        defer {
+            server.stop()
+        }
+
+        let accepted = expectation(description: "drei Requests reserviert")
+        accepted.expectedFulfillmentCount = 3
+        server.onRequestAcceptedForTesting = { accepted.fulfill() }
+
+        var connections: [NWConnection] = []
+        defer { connections.forEach { $0.cancel() } }
+        let bodyBytes = 900 * 1024
+        for index in 0..<3 {
+            let connection = try connectedClient(port: port, label: "parsed.\(index)")
+            connections.append(connection)
+            let header = "POST /v1/dictate?raw=1 HTTP/1.1\r\n"
+                + "Authorization: Bearer richtig\r\n"
+                + "Content-Length: \(bodyBytes)\r\n\r\n"
+            let sent = expectation(description: "vollständiger Request \(index)")
+            connection.send(
+                content: Data(header.utf8) + Data(repeating: 0x61, count: bodyBytes),
+                contentContext: .defaultMessage,
+                isComplete: false,
+                completion: .contentProcessed { _ in sent.fulfill() }
+            )
+            wait(for: [sent], timeout: 10)
+        }
+        wait(for: [accepted], timeout: 10)
+        XCTAssertGreaterThan(server.bufferedBytesForTesting(), 3 * bodyBytes,
+                             "geparste Bodys müssen weiterhin im Budget stehen")
+
+        let fourth = try connectedClient(port: port, label: "parsed.fourth")
+        connections.append(fourth)
+        let refused = expectation(description: "zusätzlicher Teil-Body abgewiesen")
+        server.onBufferBudgetRejectedForTesting = { refused.fulfill() }
+        let announced = 1024 * 1024
+        let remainingBudget = server.maxBufferedBytesTotal - server.bufferedBytesForTesting()
+        XCTAssertGreaterThan(remainingBudget, 0)
+        let fourthBodyBytes = remainingBudget + 64 * 1024
+        XCTAssertLessThan(fourthBodyBytes, announced)
+        let header = "POST /v1/dictate HTTP/1.1\r\n"
+            + "Authorization: Bearer richtig\r\n"
+            + "Content-Length: \(announced)\r\n\r\n"
+        let sent = expectation(description: "zusätzlicher Teil-Body gesendet")
+        fourth.send(
+            content: Data(header.utf8) + Data(repeating: 0x62, count: fourthBodyBytes),
+            contentContext: .defaultMessage,
+            isComplete: false,
+            completion: .contentProcessed { _ in sent.fulfill() }
+        )
+        wait(for: [sent, refused], timeout: 10)
+    }
+
+    private func connectedClient(port: Int, label: String) throws -> NWConnection {
+        let connection = NWConnection(
+            host: "127.0.0.1", port: NWEndpoint.Port(rawValue: UInt16(port))!, using: .tcp
+        )
+        let ready = expectation(description: "Client \(label) bereit")
+        connection.stateUpdateHandler = { state in
+            if case .ready = state { ready.fulfill() }
+        }
+        connection.start(queue: DispatchQueue(label: "de.stillepost.test.\(label)"))
+        wait(for: [ready], timeout: 5)
+        return connection
     }
 
     // MARK: - Protokoll

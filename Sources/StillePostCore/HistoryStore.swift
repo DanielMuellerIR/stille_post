@@ -14,10 +14,10 @@ import Glibc
 ///  - Nur bei FEHLGESCHLAGENER Transkription bleibt die Audio-Datei liegen, damit
 ///    "Erneut transkribieren" möglich ist. Klappt der neue Versuch, wird sie dann
 ///    ebenfalls gelöscht.
-public final class HistoryStore {
+public final class HistoryStore: @unchecked Sendable {
 
     /// Ein Eintrag im Verlauf.
-    public struct Entry: Codable, Identifiable, Equatable {
+    public struct Entry: Codable, Identifiable, Equatable, Sendable {
         public var id: UUID
         /// Zeitpunkt des Diktats (ISO-8601 beim Anzeigen formatiert).
         public var date: Date
@@ -146,6 +146,19 @@ public final class HistoryStore {
         onChange?()
     }
 
+    /// Asynchrone Variante für die Diktier-Pipeline. Datei-Lock, JSON-Lesen und
+    /// atomarer Write laufen auf der History-Queue statt auf dem Main-Thread.
+    public func appendAsync(_ entry: Entry) async throws {
+        try await onQueue {
+            try self.withFileLock {
+                var fresh = try self.loadFromDiskLocked()
+                fresh.append(entry)
+                try self.saveLocked(fresh)
+            }
+        }
+        onChange?()
+    }
+
     /// Ersetzt einen Eintrag (z. B. nach "Erneut transkribieren") und speichert.
     public func update(_ entry: Entry) throws {
         try queue.sync {
@@ -161,6 +174,21 @@ public final class HistoryStore {
         onChange?()
     }
 
+    /// Asynchrone Variante von `update`; siehe `appendAsync`.
+    public func updateAsync(_ entry: Entry) async throws {
+        try await onQueue {
+            try self.withFileLock {
+                var fresh = try self.loadFromDiskLocked()
+                guard let index = fresh.firstIndex(where: { $0.id == entry.id }) else {
+                    throw PersistenceError.entryNoLongerExists
+                }
+                fresh[index] = entry
+                try self.saveLocked(fresh)
+            }
+        }
+        onChange?()
+    }
+
     /// Löscht ALLE Einträge samt zurückbehaltener Audio-Dateien ("Alle löschen"-Button).
     public func deleteAll() throws {
         var historyWasCleared = false
@@ -170,9 +198,22 @@ public final class HistoryStore {
         try queue.sync {
             try withFileLock {
                 let fresh = try loadFromDiskLocked()
-                // Erst der bestätigte atomare Plattenstand macht das Löschen der
-                // nicht rekonstruierbaren Aufnahmen zulässig.
-                try saveLocked([])
+                // Vor JEDEM Löschversuch alle eigenen Audiodateien als
+                // textfreie Reste persistieren. Endet der Prozess später oder
+                // scheitert der abschließende Write, kennt der Plattenstand noch
+                // jeden Namen, dessen Datei vorhanden sein könnte.
+                var firstFailure: Error?
+                let allRemnants = fresh.compactMap { entry -> Entry? in
+                    guard let name = entry.audioFileName else { return nil }
+                    guard Self.safeAudioName(name) != nil else {
+                        if firstFailure == nil {
+                            firstFailure = PersistenceError.unsafeAudioFileName
+                        }
+                        return nil
+                    }
+                    return Self.audioOnlyRemnant(of: entry)
+                }
+                try saveLocked(allRemnants)
                 historyWasCleared = true
                 // Jede Aufnahme einzeln versuchen. Bricht die Schleife beim ersten
                 // Problem ab (unsicherer Name aus einer von Hand bearbeiteten
@@ -181,7 +222,6 @@ public final class HistoryStore {
                 // ihre Namen dann niemand mehr. Gerade dieser Knopf soll keine
                 // Aufnahme zurücklassen. Der erste Fehler wird nach der Schleife
                 // gemeldet, damit das Scheitern trotzdem sichtbar bleibt.
-                var firstFailure: Error?
                 var survivors: [Entry] = []
                 for entry in fresh {
                     guard let name = entry.audioFileName else { continue }
@@ -204,9 +244,9 @@ public final class HistoryStore {
                         survivors.append(Self.audioOnlyRemnant(of: entry))
                     }
                 }
-                if !survivors.isEmpty {
-                    try saveLocked(survivors)
-                }
+                // Auch der leere Endzustand wird geschrieben. Scheitert dieser
+                // zweite Write, bleibt der sichere Reste-Stand vom Anfang liegen.
+                try saveLocked(survivors)
                 if let firstFailure { throw firstFailure }
             }
         }
@@ -241,6 +281,20 @@ public final class HistoryStore {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         try atomicWrite(encoder.encode(entries), historyFile)
+    }
+
+    /// Führt einen persistenten Vorgang auf derselben seriellen Queue wie die
+    /// synchronen APIs aus, blockiert den aufrufenden Actor dabei aber nicht.
+    private func onQueue<T>(_ work: @escaping @Sendable () throws -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                do {
+                    continuation.resume(returning: try work())
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
     }
 
     /// `flock` schützt App und CLI gegeneinander. Entscheidend ist, dass Laden,

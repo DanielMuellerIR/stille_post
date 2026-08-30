@@ -53,16 +53,25 @@ final class Atomic<T>: @unchecked Sendable {
 /// ausdrücklich verspricht, dass die Eingabe nicht angezeigt wird. Kommt die
 /// Eingabe aus einer Pipe, gibt es kein Terminal und nichts abzuschalten.
 enum TerminalEcho {
+    enum DisableResult {
+        case notTTY
+        case disabled
+        case failed
+    }
+
     /// Die Terminal-Einstellungen VOR dem Abschalten. `nil` = nichts verändert.
     private static var saved: termios?
 
-    /// True, solange die Anzeige wegen uns aus ist.
-    static var isDisabled: Bool { saved != nil }
-
-    static func disable() {
-        guard isatty(STDIN_FILENO) == 1 else { return }
+    @discardableResult
+    static func disable() -> DisableResult {
+        // Deterministischer Fehlerpfad für den CLI-Vertragstest. Er kann nur
+        // sicher abbrechen und niemals eine Schlüsseleingabe sichtbar machen.
+        if ProcessInfo.processInfo.environment["STILLEPOST_TEST_TERMINAL_ECHO_FAILURE"] == "1" {
+            return .failed
+        }
+        guard isatty(STDIN_FILENO) == 1 else { return .notTTY }
         var settings = termios()
-        guard tcgetattr(STDIN_FILENO, &settings) == 0 else { return }
+        guard tcgetattr(STDIN_FILENO, &settings) == 0 else { return .failed }
         saved = settings
         // Bricht der Nutzer mitten in der Eingabe ab (Ctrl-C) oder wird der
         // Prozess beendet, stirbt er mit stummgeschaltetem Terminal — der
@@ -84,8 +93,9 @@ enum TerminalEcho {
             // `saved` darf nur bedeuten, dass die Anzeige wirklich aus ist.
             // Zugleich die eben installierten Signal-Handler zurücknehmen.
             restore()
-            return
+            return .failed
         }
+        return .disabled
     }
 
     static func restore() {
@@ -570,9 +580,14 @@ case "set-cleanup-key":
     // Der Key wird bewusst NUR von stdin gelesen: Als Argument würde er in der
     // Shell-History und in Prozesslisten landen.
     log(L10n.text("cli.key.prompt"))
-    TerminalEcho.disable()
+    let echoResult = TerminalEcho.disable()
+    guard echoResult != .failed else {
+        // Das Sicherheitsversprechen ist wichtiger als eine Eingabe mit
+        // möglicherweise sichtbarem Schlüssel: vor `readLine` abbrechen.
+        fail(L10n.text("cli.key.echo_failed"))
+    }
     let typedLine = readLine(strippingNewline: true)
-    let inputWasHidden = TerminalEcho.isDisabled
+    let inputWasHidden = echoResult == .disabled
     TerminalEcho.restore()
     // Das abschließende Enter war ebenfalls nicht zu sehen; ohne diesen
     // Zeilenumbruch klebte die nächste Meldung hinter der Eingabeaufforderung.

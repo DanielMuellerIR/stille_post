@@ -65,6 +65,12 @@ public final class BridgeServer: @unchecked Sendable {
     /// Protokollzeilen für stderr oder die App. Enthalten nie Diktattext und nie
     /// das Token — nur Methode, Pfad, Status, Größe und Dauer.
     public var onLog: (@Sendable (String) -> Void)?
+    /// Nur für Regressionstests: meldet, dass eine vollständige Anfrage samt
+    /// reserviertem Byte-Budget an den Router übergeben wurde.
+    var onRequestAcceptedForTesting: (@Sendable () -> Void)?
+    /// Nur für den Grenzwerttest: meldet die konkrete Ablehnung am gemeinsamen
+    /// Byte-Budget, unabhängig von TCP-Paketgrenzen der Antwort.
+    var onBufferBudgetRejectedForTesting: (@Sendable () -> Void)?
 
     /// Woher der Grund kommt, wenn kein gültiges Token vorliegt. Nur für Tests
     /// einspeisbar; produktiv liest es denselben Schlüsselbund wie der Router.
@@ -279,6 +285,7 @@ public final class BridgeServer: @unchecked Sendable {
                 // Anfragen annimmt und den Rest mit 503 abweist. Überlast also
                 // ablehnen, bevor sie gepuffert ist.
                 if self.bufferedBytes > self.maxBufferedBytesTotal {
+                    self.onBufferBudgetRejectedForTesting?()
                     self.send(.error(status: 503, message: L10n.text("core.bridge.busy")),
                               on: session)
                     return
@@ -321,8 +328,11 @@ public final class BridgeServer: @unchecked Sendable {
                 session.timeout?.cancel()
                 // Der Body steckt jetzt in `request`; der Rohpuffer daneben wird
                 // nicht mehr gebraucht und hielte den Inhalt sonst ein zweites
-                // Mal im Speicher fest.
-                self.releaseBuffer(session)
+                // Mal im Speicher fest. Das gemeinsame BYTE-BUDGET bleibt aber
+                // bis zum Ende der Router-Arbeit reserviert: `request.body` hält
+                // dieselben Nutzdaten weiterhin im Speicher.
+                self.transferBufferToRequestReservation(session)
+                self.onRequestAcceptedForTesting?()
                 // Ein geordneter TCP-Halbschluss kann zusammen mit den letzten
                 // Request-Bytes eintreffen. Für eine bereits verlassene
                 // Verbindung keine teure Arbeit mehr beginnen.
@@ -360,6 +370,10 @@ public final class BridgeServer: @unchecked Sendable {
             }
             self.log(line)
             self.queue.async {
+                // Die Task hat ihre Antwort gebaut und gibt gleich auch den
+                // erfassten Request frei. Erst jetzt darf die nächste Verbindung
+                // dessen Byte-Budget verwenden.
+                self.releaseRequestReservation(session)
                 guard !session.finished else { return }
                 self.send(response, on: session)
             }
@@ -440,7 +454,7 @@ public final class BridgeServer: @unchecked Sendable {
         session.finished = true
         // Puffer sofort freigeben: Bis zur Deallokation der Session hielte er
         // sonst noch einen kompletten Request-Body fest.
-        releaseBuffer(session)
+        releaseBufferAndReservation(session)
         session.timeout = nil
         // Angefangene Arbeit stornieren. Nach einer normal ausgelieferten
         // Antwort ist die Task längst fertig und das bleibt folgenlos; bei einem
@@ -454,9 +468,27 @@ public final class BridgeServer: @unchecked Sendable {
     /// Gibt den Rohpuffer einer Verbindung frei und bucht ihn aus dem
     /// gemeinsamen Speicherbudget aus. Mehrfach aufrufbar: Ein leerer Puffer
     /// bucht nichts mehr aus.
-    private func releaseBuffer(_ session: Session) {
-        bufferedBytes = max(0, bufferedBytes - session.buffer.count)
+    private func releaseBufferAndReservation(_ session: Session) {
+        bufferedBytes = max(
+            0,
+            bufferedBytes - session.buffer.count - session.requestReservationBytes
+        )
         session.buffer = Data()
+        session.requestReservationBytes = 0
+    }
+
+    /// Gibt die zweite Rohpuffer-Kopie frei, ohne das gemeinsame Budget zu
+    /// verkleinern. Die Buchung wandert auf den daraus erzeugten Request.
+    private func transferBufferToRequestReservation(_ session: Session) {
+        session.requestReservationBytes += session.buffer.count
+        session.buffer = Data()
+    }
+
+    /// Router-Arbeit beendet: Jetzt ist die Reservierung nicht mehr nötig.
+    /// `finish` kann zuvor schon alles ausgebucht haben; deshalb idempotent.
+    private func releaseRequestReservation(_ session: Session) {
+        bufferedBytes = max(0, bufferedBytes - session.requestReservationBytes)
+        session.requestReservationBytes = 0
     }
 
     // Intern (statt private) für die Grenzwert-Tests.
@@ -470,6 +502,8 @@ public final class BridgeServer: @unchecked Sendable {
     var maxBufferBytes: Int {
         maxBodyBytes + BridgeHTTP.maxHeaderBytes + BridgeHTTP.headerSeparatorBytes
     }
+    /// Synchroner Schnappschuss nur für Byte-Budget-Regressionstests.
+    func bufferedBytesForTesting() -> Int { queue.sync { bufferedBytes } }
 
     private func log(_ message: String) {
         onLog?(message)
@@ -511,6 +545,8 @@ public final class BridgeServer: @unchecked Sendable {
         let connection: NWConnection
         let address: String
         var buffer = Data()
+        /// Bytes des bereits geparsten Requests, die dessen Task noch festhält.
+        var requestReservationBytes = 0
         var timeout: DispatchWorkItem?
         var finished = false
         /// Wurde das Token schon nach dem Kopf geprüft? (Nur einmal nötig.)

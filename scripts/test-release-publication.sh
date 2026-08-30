@@ -91,4 +91,23 @@ set -e
 
 grep -Fq "trap 'abort_release 130' INT" release.sh
 grep -Fq "trap 'abort_release 143' TERM" release.sh
+# In beiden Abschlusswegen muss die idempotente Freigabe VOR dem Entfernen der
+# Signal-Handler stehen. Sonst kann ein Signal im Zwischenraum die Sperre erben.
+awk '
+  /abort_release\(\)/ { in_abort=1; saw_release=0 }
+  in_abort && /release_lock/ { saw_release=1 }
+  in_abort && /trap - EXIT INT TERM/ {
+    if (!saw_release) exit 1
+    checked_abort=1
+    in_abort=0
+  }
+  /^release_pair_complete=1$/ { in_success=1; saw_success_release=0 }
+  in_success && /release_lock/ { saw_success_release=1 }
+  in_success && /trap - EXIT INT TERM/ {
+    if (!saw_success_release) exit 1
+    checked_success=1
+    in_success=0
+  }
+  END { if (!checked_abort || !checked_success) exit 1 }
+' release.sh
 echo "✓ Release-Signale enden mit Fehler und hinterlassen nie ein halbes eigenes Paar"

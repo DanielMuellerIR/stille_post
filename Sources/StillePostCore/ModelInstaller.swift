@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 /// Rechnet Byte-Zahlen in die Einheit um, in der Oberfläche und CLI Modellgrößen
 /// nennen.
@@ -152,7 +153,7 @@ public final class ModelInstaller {
         let expected = try await expectedSize(of: model)
 
         // Wie weit ist ein früherer Versuch gekommen?
-        let alreadyHave = Self.resumeOffset(existing: Self.fileSize(atPath: partialPath),
+        let alreadyHave = Self.resumeOffset(existing: try Self.partialFileSize(atPath: partialPath),
                                             expected: expected)
 
         if alreadyHave < expected {
@@ -163,7 +164,7 @@ public final class ModelInstaller {
         // Vollständigkeit belegen. Ohne diese Prüfung sieht eine abgebrochene
         // Wiederaufnahme aus wie ein Erfolg — und whisper-server scheitert später
         // an einer halben Datei, wo niemand die Ursache vermutet.
-        let finalSize = Self.fileSize(atPath: partialPath)
+        let finalSize = try Self.partialFileSize(atPath: partialPath)
         guard finalSize == expected else {
             throw InstallError.incomplete(got: finalSize, expected: expected, partialPath: partialPath)
         }
@@ -332,17 +333,19 @@ public final class ModelInstaller {
             // entsteht Datenmüll aus altem Anfang plus vollständiger Datei.
             let append = requestedOffset > 0 && http.statusCode == 206
             do {
-                let manager = FileManager.default
-                if !append || !manager.fileExists(atPath: partialPath) {
-                    manager.createFile(atPath: partialPath, contents: nil)
-                }
-                let opened = try FileHandle(forWritingTo: URL(fileURLWithPath: partialPath))
+                // Ein vorhandener Symlink an der Teildatei darf nie verfolgt
+                // werden. `FileHandle(forWritingTo:)` tat genau das und konnte
+                // dadurch eine fremde Datei kürzen oder erweitern. `open` mit
+                // O_NOFOLLOW bindet Prüfung und Schreibziel an EINEN Deskriptor.
+                let opened = try ModelInstaller.openPartialFile(
+                    atPath: partialPath,
+                    append: append,
+                    requestedOffset: requestedOffset
+                )
                 lock.lock()
                 if append {
-                    try opened.seekToEnd()
                     received = requestedOffset
                 } else {
-                    try opened.truncate(atOffset: 0)
                     received = 0
                 }
                 handle = opened
@@ -407,10 +410,52 @@ public final class ModelInstaller {
         return (start, total)
     }
 
-    /// Größe der Datei am Pfad, oder 0 wenn dort nichts liegt.
-    private static func fileSize(atPath path: String) -> Int64 {
-        (try? FileManager.default.attributesOfItem(atPath: path))
-            .flatMap { ($0[.size] as? NSNumber)?.int64Value } ?? 0
+    /// Öffnet eine Teildatei ohne Symlink-Folge und prüft Typ sowie
+    /// Wiederaufnahme-Versatz auf demselben Deskriptor, der anschließend schreibt.
+    /// Intern sichtbar für den Regressionstest, der eine fremde Symlink-Datei
+    /// als Ziel unterlegt.
+    static func openPartialFile(atPath path: String, append: Bool,
+                                requestedOffset: Int64) throws -> FileHandle {
+        let descriptor = path.withCString {
+            Darwin.open($0, O_WRONLY | O_CREAT | O_NOFOLLOW, mode_t(0o600))
+        }
+        guard descriptor >= 0 else { throw InstallError.partialNotReplaceable(path) }
+
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0,
+              (metadata.st_mode & S_IFMT) == S_IFREG else {
+            _ = Darwin.close(descriptor)
+            throw InstallError.partialNotReplaceable(path)
+        }
+
+        if append {
+            guard metadata.st_size == requestedOffset,
+                  lseek(descriptor, 0, SEEK_END) == requestedOffset else {
+                _ = Darwin.close(descriptor)
+                throw InstallError.partialNotReplaceable(path)
+            }
+        } else if ftruncate(descriptor, 0) != 0 {
+            _ = Darwin.close(descriptor)
+            throw InstallError.partialNotReplaceable(path)
+        }
+        return FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+    }
+
+    /// Größe einer regulären Teildatei. Ein fehlender Pfad bedeutet einen
+    /// neuen Download; Symlinks und Spezialdateien werden ausdrücklich abgewiesen.
+    private static func partialFileSize(atPath path: String) throws -> Int64 {
+        let descriptor = path.withCString { Darwin.open($0, O_RDONLY | O_NOFOLLOW) }
+        if descriptor < 0 {
+            if errno == ENOENT { return 0 }
+            throw InstallError.partialNotReplaceable(path)
+        }
+        defer { _ = Darwin.close(descriptor) }
+        var metadata = stat()
+        guard fstat(descriptor, &metadata) == 0,
+              (metadata.st_mode & S_IFMT) == S_IFREG else {
+            throw InstallError.partialNotReplaceable(path)
+        }
+        return metadata.st_size
     }
 
     /// Was liegt am Zielpfad — und darf der Installer es ersetzen?
@@ -445,6 +490,9 @@ public final class ModelInstaller {
         /// Am Modellpfad liegt etwas, das kein Modell sein kann (z. B. ein
         /// Verzeichnis). Der Installer räumt dort nichts weg.
         case targetNotReplaceable(String)
+        /// Die Download-Teildatei ist ein Verweis oder eine Spezialdatei und
+        /// darf deshalb nicht als Schreibziel dienen.
+        case partialNotReplaceable(String)
 
         public var errorDescription: String? {
             switch self {
@@ -454,6 +502,8 @@ public final class ModelInstaller {
                 return L10n.format("core.model.incomplete", got, expected, partialPath)
             case .targetNotReplaceable(let path):
                 return L10n.format("core.model.target_not_replaceable", path)
+            case .partialNotReplaceable(let path):
+                return L10n.format("core.model.partial_not_replaceable", path)
             }
         }
     }

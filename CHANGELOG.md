@@ -10,6 +10,32 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.15] — unveröffentlicht
+
+### Behoben
+
+- Netzwerk-Brücke: Vollständig eingelesene Anfragen belegen das gemeinsame
+  Speicherbudget jetzt bis zum Ende ihrer Verarbeitung. Wartende Diktate können
+  dadurch nicht mehr neben weiteren Teilanfragen ein zweites Body-Budget belegen.
+- Modell-Installation: App und CLI folgen beim Schreiben einer Download-
+  Teildatei keinem Symlink mehr. Typ, Größe, Wiederaufnahme und Schreiben werden
+  über denselben geprüften Dateideskriptor ausgeführt.
+- `stillepost-cli set-cleanup-key` bricht jetzt vor dem Lesen ab, wenn ein
+  Terminal seine Eingabeanzeige nicht sicher abschalten kann. Der API-Schlüssel
+  kann in diesem Fehlerfall nicht mehr sichtbar im Scrollback landen.
+- Diktat und Verlauf speichern den WAV-Verweis jetzt vor jedem Löschversuch und
+  entfernen ihn erst nach bestätigtem Löschen. Ein zweiter Schreibfehler,
+  paralleles Leeren des Verlaufs oder das Beenden in einem Fehlerzustand kann
+  dadurch keine vorhandene Diagnoseaufnahme mehr unauffindbar machen.
+- Das Ende eines Diktats wartet nicht mehr auf Verlaufssperren und Dateioperationen
+  auf dem Main-Thread; Menüleiste, Overlay und Einstellungen bleiben dabei bedienbar.
+- Der Datenschutzbefehl „Alle löschen“ schreibt vor dem ersten Dateilöschen
+  textfreie Verweise auf alle eigenen Aufnahmen. Auch ein Prozessabbruch oder
+  zweiter Schreibfehler lässt damit keinen unbekannten WAV-Rest zurück.
+- Das Release-Skript gibt seine Laufsperre jetzt vor dem Entfernen der
+  Signal-Handler frei. Ein Signal im Abschlussfenster kann Folge-Releases nicht
+  mehr mit einer veralteten Sperre blockieren.
+
 ## [0.9.14] — unveröffentlicht
 
 ### Geändert
