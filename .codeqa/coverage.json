@@ -2,12 +2,11 @@
   "schema_version": 2,
   "project": "stille_post",
   "campaign": {
-    "id": "20260829T190908564961+0200",
+    "id": "20260830T101718102831+0200",
     "token_budget": 3000000,
     "status": "complete",
-    "started_at": "2026-08-29T19:09:08+02:00",
-    "tokens_spent": 533884,
-    "finished_at": "2026-08-29T19:42:49+02:00",
+    "started_at": "2026-08-30T10:17:18+02:00",
+    "finished_at": "2026-08-30T10:23:15+02:00",
     "finish_reason": "all-current"
   },
   "campaign_history": [
@@ -27,6 +26,15 @@
       "started_at": "2026-08-19T17:34:10+02:00",
       "tokens_spent": 288198,
       "finished_at": "2026-08-19T18:13:57+02:00",
+      "finish_reason": "all-current"
+    },
+    {
+      "id": "20260829T190908564961+0200",
+      "token_budget": 3000000,
+      "status": "complete",
+      "started_at": "2026-08-29T19:09:08+02:00",
+      "tokens_spent": 533884,
+      "finished_at": "2026-08-29T19:42:49+02:00",
       "finish_reason": "all-current"
     }
   ],
@@ -58,16 +66,16 @@
       "reason": "Einziger von aussen erreichbarer Netzwerkdienst; Token, Herkunftspruefung, Groessen- und Warteschlangengrenzen sind Sicherheitsgrenzen",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T190908564961+0200",
-        "completed_at": "2026-08-29T19:11:27+02:00",
-        "observed_head": "46d656f47e5db6932dc54e2b1301ca24bd925179",
-        "content_sha256": "ce172a1b90013463a19c383ac4ff5c60d0544fa172f470f0beeb59d7503633aa",
+        "campaign_id": "20260830T101718102831+0200",
+        "completed_at": "2026-08-30T10:17:40+02:00",
+        "observed_head": "544f83f21e0751b38b8ccb2418abd45fdb395e75",
+        "content_sha256": "94573342ffdba274e4537a711709d0b9ee773466d5553ead668f5c49f0fe1649",
         "file_count": 7,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Delta aus 46d656f vollständig geprüft: gemeinsames Rohpuffer-Budget, Freigabe nach dem Parsen, Kopfgrenze bei fragmentiertem Trenner und die Entfernung des ungenutzten Medientyps sind konsistent mit Router-Warteschlange und Protokollgrenzen. Token-/Herkunftsprüfung, Abbruch, Session-Lebenszyklus und direkte Grenzen mitgelesen; kein neuer korrigierbarer Fund. Die bereits im Backlog dokumentierte TCP-Halbschluss-Semantik bleibt bewusst offen, weil sie den vertraglich festgelegten Abbruchmechanismus berührt und kein chirurgischer CodeQA-Fix ist.",
+        "summary": "Delta ab 46d656f plus Server-/Router-Grenzen geprüft: Rohpuffer-Buchung wird beim Parsen auf eine Session-Reservierung übertragen, erst nach Router-Antwort oder Abbruch idempotent freigegeben und weiterhin durch das gemeinsame Drei-Request-Budget begrenzt. Fehler-, EOF-, Timeout- und Session-Freigabepfade buchen Puffer und Reservierung genau einmal aus; Token-, Herkunfts- und Pipeline-Grenzen bleiben unverändert. Kein zusätzlicher Fund.",
         "tests": [
-          "swift test --filter BridgeTests: 50 Tests, 0 Fehler"
+          "BridgeTests vollständig in swift test: 51 Tests, 0 Fehler; neuer echter Loopback-Test mit drei blockierten geparsten Requests und zusätzlichem Teil-Body grün"
         ]
       }
     },
@@ -84,16 +92,16 @@
       "reason": "Groesste Datei; Worttreue-/Plausibilitaetspruefung entscheidet, ob ein Diktat verfaelscht ankommt; Datenschutz (kein Key, kein Audio)",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T190908564961+0200",
-        "completed_at": "2026-08-29T19:25:13+02:00",
-        "observed_head": "fe40ec5240e7724ac0a8e9569fef8530723ee1bd",
-        "content_sha256": "a9ec0d8909028834e71d73d19ac5c220de4a1c1eab6e2cf0d34a4f9c4327852e",
+        "campaign_id": "20260830T101718102831+0200",
+        "completed_at": "2026-08-30T10:22:55+02:00",
+        "observed_head": "b787976ef1032cc31d38834bb946d3e51f367602",
+        "content_sha256": "af86005bcaac79c6965b1a379eed86469c14da501205063ac9404100082c01e4",
         "file_count": 4,
         "review": "delta-plus-boundaries",
         "outcome": "reviewed-clean",
-        "summary": "Seit dem letzten Cleanup-Abschluss änderten sich in der gemeinsam besessenen CoreTests.swift nur die bereits geprüften Whisper-Portfälle und der bereits geprüfte Diktat-Regressionsfall; Cleanup-Produktionscode unverändert.",
+        "summary": "Cleanup-Produktionscode bleibt unverändert; der erneute Fingerprint-Wechsel stammt ausschließlich aus dem neuen Diktat-Persistenztest in CoreTests. Cleanup-Result, genau-ein-Aufruf-Grenze und Worttreuepfad werden nicht verändert. Kein Fund.",
         "tests": [
-          "Whisper-Endpunkttest grün; Diktat-Regressionsfall zuvor grün; Commit fe40ec5; Arbeitsbaum enthält für den Bereich nur versionierte Tests."
+          "swift test: 191 Tests, 0 Fehler; reales Audio-/Cleanup-E2E grün"
         ]
       }
     },
@@ -114,18 +122,16 @@
       "reason": "Zentrale Abhaengigkeit aller anderen Bereiche; Schluesselbund und Diktathistorie sind datenschutzrelevant",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T190908564961+0200",
-        "completed_at": "2026-08-29T19:17:31+02:00",
-        "observed_head": "978334f40074356e3f99d83e228f0bcc1f3caa7b",
-        "content_sha256": "2aa1fc8a489ddd941d3cf28f11dcbb3a4cb2f12f61b7550fd974afd64caed353",
+        "campaign_id": "20260830T101718102831+0200",
+        "completed_at": "2026-08-30T10:22:55+02:00",
+        "observed_head": "b787976ef1032cc31d38834bb946d3e51f367602",
+        "content_sha256": "77a8cb70a7d3d0eedc9e62939c9ffbf968319e46aa98e1105c1e85c8d8f68d24",
         "file_count": 11,
         "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Delta der Verlaufslöschung geprüft: nach atomarem Leeren werden alle eigenen Aufnahmen versucht; nicht löschbare eigene Dateien bleiben als textfreie Platzhalter referenziert, unsichere fremde Namen werden nie angefasst oder fortgeschrieben. Entfernten Prozess-Cache, Dateisperre, Fehlerweitergabe und onChange-Grenze mitgeprüft. Die neuen de/en-Texte sind schlüssel- und platzhaltergleich; Config-, Schlüsselbund-, Zwischenablage- und Diagnosehilfen seit dem letzten Fingerprint unverändert. Kein neuer Fund.",
+        "outcome": "improved",
+        "summary": "HistoryStore-Delta und alle Datei-/Lock-Grenzen geprüft. deleteAll persistiert vor Löschungen textfreie Reste und lässt auch bei zweitem Write-Fehler einen erneuten Pfad; append/update teilen nun für synchrone und asynchrone Aufrufer denselben Lock-/Reload-/Atomic-Write-Kern. Lokalisierung, Config, Keychain, Diagnose und Pfadvalidierung bleiben konsistent. Verbesserung: doppelte Persistenzlogik konsolidiert.",
         "tests": [
-          "swift test --filter DeleteAll: 3 Tests, 0 Fehler",
-          "swift test --filter LocalizationTests: 3 Tests, 0 Fehler",
-          "Gesamtsuite im vorherigen Bereich: 181 Tests, 0 Fehler"
+          "swift test: 191 Tests, 0 Fehler; DeleteAll-, CrossProcessLock-, WriteFailure- und Disk-first-Regressionen grün; de/en-Schlüsseltest grün"
         ]
       }
     },
@@ -140,18 +146,16 @@
       "reason": "Orchestriert Aufnahme bis Einfuegen; hier gilt die Regel genau eine Bereinigung ueber den Gesamttext",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T190908564961+0200",
-        "completed_at": "2026-08-29T19:20:36+02:00",
-        "observed_head": "b789390517e1843780e15cb3b2069ba8669a14a7",
-        "content_sha256": "2db95acee5f6b10590115485e9302b23622caf9155c9fd9d5b7d4657dcfe4ef0",
+        "campaign_id": "20260830T101718102831+0200",
+        "completed_at": "2026-08-30T10:22:55+02:00",
+        "observed_head": "b787976ef1032cc31d38834bb946d3e51f367602",
+        "content_sha256": "25a065f5422b868b19c3b2d4ece7843c2d6dca5b01c6534a8c1015f4136bc703",
         "file_count": 2,
         "review": "delta-plus-boundaries",
         "outcome": "improved",
-        "summary": "Reine Stille bleibt normalerweise verlaufsfrei; scheitert jedoch das Löschen ihrer WAV, legt finishSession jetzt einen textfreien Fehler-Eintrag mit Dateiname an. Damit bleibt die Aufnahme nach Neustart für 'Alle löschen' erreichbar statt beim nächsten Diktat durch Überschreiben des einzigen RAM-Verweises zu verwaisen. Delta zu MainActor-Isolation, lokal eingefangenem SegmentCollector, Abbruch während Verarbeitung, erfolgreicher Auslieferung trotz Löschfehler und Retry-Rückschreibung mit Generations- und Verlaufsgrenzen geprüft.",
+        "summary": "Lifecycle-Delta samt Generation, Abbruch, Fehlerzustand, Live-Erfolg, Stille und Retry geprüft. Persistenz läuft off-main; Erfolg wird zuerst mit WAV-Verweis gespeichert, nach bestätigtem Löschen bereinigt und bei Löschfehler dauerhaft referenziert. QA-Fix: Ein Fehler nur im abschließenden Verweis-Write verschluckt den fertigen Text nicht mehr; paralleles History-Clear nach Dateilöschung gilt als absichtliches Entfernen. Kein offener Fund.",
         "tests": [
-          "roter Test: testUndeletableSilentRecordingStaysReachableInHistory mit 6 Fehlern; danach grün",
-          "swift test --filter Undeletable: 3 Tests, 0 Fehler",
-          "swift test --filter Cancel: 3 Tests, 0 Fehler"
+          "swift test: 191 Tests, 0 Fehler; neue Regression für zweiten History-Write liefert Text aus und meldet Fehler; Shutdown-, Retry-, Delete- und Main-Thread-Tests grün; reales E2E grün"
         ]
       }
     },
@@ -169,16 +173,16 @@
       "reason": "Erzwingt die Loopback-Regel, ueber die Audio den Rechner nicht verlassen darf; Modell-Download prueft Herkunft und Pruefsumme",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T190908564961+0200",
-        "completed_at": "2026-08-29T19:24:56+02:00",
-        "observed_head": "fe40ec5240e7724ac0a8e9569fef8530723ee1bd",
-        "content_sha256": "c58bb0628a547f57adf6107cd6e74dc95c555285f758e007b56f1b3f164f0bf8",
+        "campaign_id": "20260830T101718102831+0200",
+        "completed_at": "2026-08-30T10:20:54+02:00",
+        "observed_head": "544f83f21e0751b38b8ccb2418abd45fdb395e75",
+        "content_sha256": "27e241de45ba310212cf9ed287cadb4732d231191708f82460983c3247d8e98b",
         "file_count": 5,
         "review": "delta-plus-boundaries",
-        "outcome": "improved",
-        "summary": "ModelInstaller meldet nur reguläre Dateien als installiert; WhisperEndpoint lehnt Port 0 und Werte über 65535 ab. Delta, Verbraucher und dieselben Validierungsmuster repo-weit geprüft.",
+        "outcome": "reviewed-clean",
+        "summary": "Delta seit fe40ec5 und angrenzende Installations-/Loopback-Verträge geprüft. Die Teildatei wird per O_NOFOLLOW geöffnet, per fstat als regulär bestätigt und auf demselben Deskriptor auf Wiederaufnahmeversatz geprüft, gekürzt und beschrieben; Vorab- und Abschlussgrößen lehnen Symlinks/Spezialdateien ebenfalls ab. Content-Range, Zieltyp, Redirect- und Loopback-Schranken bleiben intakt; kein weiterer Fund.",
         "tests": [
-          "Rote Regressionstests für Verzeichnispfad und ungültige Ports; anschließend 18 ModelInstallerTests und 6 Whisper-gefilterte Tests grün; git diff --check grün; Commit fe40ec5."
+          "ModelInstallerTests: 20 Tests grün, darunter Symlink-Fremddatei unverändert und Descriptor-Versatz; Whisper-Tests und reales Audio-E2E in Gesamtsuite grün"
         ]
       }
     },
@@ -223,16 +227,16 @@
       "reason": "Signatur, Notarisierung und Release-Artefakte; ein Fehler hier liefert einen defekten oder unsignierten Build aus",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T190908564961+0200",
-        "completed_at": "2026-08-29T19:42:26+02:00",
-        "observed_head": "80ed1b584386050e99bd9384f66e63940d1f420c",
-        "content_sha256": "5929921ec8e91ec1793385390fe03160449e2ae5b2ec44b1baf056ef713533e1",
+        "campaign_id": "20260830T101718102831+0200",
+        "completed_at": "2026-08-30T10:21:04+02:00",
+        "observed_head": "544f83f21e0751b38b8ccb2418abd45fdb395e75",
+        "content_sha256": "58f2f26b35641291da38cadd3febbbb214ebffbc9e74730c6b6633ad2ec8454a",
         "file_count": 12,
         "review": "delta-plus-boundaries",
-        "outcome": "improved",
-        "summary": "Der neue CLI-Vertragstest akzeptiert die absichtlich pretty-printed leere JSON-Liste whitespacefest. Abschlussgrenzen des Skriptbereichs mit vollem Testlauf, lokalem Audio→Whisper→Ollama-E2E und signiertem App-Bundle geprüft.",
+        "outcome": "reviewed-clean",
+        "summary": "Delta und Abschlussgrenzen der Build-/Release-Skripte geprüft: abort_release und Erfolgsweg geben die idempotente Laufsperre vor dem Entfernen von EXIT/INT/TERM frei; Rollback-Eigentumsprüfung, atomare Hardlinks, Signatur- und Versionsübernahme bleiben unverändert. Die strukturelle Reihenfolge wird im Signaltest aus dem echten Skript geprüft. Kein zusätzlicher Fund.",
         "tests": [
-          "test-cli-contracts, test-install-model-safety, test-release-publication und bash -n grün; swift test 183/183; isolierter E2E grün; build-app erfolgreich, Codesignatur gültig, Bundle-Version 0.9.14, eingebettete CLI weist ungültigen Aufruf mit Exit 2 ab; Commit 80ed1b5."
+          "test-release-publication.sh, test-install-model-safety.sh und bash -n grün; build-app erzeugte und signierte StillePost.app erfolgreich"
         ]
       }
     },
@@ -246,16 +250,16 @@
       "reason": "Headless-Zugang fuer Tests und Agenten; darf keine Secrets ausgeben und muss Exit-Codes sauber liefern",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260829T190908564961+0200",
-        "completed_at": "2026-08-29T19:37:42+02:00",
-        "observed_head": "d2c42098e137d6f82362d1084d3355078a3b923b",
-        "content_sha256": "1ef85d24fc71d433bd7930d915a357bca7ced77b2c2af26b1a82d0eb9be4fe09",
+        "campaign_id": "20260830T101718102831+0200",
+        "completed_at": "2026-08-30T10:21:05+02:00",
+        "observed_head": "544f83f21e0751b38b8ccb2418abd45fdb395e75",
+        "content_sha256": "9aeec42e8e43de8f70f361bff72b138aa28f3a02bf79ea3e24165198532a4464",
         "file_count": 1,
         "review": "delta-plus-boundaries",
-        "outcome": "improved",
-        "summary": "doctor zählt bei deaktiviertem Selbststart nur den nicht erreichbaren Server und prüft unbenutzte Startdateien nicht als zusätzliche Probleme. Eine zentrale Syntaxprüfung weist unbekannte/zusätzliche Optionen vor Config, Verlauf, Schlüsselbund, Netz oder Serverstart ab. Terminal-Echo installiert Abbruchhandler vor dem Abschalten und behandelt tcsetattr-Fehler korrekt.",
+        "outcome": "reviewed-clean",
+        "summary": "Terminal-Echo-Delta und alle Aufrufgrenzen geprüft: kein TTY bleibt der Pipe-Pfad, erfolgreich abgeschaltetes Echo wird vor Ausgabe wiederhergestellt, tcgetattr/tcsetattr-Fehler führen vor readLine zu Exit 1. Signalhandler werden nur um eine tatsächlich versuchte Umschaltung gelegt und beim Scheitern zurückgenommen. Argument-, Secret-, stdout/stderr- und Exit-Code-Verträge bleiben intakt; kein weiterer Fund.",
         "tests": [
-          "Rote CLI-Reproduktion: doctor meldete 3 statt 1 Problem; unbekanntes doctor-Argument lief trotzdem. Danach test-cli-contracts.sh grün (Diagnose, zehn ungültige und zwei gültige Aufrufe), PTY-Abbruch blendete künstliche Eingabe aus und endete mit 130, swift test: 183/183 grün, git diff --check grün; Commit d2c4209."
+          "test-cli-contracts.sh grün einschließlich erzwungenem Echo-Fehler vor readLine; eingebettete CLI im App-Build erfolgreich"
         ]
       }
     },
@@ -269,30 +273,28 @@
       "reason": "AppKit/SwiftUI-Schicht; soll nur orchestrieren, keine Geschaeftslogik duplizieren; Schluesselbund nie im Renderpfad",
       "state": "completed",
       "last_run": {
-        "campaign_id": "20260819T173410378760+0200",
-        "completed_at": "2026-08-19T18:12:41+02:00",
-        "observed_head": "296d4dd0385baca0f6f82e1c9fff58cf6dd0fc03",
-        "content_sha256": "ca0a02f7aadba3d1d1e1b481374d0958117b653bd4eb6358fd8559e1d047a011",
+        "campaign_id": "20260830T101718102831+0200",
+        "completed_at": "2026-08-30T10:22:55+02:00",
+        "observed_head": "b787976ef1032cc31d38834bb946d3e51f367602",
+        "content_sha256": "e341bf2549e5d63f499c1be7357d0363f1bd28cd3fac7437e54b122e7ea47199",
         "file_count": 9,
         "review": "delta-plus-boundaries",
-        "outcome": "reviewed-clean",
-        "summary": "Keine lohnende Aenderung. Delta (Schluesselbund-Schreibzugriff vom Main-Thread genommen, Eingabefeld waehrend der Aktion gesperrt, Feld nur beim unveraenderten Schnappschuss geleert) ist korrekt. Die drei Projektregeln fuer die Oberflaeche halten: kein Schluesselbundzugriff im Renderpfad (nur in Task.detached hinter Knopfdruck), Bildschirmfreigabe kopiert ohne Paste und ohne Wiederherstellung der Zwischenablage, Minuten-Warmup nur bei dauerhaftem keep_alive. Verlaufsaenderungen springen vor der Zustandsaenderung auf den Main-Thread; Timer und Hotkey-Registrierung werden sauber abgemeldet.",
+        "outcome": "improved",
+        "summary": "HistoryWindow und angrenzende App-Orchestrierung geprüft. QA-Fix: Listenlesen und Alle-löschen laufen in detached Tasks, nur Ergebnis/Fehler kehren auf den MainActor zurück; eine Generation verhindert veraltete Reload-Ergebnisse und deletingAll sperrt Doppelstarts. Andere UI-Grenzen bleiben unverändert und Geschäftslogik bleibt im Core.",
         "tests": [
-          "swift test: 173 tests, 0 failures",
-          "Bundle-Smoke-Test aus scripts/build-app.sh: Overlay-Vorschau und Einstellungen (Tab Bereinigung) starten stabil, isolierter App-Support-Ordner",
-          "Herkunftspruefung gegen die 27 echten Adressen dieses Macs: alle weiterhin Heimnetz, einschliesslich des globalen IPv6-Praefix der FRITZ!Box"
+          "swift test: 191 Tests, 0 Fehler; Release-App-Bundle für Version 0.9.16 erfolgreich kompiliert und Developer-ID-signiert"
         ]
       }
     }
   ],
   "architecture": {
-    "campaign_id": "20260829T190908564961+0200",
-    "recorded_at": "2026-08-29T19:09:19+02:00",
-    "observed_head": "46d656f47e5db6932dc54e2b1301ca24bd925179",
-    "summary": "Die seit der letzten Kampagne geänderten Dateien bleiben innerhalb der bestehenden Schichten: Netzwerk-, Diktat-, Verlauf-, Modell- und Bereinigungslogik liegen in StillePostCore; die CLI ruft diese Kern-APIs auf; App-UI und Audio-Struktur sind unverändert.",
-    "paradigm": "Schichtenmodell: Kernbibliothek StillePostCore plus zwei dünne Frontends (Menüleisten-App und CLI), innerhalb des Kerns ereignisgetrieben über Callbacks",
+    "campaign_id": "20260830T101718102831+0200",
+    "recorded_at": "2026-08-30T10:23:05+02:00",
+    "observed_head": "b787976ef1032cc31d38834bb946d3e51f367602",
+    "summary": "Die Kampagne bestätigt das bestehende Schichtenmodell. Netzwerk-, Modell-, Diktat- und Verlaufssicherheit liegen im Core; das Verlaufsfenster delegiert blockierende Datei-/Lock-Arbeit nun asynchron und übernimmt nur MainActor-Zustand. CLI und Release-Skript behalten ihre schmalen Systemgrenzen.",
+    "paradigm": "Schichtenmodell: Kernbibliothek StillePostCore plus zwei dünne Frontends (Menüleisten-App und CLI), innerhalb des Kerns ereignisgetrieben über Callbacks und async/await",
     "fit": "passt",
-    "recommendation": "Kein Paradigmenwechsel nötig oder sinnvoll. Die Delta-Änderungen stärken die bestehenden Kern-Grenzen; die Kampagne soll lokale Verstöße bereichsweise korrigieren, falls sie im Review auftauchen."
+    "recommendation": "Kein Paradigmenwechsel. Persistent-I/O bleibt in HistoryStore gekapselt; App und CLI orchestrieren diese APIs ohne blockierende Arbeit im Render- oder Main-Thread-Pfad."
   },
   "themes": [
     {
