@@ -1269,6 +1269,9 @@ public final class CleanupService {
 
     BEISPIELE (zeigen, wie WENIG geändert wird — Satzbau und Wortwahl bleiben identisch):
 
+    Eingabe: ähm ich wollte sagen dass dass der Orkus-Server äh morgen aktualisiert wird
+    Ausgabe: Ich wollte sagen, dass der Orkus-Server morgen aktualisiert wird.
+
     Eingabe: also ähm ich wollte halt mal kurz sagen dass das mit dem diktieren noch nicht so richtig schnell läuft
     Ausgabe: Also, ich wollte halt mal kurz sagen, dass das mit dem Diktieren noch nicht so richtig schnell läuft.
 

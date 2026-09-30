@@ -251,17 +251,14 @@ einen chirurgischen Fix ist, und die Reste zweier Fixes.
   Eine stornierte Bereinigung startet weder eine zweite Probe noch Retry/Fallback.
   Kern-Gegenproben sind bestanden; der reale Verbindungsabbruch während eines
   Diktats über das App-Bundle bleibt zu prüfen.
-- **Sperrliste der Worttreue-Prüfung kennt nur Deutsch und Englisch.**
-  `CleanupService.meaningCriticalWords` deckt seit 0.9.6 beide Sprachen ab.
-  `whisper.language` steht aber standardmäßig auf `auto`: Bei einem
-  französischen, spanischen oder italienischen Diktat kann eine verschluckte
-  Verneinung weiterhin als gewöhnliche Füllwort-Löschung durchgehen. Sauberer
-  als jede Sprache einzeln nachzupflegen wäre, Löschungen nur über eine
-  sprachabhängige Positivliste sicherer Füllwörter zu erlauben. Auch DE/EN ist
-  betroffen: Die Gegenprobe mit „ich überweise hundert euro“ → „Ich überweise
-  Euro.“ sowie „I approve this tomorrow“ → „I approve this.“ schlägt fehl.
-  Offen ist die Entscheidung, ob mehrdeutige Füllwörter zugunsten der Worttreue
-  erhalten bleiben sollen.
+- **Worttreue weiterer Sprachen.** DE/EN-Gegenproben schützen jetzt auch
+  Beträge, Termine und mehrdeutige Wörter. Löschungen sind nur für eindeutig
+  definierte Zögerlaute oder unmittelbare wortgleiche Wiederholungen über
+  Leerraum erlaubt; Bindestriche, Schrägstriche und Zifferntokens bleiben
+  geschützt. Der echte LLM-Lauf mit künstlichen DE/EN-Texten erhält den Wortlaut.
+  Im Zweifel bleibt ein Zögerlaut oder eine Wiederholung stehen. Weitere
+  Sprachen sind nicht abgenommen; auch tolerierte Wortersetzungen brauchen
+  sprachspezifische Gegenproben.
 
 ## Offen aus dem Code-Review vom 2026-08-20
 
@@ -315,30 +312,17 @@ liegen, weil sie mehr als einen chirurgischen Eingriff brauchen.
   Referenz-Gegenprobe: VoiceInk (GPL-3) baut auf denselben Bausteinen
   (whisper.cpp + optional Parakeet via FluidAudio) — architektonisch kein
   Vorsprung gegenüber Stille Post, aber Ideenquelle (z. B. app-abhängige Modi).
-- Keine CI für die Testsuite (Befund CodeQA 2026-08-19). Der einzige Workflow
-  (`.github/workflows/publish-appcast.yml`, `macos-15`) läuft erst beim
-  Veröffentlichen eines Releases; er prüft dort immerhin Developer-ID und
-  Notarisierung über `scripts/verify-release.sh`. `swift test` und die
-  Shell-Tests (`scripts/test-release-publication.sh`) laufen dagegen nur, wenn
-  jemand sie von Hand startet. Ein Push mit roter Suite fällt damit nirgends
-  auf. Zu entscheiden ist vor allem die Kostenfrage: ein `macos`-Runner je Push
-  ist nicht umsonst, ein Lauf nur auf `main` oder nur vor einem Release wäre die
-  sparsame Variante.
-- `release.sh` prüft nicht, ob der Arbeitsbaum sauber ist (Befund CodeQA
-  2026-08-19). Das DMG entsteht aus dem Arbeitsbaum, nicht aus dem Commit —
-  ein Release mit uncommitteten Änderungen trägt dann einen Tag, zu dem der
-  ausgelieferte Build nicht passt. Bisher nie passiert; eine Vorabprüfung
-  neben den bereits vorhandenen (Artefakt existiert schon, Team-ID, Notary)
-  wäre die naheliegende Stelle. Offen bleibt, ob die Prüfung hart abbricht oder
-  sich für Zwischenstände übergehen lässt.
-- Eingabegerät-Wechsel während der Aufnahme (Befund CodeQA 2026-08-19, ungeprüft
-  an echter Hardware): `AudioRecorder` hört nicht auf
-  `AVAudioEngineConfigurationChange`. Wird das Mikrofon mitten im Diktat abgezogen
-  oder wechselt macOS das Standardgerät, hört der Tap vermutlich still auf zu
-  liefern — die Aufnahme läuft weiter, und Whisper bekommt am Ende nur den Teil
-  bis zum Wechsel. Zuerst am Gerät reproduzieren (USB-Mikrofon abziehen, dann
-  Bluetooth-Headset trennen), erst danach über die Behandlung entscheiden:
-  Aufnahme mit klarer Meldung beenden ist ehrlicher als still weiterzulaufen.
+- CI für `swift test` und die echten Release-Shellverträge ist eingerichtet:
+  Push auf `main`, Pull Request und manueller Start. Der Workflow ist noch nicht
+  öffentlich ausgeführt; lokale Vertragsprüfungen bestehen.
+- `release.sh` bricht bei ungestagten, gestagten und neuen Dateien vor dem Build
+  hart ab. Ignorierte Build-Artefakte bleiben zulässig; die Shell-Gegenproben
+  bestehen.
+- Eingabegerät-Wechsel während der Aufnahme: Engine- und CoreAudio-Ereignisse
+  führen jetzt zu einem sichtbaren Fehler mit erhaltener WAV statt zu normaler
+  Bereinigung und Textauslieferung. Doppelte und verspätete Fehler sowie
+  gleichzeitiger Stopp sind im Kern geprüft. Die Gegenproben an echten Geräten
+  am aktuellen notarisierten Bundle sind noch offen.
 - Wörterbuch-Pflege: Editor mit einem Begriff pro Zeile im Bereinigungs-Tab
   vorbereitet und kompiliert. Sichtprüfung in DE/EN sowie Bearbeiten, Speichern,
   erneutes Öffnen und Abbrechen am aktuellen notarisierten Bundle sind offen.
