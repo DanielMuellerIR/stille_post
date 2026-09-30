@@ -48,6 +48,13 @@ public final class BridgeServer: @unchecked Sendable {
     private let router: BridgeRouter
     private let queue = DispatchQueue(label: "de.stillepost.bridge")
     private var listener: NWListener?
+    private var running = false
+    private var stoppingListener: NWListener?
+    private var stopCallbacks: [@Sendable () -> Void] = []
+    private var sessions: [ObjectIdentifier: Session] = [:]
+    private var startCallbacks: [@Sendable (Result<Void, Error>) -> Void] = []
+    private var startTimeout: DispatchWorkItem?
+    private let queueKey = DispatchSpecificKey<Bool>()
     /// Gleichzeitig offene Verbindungen. Mehr als eine Handvoll braucht ein
     /// Heimnetz nie; die Grenze verhindert, dass ein fehlerhafter Client den Mac
     /// mit halboffenen Verbindungen zusetzt.
@@ -82,6 +89,7 @@ public final class BridgeServer: @unchecked Sendable {
         self.config = config
         self.router = router
         self.tokenStatus = tokenStatus
+        queue.setSpecific(key: queueKey, value: true)
     }
 
     public convenience init(config: Config, version: String = AppVersion.current) {
@@ -95,115 +103,161 @@ public final class BridgeServer: @unchecked Sendable {
     }
 
     deinit {
-        stop()
+        let cleanup = {
+            self.listener?.newConnectionHandler = nil
+            self.listener?.stateUpdateHandler = nil
+            self.listener?.cancel()
+            self.finishStart(.failure(CancellationError()))
+            for session in Array(self.sessions.values) {
+                session.connection.cancel()
+                self.finish(session)
+            }
+        }
+        if DispatchQueue.getSpecific(key: queueKey) != nil {
+            cleanup()
+        } else {
+            queue.sync(execute: cleanup)
+        }
     }
 
-    /// Öffnet den Port. Wirft, wenn er schon belegt ist oder kein Token existiert —
-    /// ein lauschender Port ohne Token wäre eine Falle, die nur Fehler produziert.
-    ///
-    /// Erst `.ready` bestätigt den Start: `listener.start` meldet Bindefehler
-    /// (z. B. Port schon belegt) asynchron als `.failed`. Ohne dieses Warten
-    /// meldete `start()` Erfolg, obwohl kein Port lauscht — die CLI lief dann
-    /// dauerhaft in `dispatchMain()`, ohne je erreichbar zu sein. Nicht von
-    /// `queue` aus aufrufen (blockiert kurz bis `.ready`/`.failed`).
-    public func start() throws {
-        guard self.listener == nil else { return }
-        if !router.hasToken {
-            // Erst hier den Grund holen: Im Normalfall kostet das keinen
-            // zusätzlichen Schlüsselbundzugriff. Ein Lesefehler darf nicht als
-            // „noch kein Token angelegt“ durchgehen — sonst schickt die Meldung
-            // den Nutzer zum Anlegen eines neuen Tokens, obwohl das alte nur
-            // gerade nicht lesbar ist (gesperrter Schlüsselbund) und ein neues
-            // alle eingerichteten Geräte aussperren würde.
-            if case .failed(let status) = tokenStatus() {
-                throw ServeError.keychainUnavailable(status)
-            }
-            throw ServeError.noToken
+    /// Öffnet den Port ohne den Aufrufer zu blockieren. Auch die Token-Prüfung
+    /// läuft auf der Server-Queue, damit ein gesperrter Schlüsselbund die GUI
+    /// nicht anhält. Erst `.ready` bestätigt den Erfolg.
+    public func start(completion: @escaping @Sendable (Result<Void, Error>) -> Void) {
+        queue.async { [self] in
+            if running { completion(.success(())); return }
+            startCallbacks.append(completion)
+            guard listener == nil, stoppingListener == nil else { return }
+            beginStartOnQueue()
         }
-        guard let port = NWEndpoint.Port(rawValue: UInt16(clamping: config.port)) else {
-            throw ServeError.badPort(config.port)
-        }
-        let parameters = NWParameters.tcp
-        parameters.allowLocalEndpointReuse = true
-        parameters.includePeerToPeer = false
+    }
 
-        let listener: NWListener
+    private func beginStartOnQueue() {
         do {
-            listener = try NWListener(using: parameters, on: port)
-        } catch {
-            throw ServeError.listenFailed(config.port, error.localizedDescription)
-        }
-        listener.newConnectionHandler = { [weak self] connection in
-            self?.accept(connection)
-        }
-        let outcome = StartOutcome()
-        listener.stateUpdateHandler = { [weak self] state in
-            guard let self else { return }
-            switch state {
-            case .ready:
-                self.log(L10n.format("core.bridge.listening", String(self.config.port)))
-                outcome.finish(failure: nil)
-            case .failed(let error):
-                self.log(L10n.format("core.bridge.listen_failed", error.localizedDescription))
-                // Während des Starts geht der Fehler an start() zurück; ein
-                // späterer Laufzeitfehler bleibt wie bisher eine Protokollzeile.
-                outcome.finish(failure: error.localizedDescription)
-            default:
-                break
+            if !router.hasToken {
+                if case .failed(let status) = tokenStatus() {
+                    throw ServeError.keychainUnavailable(status)
+                }
+                throw ServeError.noToken
             }
-        }
-        listener.start(queue: queue)
-        switch outcome.wait(seconds: 5) {
-        case .ready:
-            self.listener = listener
-        case .failed(let detail):
-            listener.cancel()
-            throw ServeError.listenFailed(config.port, detail)
-        case .timedOut:
-            listener.cancel()
-            throw ServeError.listenFailed(config.port, L10n.text("core.bridge.start_timeout"))
+            guard (1...65535).contains(config.port),
+                  let port = NWEndpoint.Port(rawValue: UInt16(config.port)) else {
+                throw ServeError.badPort(config.port)
+            }
+            let parameters = NWParameters.tcp
+            parameters.allowLocalEndpointReuse = true
+            parameters.includePeerToPeer = false
+            let created = try NWListener(using: parameters, on: port)
+            listener = created
+            created.newConnectionHandler = { [weak self, weak created] connection in
+                guard let self, self.listener === created, self.running else {
+                    connection.cancel(); return
+                }
+                self.accept(connection)
+            }
+            created.stateUpdateHandler = { [weak self, weak created] state in
+                guard let self, self.listener === created else { return }
+                switch state {
+                case .ready:
+                    self.running = true
+                    self.log(L10n.format("core.bridge.listening", String(self.config.port)))
+                    self.finishStart(.success(()))
+                case .failed(let error):
+                    self.log(L10n.format("core.bridge.listen_failed", error.localizedDescription))
+                    self.stopOnQueue(startError: ServeError.listenFailed(
+                        self.config.port, error.localizedDescription))
+                default: break
+                }
+            }
+            let timeout = DispatchWorkItem { [weak self, weak created] in
+                guard let self, self.listener === created, !self.running else { return }
+                self.stopOnQueue(startError: ServeError.listenFailed(
+                    self.config.port, L10n.text("core.bridge.start_timeout")))
+            }
+            startTimeout = timeout
+            queue.asyncAfter(deadline: .now() + 5, execute: timeout)
+            created.start(queue: queue)
+        } catch {
+            stopOnQueue(startError: error)
         }
     }
 
-    /// Übergibt das erste Start-Ergebnis (`.ready` oder `.failed`) vom
-    /// Listener-Callback (läuft auf `queue`) an den wartenden `start()`-Aufrufer.
+    /// Synchroner CLI-/Test-Einstieg. Die App nutzt ausschließlich den Callback.
+    public func start() throws {
+        precondition(DispatchQueue.getSpecific(key: queueKey) == nil)
+        let outcome = StartOutcome()
+        start { outcome.finish($0) }
+        try outcome.wait().get()
+    }
+
     private final class StartOutcome: @unchecked Sendable {
-        enum Result {
-            case ready
-            case failed(String)
-            case timedOut
-        }
-
         private let semaphore = DispatchSemaphore(value: 0)
-        private let lock = NSLock()
-        private var failure: String?
-        private var finished = false
-
-        /// Nur das ERSTE Ergebnis zählt; spätere Zustandswechsel ignorieren.
-        func finish(failure: String?) {
-            lock.lock()
-            defer { lock.unlock() }
-            guard !finished else { return }
-            finished = true
-            self.failure = failure
+        private var result: Result<Void, Error> = .failure(CancellationError())
+        func finish(_ result: Result<Void, Error>) {
+            self.result = result
             semaphore.signal()
         }
-
-        func wait(seconds: TimeInterval) -> Result {
-            guard semaphore.wait(timeout: .now() + seconds) == .success else { return .timedOut }
-            lock.lock()
-            defer { lock.unlock() }
-            if let failure { return .failed(failure) }
-            return .ready
+        func wait() -> Result<Void, Error> {
+            semaphore.wait()
+            return result
         }
     }
 
-    public func stop() {
-        listener?.cancel()
-        listener = nil
+    private func finishStart(_ result: Result<Void, Error>) {
+        startTimeout?.cancel()
+        startTimeout = nil
+        let callbacks = startCallbacks
+        startCallbacks = []
+        callbacks.forEach { $0(result) }
     }
 
-    public var isRunning: Bool { listener != nil }
+    /// Auch Abschalten wartet in der GUI nicht auf laufende Schlüsselbundarbeit.
+    /// Die Queue erhält die Reihenfolge von Start, Stop und erneutem Start.
+    public func stop(completion: @escaping @Sendable () -> Void = {}) {
+        queue.async { [self] in
+            stopOnQueue(startError: CancellationError(), completion: completion)
+        }
+    }
+
+    private func stopOnQueue(startError: Error,
+                             completion: (@Sendable () -> Void)? = nil) {
+        if let completion { stopCallbacks.append(completion) }
+        if let stopped = listener {
+            listener = nil
+            stoppingListener = stopped
+            stopped.newConnectionHandler = nil
+            // Bis `.cancelled` bleibt der Listener separat erhalten. Weitere
+            // Stop-Callbacks und neue Starts warten ebenfalls auf die Portfreigabe.
+            stopped.stateUpdateHandler = { [self, weak stopped] state in
+                guard stoppingListener === stopped else { return }
+                if case .cancelled = state {
+                    stopped?.stateUpdateHandler = nil
+                    stoppingListener = nil
+                    finishStop()
+                    if !startCallbacks.isEmpty { beginStartOnQueue() }
+                }
+            }
+            stopped.cancel()
+        }
+        running = false
+        finishStart(.failure(startError))
+        for session in Array(sessions.values) {
+            session.connection.cancel()
+            finish(session)
+        }
+        if stoppingListener == nil { finishStop() }
+    }
+
+    private func finishStop() {
+        let callbacks = stopCallbacks
+        stopCallbacks = []
+        callbacks.forEach { $0() }
+    }
+
+    public var isRunning: Bool {
+        if DispatchQueue.getSpecific(key: queueKey) != nil { return running }
+        return queue.sync { running }
+    }
 
     // MARK: - Verbindungen
 
@@ -229,6 +283,7 @@ public final class BridgeServer: @unchecked Sendable {
         openConnections += 1
 
         let session = Session(connection: connection, address: address)
+        sessions[ObjectIdentifier(session)] = session
         // Wer eine Verbindung öffnet und dann schweigt, belegt sie nicht endlos.
         let timeout = DispatchWorkItem { [weak self] in
             self?.log(L10n.format("core.bridge.read_timeout",
@@ -333,13 +388,9 @@ public final class BridgeServer: @unchecked Sendable {
                 // dieselben Nutzdaten weiterhin im Speicher.
                 self.transferBufferToRequestReservation(session)
                 self.onRequestAcceptedForTesting?()
-                // Ein geordneter TCP-Halbschluss kann zusammen mit den letzten
-                // Request-Bytes eintreffen. Für eine bereits verlassene
-                // Verbindung keine teure Arbeit mehr beginnen.
-                guard !isComplete else {
-                    session.connection.cancel()
-                    return
-                }
+                // Empfangs-EOF beendet nur die Senderichtung des Clients.
+                // Der vollständige Request darf weiterhin beantwortet werden.
+                session.receivedEOF = isComplete
                 self.handle(request, on: session)
             }
         }
@@ -400,8 +451,14 @@ public final class BridgeServer: @unchecked Sendable {
         // Antwort draußen ist — genau das verspricht `Connection: close`.
         session.connection.send(
             content: response.httpData(), contentContext: .finalMessage, isComplete: true,
-            completion: .contentProcessed { [weak self] _ in
-                self?.closeGracefully(session)
+            completion: .contentProcessed { [weak self] error in
+                guard let self, !session.finished else { return }
+                if error != nil {
+                    session.connection.cancel()
+                    self.finish(session)
+                } else {
+                    self.closeGracefully(session)
+                }
             }
         )
     }
@@ -416,20 +473,28 @@ public final class BridgeServer: @unchecked Sendable {
         // Bewusst nur die Verbindung erfassen, nicht die Session: Der WorkItem
         // liegt bis zu `closeGraceSeconds` in der Queue — er soll die Session
         // (und deren Puffer) nicht so lange am Leben halten.
+        guard !session.finished else { return }
+        session.responseSent = true
         let connection = session.connection
         let overdue = DispatchWorkItem { connection.cancel() }
-        session.timeout = overdue
         queue.asyncAfter(deadline: .now() + closeGraceSeconds, execute: overdue)
+        if session.receivedEOF {
+            // Logisch beendet, aber der Transport behält seine Abholfrist:
+            // contentProcessed bestätigt auch nach Client-FIN keinen Empfang.
+            finish(session)
+        } else {
+            session.timeout = overdue
+        }
         // `monitorDisconnect` liest bereits seit Beginn der Arbeit weiter. Ein
         // zweiter paralleler receive wäre nicht nur unnötig, sondern könnte das
         // EOF dem falschen Callback überlassen.
     }
 
     /// Überwacht nach dem vollständigen Request weiter die Empfangsrichtung.
-    /// Ein TCP-FIN ist ein erfolgreiches EOF (`isComplete`) und löst deshalb
-    /// nicht verlässlich den `.failed`-/`.cancelled`-Zustand aus.
+    /// EOF beendet nur die Empfangsrichtung. Echte Fehler stornieren die Arbeit;
+    /// ein Client darf nach seinem FIN weiterhin auf die Antwort warten.
     private func monitorDisconnect(_ session: Session) {
-        guard !session.monitoringDisconnect else { return }
+        guard !session.monitoringDisconnect, !session.receivedEOF else { return }
         session.monitoringDisconnect = true
         receiveDisconnect(session)
     }
@@ -438,9 +503,21 @@ public final class BridgeServer: @unchecked Sendable {
         session.connection.receive(minimumIncompleteLength: 1, maximumLength: 1024) {
             [weak self] _, _, isComplete, error in
             guard let self, !session.finished else { return }
-            if isComplete || error != nil {
+            if error != nil {
                 session.timeout?.cancel()
                 session.connection.cancel()
+                return
+            }
+            if isComplete {
+                session.receivedEOF = true
+                // Nach dem Antwort-FIN ist auch diese Richtung geschlossen;
+                // während der Arbeit bedeutet EOF dagegen keinen Abbruch.
+                if session.responseSent {
+                    // Den bereits geplanten Transport-Timeout weiterlaufen
+                    // lassen, ohne die logische Session dafür festzuhalten.
+                    session.timeout = nil
+                    self.finish(session)
+                }
                 return
             }
             // Zusätzliche Bytes sind für `Connection: close` bedeutungslos; bis
@@ -454,8 +531,15 @@ public final class BridgeServer: @unchecked Sendable {
         session.finished = true
         // Puffer sofort freigeben: Bis zur Deallokation der Session hielte er
         // sonst noch einen kompletten Request-Body fest.
-        releaseBufferAndReservation(session)
+        // Eine stornierte Task hält den Request bis zu ihrem tatsächlichen Ende.
+        // Ihre Reservierung bleibt deshalb trotz Verbindungsende bestehen.
+        bufferedBytes = max(0, bufferedBytes - session.buffer.count)
+        session.buffer = Data()
+        if session.work == nil { releaseRequestReservation(session) }
+        session.timeout?.cancel()
         session.timeout = nil
+        session.connection.stateUpdateHandler = nil
+        sessions.removeValue(forKey: ObjectIdentifier(session))
         // Angefangene Arbeit stornieren. Nach einer normal ausgelieferten
         // Antwort ist die Task längst fertig und das bleibt folgenlos; bei einem
         // echten Verbindungsabbruch gibt es dagegen den Arbeitsplatz der Brücke
@@ -463,18 +547,6 @@ public final class BridgeServer: @unchecked Sendable {
         session.work?.cancel()
         session.work = nil
         openConnections = max(0, openConnections - 1)
-    }
-
-    /// Gibt den Rohpuffer einer Verbindung frei und bucht ihn aus dem
-    /// gemeinsamen Speicherbudget aus. Mehrfach aufrufbar: Ein leerer Puffer
-    /// bucht nichts mehr aus.
-    private func releaseBufferAndReservation(_ session: Session) {
-        bufferedBytes = max(
-            0,
-            bufferedBytes - session.buffer.count - session.requestReservationBytes
-        )
-        session.buffer = Data()
-        session.requestReservationBytes = 0
     }
 
     /// Gibt die zweite Rohpuffer-Kopie frei, ohne das gemeinsame Budget zu
@@ -556,6 +628,8 @@ public final class BridgeServer: @unchecked Sendable {
         var work: Task<Void, Never>?
         /// Genau ein EOF-Empfang bleibt während Arbeit und Antwort aktiv.
         var monitoringDisconnect = false
+        var receivedEOF = false
+        var responseSent = false
 
         init(connection: NWConnection, address: String) {
             self.connection = connection

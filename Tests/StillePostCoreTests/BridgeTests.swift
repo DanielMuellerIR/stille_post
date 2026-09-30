@@ -640,10 +640,41 @@ final class BridgeTests: XCTestCase {
         wait(for: [deallocated], timeout: 5)
     }
 
-    func testClientHalfCloseCancelsInFlightRequest() throws {
-        // Ein geordnetes TCP-FIN ändert den NWConnection-Zustand nicht zwingend
-        // auf `.failed` oder `.cancelled`. Deshalb muss der Server während der
-        // Arbeit weiter auf EOF lauschen und die Router-Task selbst stornieren.
+    func testClientHalfCloseStillReceivesResponse() throws {
+        let (server, port) = try startServer(router: makeRouter())
+        defer { server.stop() }
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        XCTAssertGreaterThanOrEqual(fd, 0)
+        defer { close(fd) }
+        var timeout = timeval(tv_sec: 3, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout,
+                   socklen_t(MemoryLayout<timeval>.size))
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = UInt16(port).bigEndian
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        let connected = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        XCTAssertEqual(connected, 0)
+        let payload = Data(("GET /v1/health HTTP/1.1\r\n"
+            + "Authorization: Bearer richtig\r\nContent-Length: 0\r\n\r\n").utf8)
+        let sent = payload.withUnsafeBytes { Darwin.send(fd, $0.baseAddress, $0.count, 0) }
+        XCTAssertEqual(sent, payload.count)
+        XCTAssertEqual(shutdown(fd, SHUT_WR), 0)
+        var reply = Data()
+        var bytes = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let count = recv(fd, &bytes, bytes.count, 0)
+            guard count > 0 else { break }
+            reply.append(contentsOf: bytes.prefix(count))
+        }
+        XCTAssertTrue(String(decoding: reply, as: UTF8.self).hasPrefix("HTTP/1.1 200"))
+    }
+
+    func testStopCancelsInFlightRequest() throws {
         let work = DisconnectWork(testCase: self)
         let (server, port) = try startServer(router: makeRouter(
             transcribe: { _ in try await work.run() }
@@ -651,31 +682,97 @@ final class BridgeTests: XCTestCase {
         let connection = NWConnection(
             host: "127.0.0.1", port: NWEndpoint.Port(rawValue: UInt16(port))!, using: .tcp
         )
-        defer {
-            work.release()
-            connection.cancel()
-            server.stop()
-        }
-
-        let ready = expectation(description: "Client verbunden")
-        connection.stateUpdateHandler = { state in
-            if case .ready = state { ready.fulfill() }
-        }
-        connection.start(queue: DispatchQueue(label: "de.stillepost.test.half-close"))
-        wait(for: [ready], timeout: 5)
-
-        let body = Data("audio".utf8)
+        defer { work.release(); connection.cancel(); server.stop() }
+        connection.start(queue: DispatchQueue(label: "de.stillepost.test.stop"))
         let request = "POST /v1/dictate HTTP/1.1\r\n"
-            + "Authorization: Bearer richtig\r\n"
-            + "Content-Length: \(body.count)\r\n\r\n"
-        connection.send(content: Data(request.utf8) + body,
-                        completion: .contentProcessed { _ in })
+            + "Authorization: Bearer richtig\r\nContent-Length: 5\r\n\r\naudio"
+        connection.send(content: Data(request.utf8), completion: .contentProcessed { _ in })
         wait(for: [work.started], timeout: 5)
+        server.stop()
+        wait(for: [work.cancelled], timeout: 2)
+        XCTAssertFalse(server.isRunning)
+    }
 
-        let halfClosed = expectation(description: "Client-Senderichtung geschlossen")
-        connection.send(content: nil, contentContext: .finalMessage, isComplete: true,
-                        completion: .contentProcessed { _ in halfClosed.fulfill() })
-        wait(for: [halfClosed, work.cancelled], timeout: 2)
+    func testClientResetCancelsInFlightRequest() throws {
+        let work = DisconnectWork(testCase: self)
+        let (server, port) = try startServer(router: makeRouter(
+            transcribe: { _ in try await work.run() }
+        ))
+        defer { work.release(); server.stop() }
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return XCTFail("Socket fehlt") }
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = UInt16(port).bigEndian
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        let connected = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard connected == 0 else { close(fd); return XCTFail("Verbindung fehlt") }
+        let payload = Data(("POST /v1/dictate HTTP/1.1\r\n"
+            + "Authorization: Bearer richtig\r\nContent-Length: 5\r\n\r\naudio").utf8)
+        _ = payload.withUnsafeBytes { Darwin.send(fd, $0.baseAddress, $0.count, 0) }
+        wait(for: [work.started], timeout: 5)
+        // SO_LINGER mit Nullfrist erzeugt einen echten Reset, keinen Halbschluss.
+        var reset = linger(l_onoff: 1, l_linger: 0)
+        XCTAssertEqual(setsockopt(fd, SOL_SOCKET, SO_LINGER, &reset,
+                                 socklen_t(MemoryLayout<linger>.size)), 0)
+        close(fd)
+        wait(for: [work.cancelled], timeout: 2)
+    }
+
+    func testAsyncStartDoesNotWaitForTokenLookup() {
+        let completed = expectation(description: "Start abgeschlossen")
+        let server = BridgeServer(config: Config.Bridge(), router: BridgeRouter(
+            handlers: BridgeHandlers(transcribe: { _ in "" }, cleanup: { text in
+                CleanupService.Result(text: text, usedFallback: false,
+                                      fallbackReason: nil, endpoint: nil)
+            }, cleanupEnabled: false, version: "test"), maxBodyBytes: 1024,
+            tokenProvider: {
+                Thread.sleep(forTimeInterval: 0.3)
+                return nil
+            }), tokenStatus: { .missing })
+        let began = Date()
+        server.start { result in
+            if case .success = result { XCTFail("Start ohne Token") }
+            completed.fulfill()
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(began), 0.1)
+        wait(for: [completed], timeout: 2)
+        XCTAssertFalse(server.isRunning)
+    }
+
+    func testStopCompletionReleasesPortForReplacement() throws {
+        let (old, port) = try startServer(router: makeRouter())
+        let stopped = expectation(description: "Listener hat Port freigegeben")
+        old.stop { stopped.fulfill() }
+        wait(for: [stopped], timeout: 2)
+        var config = Config.Bridge()
+        config.port = port
+        let replacement = BridgeServer(config: config, router: makeRouter())
+        defer { replacement.stop() }
+        XCTAssertNoThrow(try replacement.start())
+        XCTAssertTrue(replacement.isRunning)
+    }
+
+    func testRepeatedStopCallbacksAndRestartWaitForListenerCancellation() throws {
+        let (server, _) = try startServer(router: makeRouter())
+        let first = expectation(description: "Erster Stop bestätigt")
+        let second = expectation(description: "Zweiter Stop bestätigt")
+        let restarted = expectation(description: "Dieselbe Instanz erneut gestartet")
+        server.stop { first.fulfill() }
+        server.stop { second.fulfill() }
+        server.start { result in
+            if case .failure(let error) = result {
+                XCTFail("Neustart nach Stop scheiterte: \(error)")
+            }
+            restarted.fulfill()
+        }
+        wait(for: [first, second, restarted], timeout: 5)
+        XCTAssertTrue(server.isRunning)
+        server.stop()
     }
 
     func testBufferLimitAdmitsAnExactlyMaximalRequest() throws {

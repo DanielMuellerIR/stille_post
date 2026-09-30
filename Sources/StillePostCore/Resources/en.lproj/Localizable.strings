@@ -76,6 +76,8 @@
 /* Settings: Cleanup */
 "settings.cleanup.enabled" = "Enable text cleanup";
 "settings.cleanup.description" = "Removes filler words and false starts, and repairs punctuation. Off = raw Whisper text.";
+"settings.cleanup.dictionary" = "Technical vocabulary";
+"settings.cleanup.dictionary_help" = "One term per line, with the preferred spelling. Cleanup uses these terms to correct similar-sounding transcription errors. Empty lines are omitted when saving.";
 "settings.cleanup.primary" = "Primary Endpoint";
 "settings.cleanup.fallback_number" = "Fallback %d";
 "settings.cleanup.add_fallback" = "Add fallback";

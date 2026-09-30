@@ -76,6 +76,8 @@
 /* Einstellungen: Bereinigung */
 "settings.cleanup.enabled" = "Textbereinigung aktivieren";
 "settings.cleanup.description" = "Entfernt Füllwörter/Versprecher und repariert Satzzeichen. Aus = roher Whisper-Text.";
+"settings.cleanup.dictionary" = "Fachbegriffs-Wörterbuch";
+"settings.cleanup.dictionary_help" = "Ein Begriff pro Zeile, in der gewünschten Schreibweise. Die Bereinigung nutzt diese Begriffe für ähnlich klingende Verhörer. Leere Zeilen werden beim Speichern weggelassen.";
 "settings.cleanup.primary" = "Primärer Endpoint";
 "settings.cleanup.fallback_number" = "Fallback %d";
 "settings.cleanup.add_fallback" = "Fallback hinzufügen";

@@ -41,15 +41,18 @@ public final class WhisperClient {
 
     /// Transkribiert Audio-Samples (16 kHz mono Float) zu Text.
     public func transcribe(samples: [Float]) async throws -> String {
-        try await transcribe(wavData: WavCodec.wavData(from: samples))
+        try Task.checkCancellation()
+        return try await transcribe(wavData: WavCodec.wavData(from: samples))
     }
 
     /// Transkribiert eine fertige WAV-Datei (für "Erneut transkribieren" im Verlauf).
     public func transcribe(wavFile: URL) async throws -> String {
-        try await transcribe(wavData: try Data(contentsOf: wavFile))
+        try Task.checkCancellation()
+        return try await transcribe(wavData: try Data(contentsOf: wavFile))
     }
 
     private func transcribe(wavData: Data) async throws -> String {
+        try Task.checkCancellation()
         let endpoint: WhisperEndpoint
         do {
             endpoint = try WhisperEndpoint(serverURL: config.serverURL)

@@ -25,6 +25,7 @@ public enum AudioDecoder {
     public static func samples16kMono(
         from data: Data, maxSampleCount: Int = AudioDecoder.maxSampleCount
     ) throws -> [Float] {
+        try Task.checkCancellation()
         guard data.count >= minimumBytes else { throw DecodeError.empty }
 
         // AVFoundation liest nur aus Dateien, nicht aus dem Speicher. Die
@@ -71,6 +72,7 @@ public enum AudioDecoder {
         // als Erfolg transkribiert.
         var readError: Error?
         while true {
+            try Task.checkCancellation()
             guard let output = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: chunkFrames) else {
                 throw DecodeError.unsupported(L10n.text("core.bridge.audio_format"))
             }
@@ -109,6 +111,7 @@ public enum AudioDecoder {
                 inputStatus.pointee = .haveData
                 return input
             }
+            try Task.checkCancellation()
             if let readError {
                 throw DecodeError.unsupported(readError.localizedDescription)
             }

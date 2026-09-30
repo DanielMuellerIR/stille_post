@@ -164,7 +164,9 @@ public actor BridgeRouter {
         let sttStarted = Date()
         let raw: String
         do {
+            try Task.checkCancellation()
             raw = TranscriptPolish.flattenLineBreaks(try await handlers.transcribe(request.body))
+            try Task.checkCancellation()
         } catch {
             return .error(status: 500, message: error.localizedDescription)
         }
@@ -290,7 +292,9 @@ public extension BridgeHandlers {
         let cleanup = CleanupService(config: config.cleanup)
         return BridgeHandlers(
             transcribe: { data in
+                try Task.checkCancellation()
                 let samples = try AudioDecoder.samples16kMono(from: data)
+                try Task.checkCancellation()
                 try await serverManager.ensureRunning(client: whisper)
                 return try await whisper.transcribe(samples: samples)
             },

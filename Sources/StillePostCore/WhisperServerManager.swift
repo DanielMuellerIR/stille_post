@@ -32,13 +32,16 @@ public final class WhisperServerManager: DictationServer {
     }
 
     func ensureRunning(reachability client: any DictationTranscriber) async throws {
+        try Task.checkCancellation()
         let endpoint: WhisperEndpoint
         do {
             endpoint = try WhisperEndpoint(serverURL: config.serverURL)
         } catch {
             throw ServerError.notReachable(error.localizedDescription)
         }
-        if await client.isReachable() { return }
+        let reachable = await client.isReachable()
+        try Task.checkCancellation()
+        if reachable { return }
         guard config.autostart else {
             throw ServerError.notReachable(config.serverURL)
         }
@@ -67,7 +70,9 @@ public final class WhisperServerManager: DictationServer {
         // das Modell ist ~1,6 GB groß, das Laden dauert beim ersten Mal ein paar Sekunden).
         for _ in 0..<60 {
             try await Task.sleep(nanoseconds: 500_000_000)
-            if await client.isReachable() { return }
+            let reachable = await client.isReachable()
+            try Task.checkCancellation()
+            if reachable { return }
             if !process.isRunning {
                 throw ServerError.startFailed(binary)
             }

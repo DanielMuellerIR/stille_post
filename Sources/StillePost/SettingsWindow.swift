@@ -280,6 +280,12 @@ private struct HotkeyRecorder: View {
 
 private struct CleanupTab: View {
     @Binding var cleanup: Config.Cleanup
+    @State private var dictionaryText: String
+
+    init(cleanup: Binding<Config.Cleanup>) {
+        self._cleanup = cleanup
+        self._dictionaryText = State(initialValue: cleanup.wrappedValue.dictionary.joined(separator: "\n"))
+    }
 
     var body: some View {
         Form {
@@ -289,6 +295,22 @@ private struct CleanupTab: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .frame(maxWidth: 500, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section(L10n.text("settings.cleanup.dictionary")) {
+                TextEditor(text: $dictionaryText)
+                    .font(.body.monospaced())
+                    .frame(minHeight: 100)
+                    .accessibilityLabel(L10n.text("settings.cleanup.dictionary"))
+                    .onChange(of: dictionaryText) { text in
+                        cleanup.dictionary = text.components(separatedBy: .newlines)
+                            .map { $0.trimmingCharacters(in: .whitespaces) }
+                            .filter { !$0.isEmpty }
+                    }
+                Text(L10n.text("settings.cleanup.dictionary_help"))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 

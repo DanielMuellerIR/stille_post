@@ -23,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: SettingsWindowController!
     /// Netzwerkzugang für eigene Geräte im Heimnetz; nil = ausgeschaltet.
     private var bridge: BridgeServer?
+    private var bridgeTransition: Task<Void, Never>?
+    private var bridgeGeneration = 0
     /// Protokoll der Brücke, das einen Neustart überlebt: `bridge.log` neben
     /// `config.json`. Absichtlich unabhängig vom Server-Objekt, damit auch ein
     /// fehlgeschlagener Start hineinschreiben kann.
@@ -164,9 +166,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// gezeigt statt verschluckt: Ein stillschweigend nicht laufender Zugang wäre
     /// später als „das iPhone kommt nicht durch“ viel schwerer zu finden.
     private func startBridgeIfEnabled() {
-        bridge?.stop()
-        bridge = nil
-        guard config.bridge.enabled else { return }
+        bridgeGeneration += 1
+        let generation = bridgeGeneration
+        let previous = bridgeTransition
+        bridgeTransition = Task { @MainActor [weak self] in
+            await previous?.value
+            guard let self, self.bridgeGeneration == generation else { return }
+            let old = self.bridge
+            self.bridge = nil
+            if let old {
+                await withCheckedContinuation { continuation in
+                    old.stop { continuation.resume() }
+                }
+            }
+            guard self.bridgeGeneration == generation else { return }
+            if self.config.bridge.enabled { self.launchBridge() }
+            self.bridgeTransition = nil
+        }
+    }
+
+    private func launchBridge() {
         let server = BridgeServer(config: config)
         // Zusätzlich zur Datei: stderr bleibt für `swift run` und Diagnoseläufe.
         // Bei der aus dem Finder gestarteten App landet stderr nirgends — deshalb
@@ -176,15 +195,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             FileHandle.standardError.write(Data("StillePost bridge: \(message)\n".utf8))
             logFile.append(message)
         }
-        do {
-            try server.start()
-            bridge = server
-        } catch {
-            // Auch der Startfehler gehört ins Protokoll. Genau er („kein Token“,
-            // „Port belegt“) verschwand bisher mit dem Overlay, sobald es ausblendete.
-            let message = L10n.format("app.bridge_start_failed", error.localizedDescription)
-            logFile.append(message)
-            overlay.show(.failure(message))
+        bridge = server
+        server.start { [weak self, weak server] result in
+            Task { @MainActor in
+                guard let self, let server, self.bridge === server else { return }
+                if case .failure(let error) = result {
+                    self.bridge = nil
+                    let message = L10n.format("app.bridge_start_failed", error.localizedDescription)
+                    logFile.append(message)
+                    self.overlay.show(.failure(message))
+                }
+            }
         }
     }
 

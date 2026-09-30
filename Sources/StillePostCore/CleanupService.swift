@@ -96,8 +96,11 @@ public final class CleanupService {
             return Result(text: TranscriptPolish.repairPunctuation(trimmed),
                           usedFallback: false, fallbackReason: nil, endpoint: nil)
         }
+        let cancelled = Result(text: TranscriptPolish.repairPunctuation(trimmed),
+                               usedFallback: true, fallbackReason: nil, endpoint: nil)
         var failures: [String] = []
         for (index, endpoint) in config.chain.enumerated() {
+            guard !Task.isCancelled else { return cancelled }
             if index > 0 { onFallbackEndpoint?(endpoint.label) }
             do {
                 let cleaned: String
@@ -120,6 +123,9 @@ public final class CleanupService {
                                                                streaming: true,
                                                                freshConnection: false)
                         } catch {
+                            // Ein Abbruch ist kein Dienstausfall: keine weitere
+                            // Verbindung und kein anderes Modell dafür anfragen.
+                            if Self.isCancellation(error) { return cancelled }
                             onPrimaryRetry?()
                             if Self.isIdleTimeout(error) {
                                 // 10 s lang kam kein einziges Häppchen. Antwortet der
@@ -130,7 +136,7 @@ public final class CleanupService {
                                 // genauso ins Leere. Deshalb hier dieselbe Antwort wie
                                 // beim kalt startenden Fallback-Modell: die geduldige
                                 // Komplett-Antwort ohne Leerlauf-Timeout.
-                                guard await isReachable(ollamaURL: endpoint.ollamaURL) else {
+                                guard try await isReachable(ollamaURL: endpoint.ollamaURL) else {
                                     // Server wirklich weg: nicht noch einmal 10 s
                                     // verschenken, sofort zum nächsten Endpoint.
                                     throw CleanupError.unreachable(endpoint.ollamaURL)
@@ -156,7 +162,7 @@ public final class CleanupService {
                         // Streaming: Ein kalt startendes Fallback-Modell liefert
                         // erst nach dem Laden das erste Häppchen — ein Leerlauf-
                         // Timeout würde genau daran scheitern.
-                        guard await isReachable(ollamaURL: endpoint.ollamaURL) else {
+                        guard try await isReachable(ollamaURL: endpoint.ollamaURL) else {
                             throw CleanupError.unreachable(endpoint.ollamaURL)
                         }
                         cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
@@ -165,6 +171,7 @@ public final class CleanupService {
                         if index == 0 { notePrimarySuccess() }
                     }
                 }
+                try Task.checkCancellation()
                 // Worttreue-Abgleich: Hat das Modell gedichtet/gekürzt/geantwortet?
                 // Einzelne veränderte Satzteile werden chirurgisch auf die
                 // Roh-Wörter zurückgesetzt statt die ganze Bereinigung zu verwerfen.
@@ -185,12 +192,18 @@ public final class CleanupService {
                                   fallbackReason: note, endpoint: endpoint.label)
                 }
             } catch {
+                if Self.isCancellation(error) { return cancelled }
                 failures.append("\(endpoint.label): \(error.localizedDescription)")
             }
         }
         return Result(text: TranscriptPolish.repairPunctuation(trimmed), usedFallback: true,
                       fallbackReason: L10n.format("core.cleanup.failed", failures.joined(separator: " · ")),
                       endpoint: nil)
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        Task.isCancelled || error is CancellationError
+            || (error as? URLError)?.code == .cancelled
     }
 
     /// Lädt das Bereinigungs-Modell vorab in den Speicher ("Vorwärmen"). Wird beim
@@ -218,7 +231,10 @@ public final class CleanupService {
         let chain = config.chain
         Task {
             for (index, endpoint) in chain.enumerated() where endpoint.provider != "openai" {
-                guard await isReachable(ollamaURL: endpoint.ollamaURL) else { continue }
+                guard (try? await isReachable(ollamaURL: endpoint.ollamaURL)) == true else {
+                    if Task.isCancelled { return }
+                    continue
+                }
                 // Erreichbarkeit des Primärs protokollieren — Grundlage der
                 // Blip-Toleranz in clean(). Weil warmUp() beim Aufnahme-START
                 // läuft, ist der Zeitstempel frisch, wenn clean() nach dem Diktat
@@ -281,14 +297,18 @@ public final class CleanupService {
     /// Zwei Versuche: Ein einzelner 2-s-GET kann auf WLAN spurios scheitern
     /// (Power-Save-Latenzspitzen) — ein einmaliger Aussetzer soll nicht sofort den
     /// Fallback samt Kaltstart des Ausweich-Modells auslösen.
-    private func isReachable(ollamaURL: String) async -> Bool {
+    private func isReachable(ollamaURL: String) async throws -> Bool {
         guard let url = Self.endpointURL(baseURL: ollamaURL,
                                          path: ["api", "version"]) else { return false }
         let request = URLRequest(url: url)
         for _ in 0..<2 {
-            if let (_, response) = try? await transport.data(for: request, probing: true),
-               (response as? HTTPURLResponse)?.statusCode == 200 {
-                return true
+            try Task.checkCancellation()
+            do {
+                let (_, response) = try await transport.data(for: request, probing: true)
+                try Task.checkCancellation()
+                if (response as? HTTPURLResponse)?.statusCode == 200 { return true }
+            } catch {
+                if Self.isCancellation(error) { throw CancellationError() }
             }
         }
         return false
@@ -973,6 +993,7 @@ public final class CleanupService {
     private func cleanViaOllama(_ text: String, endpoint: Config.Cleanup.Endpoint,
                                 streaming: Bool,
                                 freshConnection: Bool) async throws -> String {
+        try Task.checkCancellation()
         guard let url = Self.endpointURL(baseURL: endpoint.ollamaURL,
                                          path: ["api", "chat"]) else {
             throw CleanupError.badConfig(L10n.format("core.cleanup.invalid_ollama_url", endpoint.ollamaURL))

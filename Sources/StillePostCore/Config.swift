@@ -82,7 +82,7 @@ public struct Config: Codable, Equatable {
         /// Whisper regelmäßig verhört ("Rack" statt "RAG"). Die Begriffe gehen an
         /// das Bereinigungsmodell (System-Prompt) UND die Worttreue-Prüfung lässt
         /// ähnlich klingende Korrekturen auf genau diese Begriffe durch.
-        /// Frei editierbar in config.json; die Vorbelegung deckt gängige
+        /// Editierbar in den Einstellungen und in config.json; die Vorbelegung deckt gängige
         /// Diktier-Verhörer aus dem Software-Alltag ab.
         public var dictionary: [String] = Cleanup.defaultDictionary
 

@@ -240,50 +240,41 @@ einer war ein Fehlbefund (die Retry-Regel in `AGENTS.md` war zu eng formuliert,
 nicht der Code falsch). Hier steht, was offen blieb — ein Fund, der zu groß für
 einen chirurgischen Fix ist, und die Reste zweier Fixes.
 
-- **`BridgeServer.start()` blockiert den Hauptthread.** Der Aufruf wartet
-  synchron bis zu fünf Sekunden auf das Start-Ergebnis des Listeners
-  (`StartOutcome.wait`). `AppDelegate.startBridgeIfEnabled()` ruft ihn beim
-  App-Start und beim Übernehmen der Einstellungen auf dem Hauptthread auf;
-  bleibt der Listener in `.waiting` (kein Netzpfad), steht die Oberfläche bis
-  zum Timeout. Richtig wäre ein asynchroner Start über Callback oder
-  Continuation, mit nur der Ergebnisverarbeitung zurück auf dem MainActor; die
-  CLI kann denselben Weg abwarten. Das ändert eine öffentliche Signatur und
-  betrifft App und CLI gleichzeitig.
-- **Abbruch angefangener Brücken-Arbeit.** Die Warteschlangengrenze in
-  `BridgeRouter.serialized` ist seit 0.9.6 da: Überlast wird mit 503 abgelehnt
-  statt gepuffert. Was fehlt, ist der zweite Teil der Regel in `AGENTS.md`:
-  Bricht die Verbindung ab, während die Anfrage noch wartet oder läuft, wird
-  die Arbeit trotzdem zu Ende gebracht. Dafür müsste `BridgeServer` die Task je
-  Session halten und abbrechen, und Transkription wie Bereinigung bräuchten
-  echte Abbruchpunkte — beide sind heute nicht abbruchfähig.
+- **Abnahme des Brücken-Lifecycle am App-Bundle.** Der Start läuft jetzt über
+  einen Callback außerhalb des Hauptthreads. Abschalten storniert aktive Sessions;
+  eine neue Instanz wartet auf die bestätigte Freigabe des alten Listeners.
+  Kern-Gegenproben für Start, Stop, Neustart und TCP-Reset sind bestanden.
+  Die Abnahme an einem frisch notarisierten Bundle und über das echte Heimnetz
+  bleibt offen.
+- **Abbruch von Transkription und Bereinigung.** Router-Tasks werden bereits
+  storniert; Decoder und Whisper-Selbststart prüfen jetzt zusätzlich den Abbruch.
+  Eine stornierte Bereinigung startet weder eine zweite Probe noch Retry/Fallback.
+  Kern-Gegenproben sind bestanden; der reale Verbindungsabbruch während eines
+  Diktats über das App-Bundle bleibt zu prüfen.
 - **Sperrliste der Worttreue-Prüfung kennt nur Deutsch und Englisch.**
   `CleanupService.meaningCriticalWords` deckt seit 0.9.6 beide Sprachen ab.
   `whisper.language` steht aber standardmäßig auf `auto`: Bei einem
   französischen, spanischen oder italienischen Diktat kann eine verschluckte
   Verneinung weiterhin als gewöhnliche Füllwort-Löschung durchgehen. Sauberer
   als jede Sprache einzeln nachzupflegen wäre, Löschungen nur über eine
-  sprachabhängige Positivliste sicherer Füllwörter zu erlauben.
+  sprachabhängige Positivliste sicherer Füllwörter zu erlauben. Auch DE/EN ist
+  betroffen: Die Gegenprobe mit „ich überweise hundert euro“ → „Ich überweise
+  Euro.“ sowie „I approve this tomorrow“ → „I approve this.“ schlägt fehl.
+  Offen ist die Entscheidung, ob mehrdeutige Füllwörter zugunsten der Worttreue
+  erhalten bleiben sollen.
 
 ## Offen aus dem Code-Review vom 2026-08-20
 
 Der Report (17 Funde) ist abgearbeitet: 15 Funde sind behoben, zwei bleiben
 liegen, weil sie mehr als einen chirurgischen Eingriff brauchen.
 
-- **Halbschluss der Gegenstelle beendet eine gültige Anfrage.** `BridgeServer`
-  wertet ein TCP-FIN in der Empfangsrichtung als Abbruch: Eine vollständig
-  übertragene Anfrage wird verworfen, wenn der Client danach nur seine
-  Senderichtung schließt (`receive`-Callback mit `isComplete`, und
-  `receiveDisconnect` storniert dieselbe Anfrage später während der Arbeit).
-  HTTP erlaubt diesen Halbschluss ausdrücklich; ein solcher Client wartet
-  vergeblich auf seine Antwort. Die heutigen Gegenstellen (Kurzbefehl auf dem
-  iPhone, `curl`) machen das nicht, deshalb fällt es im Alltag nicht auf.
-  Der Fix ist keine Kleinigkeit: Das Stornieren bei Verbindungsende ist eine
-  bewusste Zusage aus 0.9.11/0.9.12 und in `AGENTS.md` festgeschrieben, und
-  `NWConnection` meldet „Gegenstelle ganz weg" nicht anders als „Gegenstelle
-  hört noch zu". Nötig wären: Antwort trotz Empfangs-EOF ausliefern, Abbruch nur
-  noch aus Reset/Fehler/gescheitertem Senden ableiten, der bestehende Test
-  `testClientHalfCloseCancelsInFlightRequest` müsste in zwei Tests zerfallen
-  (Halbschluss mit 200 und echter Abbruch).
+- **TCP-Halbschluss: Kern korrigiert, Netzabnahme offen.** Ein vollständig
+  übertragener Request wird trotz Empfangs-EOF beantwortet. EOF beendet nur
+  die Senderichtung des Clients; Reset/Fehler, Abschalten und fehlgeschlagenes
+  Senden stornieren Arbeit. Die Gegenproben unterscheiden HTTP 200 nach
+  `shutdown(SHUT_WR)` und echte Cancellation nach TCP-Reset. Der Transport
+  behält nach dem Senden seine begrenzte Abholfrist. Eine Gegenprobe über das
+  echte Heimnetz am aktuellen notarisierten App-Bundle fehlt noch.
 - **Der Modell-Download beweist nur die Dateigröße, nicht den Inhalt.** Die
   Quelle zeigt auf `…/resolve/main/…`, also auf einen veränderlichen Stand, und
   die Abschlussprüfung vergleicht ausschließlich die Bytezahl. Seit 2026-08-20
@@ -348,7 +339,9 @@ liegen, weil sie mehr als einen chirurgischen Eingriff brauchen.
   bis zum Wechsel. Zuerst am Gerät reproduzieren (USB-Mikrofon abziehen, dann
   Bluetooth-Headset trennen), erst danach über die Behandlung entscheiden:
   Aufnahme mit klarer Meldung beenden ist ehrlicher als still weiterzulaufen.
-- Wörterbuch-Pflege in den Einstellungen (GUI) statt nur in `config.json`;
+- Wörterbuch-Pflege: Editor mit einem Begriff pro Zeile im Bereinigungs-Tab
+  vorbereitet und kompiliert. Sichtprüfung in DE/EN sowie Bearbeiten, Speichern,
+  erneutes Öffnen und Abbrechen am aktuellen notarisierten Bundle sind offen.
   Vorbelegung siehe `Config.Cleanup.defaultDictionary` (seit 0.9.0).
 
 Erledigte Release-, README-, Lizenz-, GitHub- und Settings-Arbeit gehört in

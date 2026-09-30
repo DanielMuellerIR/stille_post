@@ -1462,6 +1462,54 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(transport.streamCallCount, 2)
     }
 
+    func testCancelledCleanupDoesNotRetryOrUseFallback() async {
+        for error in [CancellationError() as Error, URLError(.cancelled) as Error] {
+            let transport = StubCleanupTransport(outcomes: [.failure(error)])
+            var config = Config.Cleanup()
+            var fallback = Config.Cleanup.Endpoint()
+            fallback.ollamaURL = "http://127.0.0.1:11435"
+            fallback.model = "test"
+            config.fallbacks = [fallback]
+            let service = CleanupService(config: config, transport: transport)
+            service.notePrimarySuccess()
+            var retryReported = false
+            service.onPrimaryRetry = { retryReported = true }
+            _ = await service.clean("Dieser Text ist ein künstlicher Abbruchtest.")
+            XCTAssertEqual(transport.streamCallCount, 1)
+            XCTAssertEqual(transport.probeCallCount, 0)
+            XCTAssertEqual(transport.normalCallCount, 0)
+            XCTAssertFalse(retryReported)
+        }
+    }
+
+    func testCancelledColdCleanupDoesNotRepeatProbeOrUseFallback() async {
+        let transport = StubCleanupTransport(outcomes: [], probeError: CancellationError())
+        var config = Config.Cleanup()
+        var fallback = Config.Cleanup.Endpoint()
+        fallback.ollamaURL = "http://127.0.0.1:11435"
+        config.fallbacks = [fallback]
+        let service = CleanupService(config: config, transport: transport)
+        _ = await service.clean("Dieser Text ist ein künstlicher Abbruchtest.")
+        XCTAssertEqual(transport.probeCallCount, 1)
+        XCTAssertEqual(transport.streamCallCount, 0)
+        XCTAssertEqual(transport.normalCallCount, 0)
+    }
+
+    func testCancelledLiveBridgeDoesNotDecodeOrStartWhisper() async {
+        let handlers = BridgeHandlers.live(config: Config(), version: "test")
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            do {
+                _ = try await handlers.transcribe(Data())
+                XCTFail("Stornierte Transkription lieferte Erfolg")
+            } catch {
+                XCTAssertTrue(error is CancellationError,
+                              "Abbruch muss vor der Decoder-Fehlermeldung erfolgen")
+            }
+        }
+        await task.value
+    }
+
     func testCleanupFallsBackAfterTwoIncompletePrimaryStreams() async {
         let raw = "also das ist ein vollständiger test für einen echten fallback endpoint"
         let cleaned = "Das ist ein vollständiger Test für einen echten Fallback-Endpoint."
@@ -1982,6 +2030,7 @@ private final class StubCleanupTransport: CleanupTransport {
     private var outcomes: [StreamOutcome]
     private let normalContent: String
     private let probeSucceeds: Bool
+    private let probeError: Error?
     /// Was `/api/tags` melden soll — die Modellliste des gestellten Servers.
     private let installedModels: [String]
     private(set) var streamCallCount = 0
@@ -1993,10 +2042,11 @@ private final class StubCleanupTransport: CleanupTransport {
     }
 
     init(outcomes: [StreamOutcome], normalContent: String = "", probeSucceeds: Bool = true,
-         installedModels: [String] = []) {
+         installedModels: [String] = [], probeError: Error? = nil) {
         self.outcomes = outcomes
         self.normalContent = normalContent
         self.probeSucceeds = probeSucceeds
+        self.probeError = probeError
         self.installedModels = installedModels
     }
 
@@ -2005,6 +2055,7 @@ private final class StubCleanupTransport: CleanupTransport {
             if probing { probeCallCount += 1 } else { normalCallCount += 1 }
         }
         // Ein toter Server meldet sich auch bei der Probe nicht.
+        if probing, let probeError { throw probeError }
         if probing, !probeSucceeds { throw URLError(.cannotConnectToHost) }
         let body: Data
         if request.url?.path == "/api/tags" {
