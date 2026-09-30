@@ -79,6 +79,23 @@ final class AudioFailureLifecycleTests: XCTestCase {
     }
 
     @MainActor
+    func testOffThreadFailureDuringRecorderStopPreventsSuccessfulProcessing() async throws {
+        let fixture = try LossFixture()
+        defer { fixture.removeFiles() }
+        await start(fixture)
+        fixture.recorder.onSamples?([0.1])
+        fixture.recorder.failWhileStopping = true
+        fixture.engine.stop()
+        await drainMainQueue()
+        guard case .error = fixture.engine.state else { return XCTFail("Ein Gerätefehler während stop() darf kein Erfolg werden") }
+        XCTAssertEqual(fixture.recorder.stopCount, 1)
+        XCTAssertEqual(fixture.segmenter.flushCount, 0)
+        XCTAssertEqual(fixture.cleanup.calls, 0)
+        XCTAssertEqual(fixture.deliveries, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(fixture.writerURL).path))
+    }
+
+    @MainActor
     func testNormalStopWriterFailureCancelsPendingSegment() async throws {
         let fixture = try LossFixture(writerFailure: .finish)
         defer { fixture.removeFiles() }
@@ -272,13 +289,27 @@ private final class LossRecorder: DictationRecorder {
     var onFailure: ((Error) -> Void)?
     var stopCount = 0
     var failStartAfterSamples = false
+    var failWhileStopping = false
     func start() throws {
         if failStartAfterSamples {
             onSamples?([0.2])
             throw AudioRecorder.RecorderError.recordingInterrupted
         }
     }
-    func stop() { stopCount += 1 }
+    func stop() {
+        stopCount += 1
+        if failWhileStopping, let failure = onFailure {
+            // Der Audiothread meldet den Fehler, während der Hauptthread noch
+            // im Geräte-Stopp wartet. Erst danach kehrt stop() zurück.
+            let emitted = DispatchSemaphore(value: 0)
+            DispatchQueue.global().async {
+                XCTAssertFalse(Thread.isMainThread)
+                failure(AudioRecorder.RecorderError.recordingInterrupted)
+                emitted.signal()
+            }
+            XCTAssertEqual(emitted.wait(timeout: .now() + 1), .success)
+        }
+    }
 }
 private final class LossSegmenter: DictationSegmenter {
     var onSegment: ((VadSegmenter.Segment) -> Void)?

@@ -352,11 +352,11 @@ public final class DictationEngine {
 
     public func stop() {
         guard state == .recording, let recorder, let segmenter else { return }
-        if let error = recordingFailure?.error {
+        let failureSignal = recordingFailure
+        if let error = failureSignal?.error {
             failRecording(error, generation: sessionGeneration)
             return
         }
-        recordingFailure = nil
         let duration = recordingDuration
 
         // Mikrofon zuerst schließen, erst danach den Verarbeitungszustand melden:
@@ -364,6 +364,13 @@ public final class DictationEngine {
         // wurde dieser Ton noch aufgenommen und als vermeintliche Sprache erkannt.
         recorder.stop()
         self.recorder = nil
+        // Auch während des Geräte-Stopps kann der Audio-Thread noch einen
+        // Fehler melden. Erst danach darf der normale Verarbeitungsweg starten.
+        if let error = failureSignal?.error {
+            failRecording(error, generation: sessionGeneration)
+            return
+        }
+        recordingFailure = nil
         setState(.processing)
         segmenter.flush()  // letztes angefangenes Segment noch ausliefern
         self.segmenter = nil
