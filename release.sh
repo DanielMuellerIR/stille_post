@@ -35,6 +35,20 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Ein Release muss einen gespeicherten Quellstand abbilden. Auch neue, noch
+# unversionierte Dateien zählen; ignorierte Build-Artefakte dagegen nicht.
+# Die Prüfung steht vor Konfiguration, Build und Notarisierung, damit bei einem
+# unsauberen Arbeitsbaum keine teuren oder externen Schritte beginnen.
+if ! worktree_status="$(git status --porcelain --untracked-files=all)"; then
+    echo "FEHLER: Git-Arbeitsbaum konnte nicht geprüft werden." >&2
+    exit 7
+fi
+if [[ -n "$worktree_status" ]]; then
+    echo "FEHLER: Release benötigt einen sauberen Git-Arbeitsbaum." >&2
+    echo "Änderungen und neue Dateien zuerst sichern oder separat bearbeiten." >&2
+    exit 7
+fi
+
 # Profilname: Umgebung schlägt clone-lokale Git-Konfiguration. Der echte Name
 # bleibt damit außerhalb des öffentlichen Repos.
 if [[ -z "${NOTARY_PROFILE:-}" ]]; then

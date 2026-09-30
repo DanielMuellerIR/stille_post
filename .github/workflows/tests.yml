@@ -1,0 +1,26 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: macos-15
+    steps:
+      - name: Quelltext auschecken
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Swift-Tests ausführen
+        run: swift test
+
+      - name: Release-Verträge prüfen
+        shell: bash
+        run: |
+          bash scripts/test-release-clean-tree.sh
+          bash scripts/test-release-publication.sh
