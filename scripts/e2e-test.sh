@@ -51,13 +51,13 @@ fi
 
 # Bereinigungs-Mechanik: Füllwörter + Doppelungen müssen aus ECHTEM Text verschwinden,
 # Eigennamen und Wortlaut müssen erhalten bleiben.
-CLEAN_IN="also ähm ich wollte halt sagen dass dass der Orkus-Server äh morgen aktualisiert wird"
+CLEAN_IN="ähm ich wollte sagen dass dass der Orkus-Server äh morgen aktualisiert wird"
 # Für diesen separaten Schritt gilt die normale Benutzer-Config: Sie enthält den
 # tatsächlich eingerichteten Cleanup-Endpoint. Die temporäre STT-Config würde sonst
 # unbemerkt auf den Default-Endpoint zurückfallen und gar nicht das reale Setup testen.
 CLEAN_OUT="$(.build/debug/stillepost-cli cleanup "$CLEAN_IN")"
 echo "     Bereinigung: $CLEAN_OUT"
-if grep -qiE "ähm|äh |halt " <<<"$CLEAN_OUT "; then
+if grep -qiE "ähm|äh " <<<"$CLEAN_OUT "; then
     echo "✗ Füllwörter wurden nicht entfernt"
     FAIL=1
 fi

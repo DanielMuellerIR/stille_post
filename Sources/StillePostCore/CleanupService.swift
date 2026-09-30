@@ -400,10 +400,9 @@ public final class CleanupService {
     /// betroffene Satzteil auf die Roh-Wörter zurückgesetzt.
     ///
     /// Erlaubte Abweichungen je Ausrichtungslücke (via LCS-Anker):
-    ///  - Löschungen (Füllwörter) und reine Wort-Trennung/-Fusion ("dauer haft").
-    ///    Ausnahme: Fällt ein Wort der Sperrliste `meaningCriticalWords` weg, wird
-    ///    der umgebende Satzteil zurückgesetzt — eine verschluckte Verneinung ist
-    ///    so sinnverkehrend wie eine ersetzte.
+    ///  - Eindeutige Sprechpausen und unmittelbare wortgleiche Wiederholungen
+    ///    löschen; andere Löschungen setzen den betroffenen Satzteil zurück.
+    ///  - Reine Wort-Trennung/-Fusion ("dauer haft").
     ///  - Ein Tippfehler/Verhörer (Editierabstand 1) und kurze Flexionsendungen.
     ///  - NEU: gleich klingende Wörter (Kölner Phonetik, "Rack" -> "RAG").
     ///  - NEU: Wörterbuch-Fachbegriffe, wenn sie ähnlich klingen ("Mini Macs" ->
@@ -480,41 +479,43 @@ public final class CleanupService {
         var rawLo = [Int](repeating: 0, count: m)
         var rawHi = [Int](repeating: 0, count: m)
         var corrections = 0
-        // Weggelassene Sperrlisten-Wörter, einzeln für die Nachbewertung unten.
+        // Unzulässig weggelassene Wörter, einzeln für die Nachbewertung unten.
         // Neben dem Wort selbst bleiben die Grenzen der ganzen Löschungslücke
         // erhalten: Eine Satzgrenze kann vor einem ebenfalls gelöschten Füllwort
         // stehen und gehört trotzdem zur Einordnung der folgenden Verneinung.
         var droppedMeaning: [(
             rawStart: Int, rawEnd: Int, gapStart: Int, gapEnd: Int, cleanIndex: Int
         )] = []
-        // Bedeutungsschlüssel der Ausgabe-Wörter unmittelbar vor und hinter einer
-        // Lücke. Steht die Verneinung dort noch, war die Löschung nur eine
-        // Entdoppelung ("nicht nicht" -> "nicht") und ändert die Aussage nicht.
-        func neighborMeaningKeys(atCleanIndex cs: Int) -> Set<String> {
-            var keys: Set<String> = []
-            for j in [cs - 1, cs] where j >= 0 && j < m {
-                if let key = meaningCriticalWords[cleanTokens[j].norm] { keys.insert(key) }
+        // Nur eindeutige Sprechpausen löschen. „um“, „also“, „halt“ und
+        // „quasi“ können Bedeutung tragen; Sprache=auto erlaubt keine sichere
+        // Zuordnung. Eine unmittelbare Wiederholung muss daneben wortgleich
+        // erhalten bleiben und darf keine Satzteilgrenze überschreiten.
+        let hesitationWords: Set<String> = ["äh", "ähm", "ähh", "öh", "öhm", "uh", "uhm", "erm"]
+        func mayDelete(_ index: Int, cleanIndex: Int) -> Bool {
+            let word = rawTokens[index].norm
+            if hesitationWords.contains(word) { return true }
+            guard !word.contains(where: { $0.isNumber }) else { return false }
+            for (rawNeighbor, cleanNeighbor) in [(index - 1, cleanIndex - 1),
+                                                 (index + 1, cleanIndex)] {
+                guard rawNeighbor >= 0, rawNeighbor < n,
+                      cleanNeighbor >= 0, cleanNeighbor < m,
+                      rawTokens[rawNeighbor].norm == word,
+                      cleanTokens[cleanNeighbor].norm == word else { continue }
+                let left = min(index, rawNeighbor), right = max(index, rawNeighbor)
+                let between = rawTokens[left].range.upperBound..<rawTokens[right].range.lowerBound
+                let separator = raw[between]
+                if !separator.isEmpty, separator.allSatisfy({ $0.isWhitespace }) { return true }
             }
-            return keys
+            return false
         }
         // Bewertet die Lücke rawTokens[rs..<re] / cleanTokens[cs..<ce] vor einem Anker.
         func classifyGap(_ rs: Int, _ re: Int, _ cs: Int, _ ce: Int) {
             guard ce > cs else {
-                // Reine Löschung: als Füllwort-Entfernung erlaubt — außer es
-                // verschwindet ein Wort der Sperrliste. Eine verschluckte
-                // Verneinung dreht den Sinn genauso um wie eine ersetzte
-                // ("ich habe das nicht gemacht" -> "Ich habe das gemacht").
+                // Jede unbelegte Löschung zurücksetzen, nicht nur Verneinungen:
+                // auch Beträge, Termine und mehrdeutige Wörter bleiben erhalten.
                 guard rs < re else { return }
-                let neighboring = neighborMeaningKeys(atCleanIndex: cs)
-                let unrepresented = Set(meaningKeys(rawTokens[rs..<re].map(\.norm)))
-                    .subtracting(neighboring)
-                if !unrepresented.isEmpty {
-                    for rawIndex in rs..<re {
-                        if let key = meaningCriticalWords[rawTokens[rawIndex].norm],
-                           unrepresented.contains(key) {
-                            droppedMeaning.append((rawIndex, rawIndex + 1, rs, re, cs))
-                        }
-                    }
+                for rawIndex in rs..<re where !mayDelete(rawIndex, cleanIndex: cs) {
+                    droppedMeaning.append((rawIndex, rawIndex + 1, rs, re, cs))
                 }
                 return
             }
@@ -556,12 +557,12 @@ public final class CleanupService {
             guard lower <= upper else { return false }
             return (lower...upper).contains(where: rawClauseBoundary(before:))
         }
-        // Weggelassene Sperrlisten-Wörter nachtragen. Eine reine Löschung hat kein
+        // Unzulässig weggelassene Wörter nachtragen. Eine reine Löschung hat kein
         // eigenes Ausgabe-Wort, an dem die Rücksetzung hängen könnte — deshalb
         // erbt sie normalerweise das Ausgabe-Wort direkt VOR der Lücke (steht die
         // Lücke ganz am Anfang, das erste Wort dahinter; die Ausnahme an der
         // Satzteil-Grenze steht in der Schleife). Genau dessen Satzteil ist der,
-        // aus dem die Verneinung verschwunden ist. Sein Roh-Deckungsbereich wächst
+        // aus dem das Wort verschwunden ist. Sein Roh-Deckungsbereich wächst
         // um die gelöschten Roh-Wörter, damit der Wiederaufbau sie wieder einsetzt.
         // Erst hier und nicht in `classifyGap`, weil der Ankerlauf oben rawLo/rawHi
         // der Anker-Wörter nach dem Lückenaufruf noch überschreibt.
@@ -904,9 +905,9 @@ public final class CleanupService {
     ///     nur/nun, immer/nimmer, weder/jeder, nirgendwo/irgendwo (Abstand 1),
     ///     ohne/ahne (gleicher Kölner Lautcode "06").
     ///
-    /// Kriterium 2 begründet nur den ERSETZUNGS-Pfad. Beim Wegfall eines Wortes
-    /// (siehe `reconcile`, reine Löschung) zählt allein Kriterium 1: Dafür braucht
-    /// es kein ähnliches Nachbarwort, das Wort verschwindet ja ersatzlos.
+    /// Die Liste schützt Ersetzungen. Reine Löschungen schützt `reconcile`
+    /// unabhängig von dieser Liste über eine enge Positivliste für Sprechpausen
+    /// und unmittelbar wortgleich erhaltene Wiederholungen.
     ///
     /// Schlüssel: die normalisierte Wortform (kleingeschrieben, nur Buchstaben) —
     /// genau die Form, in der die Ausrichtung Wörter vergleicht.
@@ -1245,7 +1246,7 @@ public final class CleanupService {
     public static let systemPrompt = """
     Du bist ein reines Textputz-Werkzeug in einer Diktier-App. Du bekommst transkribierte gesprochene Sprache und gibst exakt denselben Text zurück — nur von Sprechfehlern gesäubert und mit korrigierten Satzzeichen.
 
-    DEINE EINZIGE AUFGABE: Füllwörter, Versprecher, Stottern und unbeabsichtigte Wortwiederholungen entfernen sowie Satzzeichen und Groß-/Kleinschreibung korrigieren. Sonst nichts.
+    DEINE EINZIGE AUFGABE: Eindeutige Sprechpausen und unmittelbare wortgleiche Wiederholungen entfernen sowie Satzzeichen und Groß-/Kleinschreibung korrigieren. Sonst nichts.
 
     BESONDERHEIT DER EINGABE: Der Text wurde stückweise transkribiert (an Sprechpausen geschnitten). Punkte und Großschreibung an den Stückgrenzen sind deshalb oft FALSCH — mitten im Satz kann ein Punkt stehen, obwohl der Satz weitergeht. Setze Satzzeichen und Groß-/Kleinschreibung über den GESAMTEN Text neu und grammatisch korrekt: Zerrissene Sätze wieder verbinden (falscher Punkt weg, stattdessen Komma oder gar nichts), echte Satzenden behalten. Die Wörter und ihre Reihenfolge bleiben dabei unverändert.
 
@@ -1258,21 +1259,21 @@ public final class CleanupService {
     - Im Zweifel das Wort UNVERÄNDERT stehen lassen. Lieber ein Füllwort zu wenig entfernt als ein Satz verändert.
 
     ERLAUBT (nur das):
-    - Füllwörter raus, wenn sie keine Bedeutung tragen: äh, ähm, hm, also (als Füllsel), halt, quasi, sozusagen, ne, ja (als Füllsel).
-    - Versprecher, Stottern, abgebrochene Wortanfänge und unbeabsichtigte Doppelungen raus: „ich ich wollte" → „ich wollte".
-    - Selbstkorrektur: Korrigiert sich die Person, nur die korrigierte Fassung behalten.
+    - Nur eindeutige Sprechpausen entfernen: äh, ähm, ähh, öh, öhm, uh, uhm, erm.
+    - Unmittelbare wortgleiche Wiederholungen entfernen: „ich ich wollte" → „ich wollte".
+    - Mehrdeutige Wörter wie „also“, „halt“, „quasi“, „um“, „so“, „ja“ und „hm“ immer erhalten. Beträge, Termine und Selbstkorrekturen nicht kürzen.
     - Groß-/Kleinschreibung und Satzzeichen korrigieren. Die Schreibweise der Wörter selbst unverändert lassen.
     - Satzzeichen sparsam und grammatisch korrekt setzen: kein Komma, wo keines hingehört; ein Punkt NUR an echten Satzenden, nie mitten im Satz.
-    - Gesprochene Satzzeichen umsetzen („Komma", „Punkt", „neuer Absatz").
+    - Wörter wie „Komma“, „Punkt“ und „neuer Absatz“ erhalten; ihre Bedeutung ist ohne ausdrücklichen Befehlsmodus mehrdeutig.
     - Sprache der Eingabe beibehalten, nichts übersetzen.
 
     BEISPIELE (zeigen, wie WENIG geändert wird — Satzbau und Wortwahl bleiben identisch):
 
     Eingabe: also ähm ich wollte halt mal kurz sagen dass das mit dem diktieren noch nicht so richtig schnell läuft
-    Ausgabe: Ich wollte mal kurz sagen, dass das mit dem Diktieren noch nicht so richtig schnell läuft.
+    Ausgabe: Also, ich wollte halt mal kurz sagen, dass das mit dem Diktieren noch nicht so richtig schnell läuft.
 
     Eingabe: wir müssen das un- wir sollten das lieber gleich morgen früh machen
-    Ausgabe: Wir sollten das lieber gleich morgen früh machen.
+    Ausgabe: Wir müssen das un- wir sollten das lieber gleich morgen früh machen.
 
     Eingabe: das ist ist eigentlich eine ziemlich gute sache finde ich ehrlich gesagt
     Ausgabe: Das ist eigentlich eine ziemlich gute Sache, finde ich ehrlich gesagt.

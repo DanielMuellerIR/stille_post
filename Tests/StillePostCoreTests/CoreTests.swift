@@ -145,7 +145,7 @@ final class CoreTests: XCTestCase {
 
     func testReconcileAcceptsNormalCleanup() {
         let raw = "also ähm ich wollte halt mal kurz sagen dass das mit dem diktieren noch nicht so richtig schnell läuft"
-        let cleaned = "Ich wollte mal kurz sagen, dass das mit dem Diktieren noch nicht so richtig schnell läuft."
+        let cleaned = "Also, ich wollte halt mal kurz sagen, dass das mit dem Diktieren noch nicht so richtig schnell läuft."
         XCTAssertTrue(acceptsUnchanged(raw: raw, cleaned: cleaned))
     }
 
@@ -182,8 +182,8 @@ final class CoreTests: XCTestCase {
     }
 
     func testReconcileAllowsShortInputs() {
-        // Kurze Diktate dürfen stark schrumpfen ("ähm ja Punkt" -> "Ja.").
-        XCTAssertTrue(acceptsUnchanged(raw: "ähm ja punkt", cleaned: "Ja."))
+        // Auch kurze Diktate dürfen eindeutige Zögerlaute verlieren.
+        XCTAssertTrue(acceptsUnchanged(raw: "ähm ja", cleaned: "Ja."))
     }
 
     func testReconcileRevertsOnlyTheChangedClause() {
@@ -255,7 +255,7 @@ final class CoreTests: XCTestCase {
 
     func testReconcileAllowsOrderedWordDeletion() {
         XCTAssertTrue(acceptsUnchanged(
-            raw: "Also ich ich wollte ähm heute den Bericht schreiben",
+            raw: "Ähm ich ich wollte ähm heute den Bericht schreiben",
             cleaned: "Ich wollte heute den Bericht schreiben."
         ))
     }
@@ -357,7 +357,7 @@ final class CoreTests: XCTestCase {
         // Unveränderte Ziffern-Kennung darf drumherum weiter geputzt werden (hier:
         // Füllwort entfernen), solange die Kennung selbst exakt erhalten bleibt.
         XCTAssertTrue(acceptsUnchanged(
-            raw: "das ist halt das gemma 426b modell",
+            raw: "das ist ähm das gemma 426b modell",
             cleaned: "Das ist das Gemma 426b Modell."))
     }
 
@@ -493,7 +493,7 @@ final class CoreTests: XCTestCase {
                               cleaned: "We have time for that."))
         // Ohne Verneinung bleibt die englische Bereinigung ganz normal erlaubt.
         XCTAssertTrue(acceptsUnchanged(raw: "so i did approve this yesterday",
-                                       cleaned: "I did approve this yesterday."))
+                                       cleaned: "So, I did approve this yesterday."))
     }
 
     func testReconcileTreatsEnglishContractionsAsOneNegation() {
@@ -510,15 +510,43 @@ final class CoreTests: XCTestCase {
     }
 
     func testReconcileStillAllowsDeletingFillersAndStutteredNegations() {
-        // Kernbedingung der Erweiterung: Gewöhnliche Löschungen bleiben erlaubt.
+        // Eindeutige Sprechpausen dürfen weiterhin verschwinden.
         XCTAssertTrue(acceptsUnchanged(
-            raw: "also ähm das ist halt quasi fertig",
+            raw: "ähm das ist äh fertig",
             cleaned: "Das ist fertig."))
         // Und eine gestotterte Verneinung darf entdoppelt werden: Die Aussage
         // ändert sich nicht, weil dasselbe Wort direkt daneben stehen bleibt.
         XCTAssertTrue(acceptsUnchanged(
             raw: "ich habe das nicht nicht gemacht",
             cleaned: "Ich habe das nicht gemacht."))
+    }
+
+    func testReconcileProtectsAmountsDatesAndAmbiguousFillers() {
+        for (raw, cleaned) in [
+            ("ich überweise hundert euro", "Ich überweise Euro."),
+            ("I approve this tomorrow", "I approve this."),
+            ("ich fahre um zehn uhr", "Ich fahre zehn Uhr."),
+            ("das ist quasi fertig", "Das ist fertig."),
+            ("das ist halt fertig", "Das ist fertig."),
+            ("I also approve this", "I approve this."),
+            ("so i did approve this", "I did approve this."),
+            ("Ich fahre nach Baden-Baden", "Ich fahre nach Baden."),
+            ("Termin 10/10", "Termin 10."),
+        ] { XCTAssertTrue(rejects(raw: raw, cleaned: cleaned), raw) }
+    }
+
+    func testReconcileAllowsEnglishHesitationsAndImmediateRepetition() {
+        XCTAssertTrue(acceptsUnchanged(raw: "uh I I approve this tomorrow",
+                                       cleaned: "I approve this tomorrow."))
+        XCTAssertTrue(rejects(raw: "nicht, nicht machen", cleaned: "Nicht machen."))
+    }
+
+    func testReconcileRevertsOnlyTheClauseWithDroppedAmount() {
+        XCTAssertEqual(CleanupService.reconcile(
+            raw: "ich überweise hundert euro. danach schicke ich den beleg",
+            cleaned: "Ich überweise Euro. Danach schicke ich den Beleg."
+        ), .accepted(text: "ich überweise hundert euro. Danach schicke ich den Beleg.",
+                     revertedClauses: 1))
     }
 
     func testReconcileRejectsManyMicroEditsAsRewrite() {
@@ -1440,7 +1468,7 @@ final class CoreTests: XCTestCase {
     }
 
     func testCleanupStreamRetriesProviderErrorOnFreshConnection() async {
-        let raw = "also das ist ein vollständiger test für einen provider fehler"
+        let raw = "ähm das ist ein vollständiger test für einen provider fehler"
         let cleaned = "Das ist ein vollständiger Test für einen Provider-Fehler."
         let transport = StubCleanupTransport(streams: [
             [#"{"error":"Modell wird neu geladen"}"#],
@@ -1511,7 +1539,7 @@ final class CoreTests: XCTestCase {
     }
 
     func testCleanupFallsBackAfterTwoIncompletePrimaryStreams() async {
-        let raw = "also das ist ein vollständiger test für einen echten fallback endpoint"
+        let raw = "ähm das ist ein vollständiger test für einen echten fallback endpoint"
         let cleaned = "Das ist ein vollständiger Test für einen echten Fallback-Endpoint."
         var config = Config.Cleanup()
         config.fallbacks = [Config.Cleanup.Endpoint()]
@@ -1540,7 +1568,7 @@ final class CoreTests: XCTestCase {
         // derselben kurzen Geduld liefe genauso ins Leere — erwartet wird die
         // geduldige Komplett-Antwort, nachdem die Probe den Server als lebendig
         // bestaetigt hat.
-        let raw = "also das ist ein vollständiger test für ein kalt startendes modell"
+        let raw = "ähm das ist ein vollständiger test für ein kalt startendes modell"
         let cleaned = "Das ist ein vollständiger Test für ein kalt startendes Modell."
         let transport = StubCleanupTransport(
             outcomes: [.failure(URLError(.timedOut))], normalContent: cleaned
@@ -1566,7 +1594,7 @@ final class CoreTests: XCTestCase {
         // Gleiche Ausgangslage, aber der Server ist wirklich weg. Dann darf der
         // geduldige Versuch NICHT laufen: Er wuerde bis zu 120 s kosten, bevor
         // die Kette weiterzieht.
-        let raw = "also das ist ein vollständiger test für einen wirklich toten endpoint"
+        let raw = "ähm das ist ein vollständiger test für einen wirklich toten endpoint"
         let transport = StubCleanupTransport(
             outcomes: [.failure(URLError(.timedOut))], probeSucceeds: false
         )
