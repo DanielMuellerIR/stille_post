@@ -83,6 +83,7 @@ public final class DictationEngine {
     /// Segment-Ergebnisse in Aufnahme-Reihenfolge (Index -> Text).
     private var segmentResults: SegmentCollector?
     private var segmentTasks: RecordingSegmentTasks?
+    private var recordingFailure: RecordingFailure?
     /// Die WAV-Datei, die gerade verarbeitet wird. `stop()` nimmt sie dem Writer
     /// ab; bis sie nachweislich gelöscht oder im Verlauf vermerkt ist, muss die
     /// Engine sie kennen — sonst hinterlässt ein Abbruch während `.processing`
@@ -190,6 +191,8 @@ public final class DictationEngine {
         let segmenter = makeSegmenter(config.vad)
         let recorder = makeRecorder(config.audio)
         let collector = SegmentCollector()
+        let recordingFailure = RecordingFailure()
+        self.recordingFailure = recordingFailure
         let segmentTasks = RecordingSegmentTasks()
         self.segmentTasks = segmentTasks
         segmentResults = collector
@@ -248,8 +251,15 @@ public final class DictationEngine {
         }
 
         recorder.onFailure = { [weak self] error in
-            DispatchQueue.main.async {
+            // Das Fehlersignal wird sofort festgehalten. Ein unmittelbar folgender
+            // Stopp darf nicht vorher den normalen Erfolgsweg starten.
+            recordingFailure.record(error)
+            if Thread.isMainThread {
                 self?.failRecording(error, generation: generation)
+            } else {
+                DispatchQueue.main.async {
+                    self?.failRecording(error, generation: generation)
+                }
             }
         }
 
@@ -259,6 +269,7 @@ public final class DictationEngine {
             wavWriter = nil
             self.segmentTasks?.cancel()
             self.segmentTasks = nil
+            self.recordingFailure = nil
             segmentResults = nil
             let startError = error
             do {
@@ -281,6 +292,9 @@ public final class DictationEngine {
         self.segmenter = segmenter
         self.recordingStart = Date()
         setState(.recording)
+        if let error = recordingFailure.error {
+            failRecording(error, generation: generation)
+        }
     }
 
     /// Ein unterbrochenes Mikrofon darf nicht den normalen Stopp auslösen:
@@ -294,6 +308,7 @@ public final class DictationEngine {
         sessionTask = nil
         segmentTasks?.cancel()
         segmentTasks = nil
+        recordingFailure = nil
         recorder?.stop()
         recorder = nil
         segmenter = nil
@@ -337,6 +352,11 @@ public final class DictationEngine {
 
     public func stop() {
         guard state == .recording, let recorder, let segmenter else { return }
+        if let error = recordingFailure?.error {
+            failRecording(error, generation: sessionGeneration)
+            return
+        }
+        recordingFailure = nil
         let duration = recordingDuration
 
         // Mikrofon zuerst schließen, erst danach den Verarbeitungszustand melden:
@@ -363,6 +383,10 @@ public final class DictationEngine {
             processingWavURL = nil
             segmentResults = nil
             sessionGeneration &+= 1
+            segmentTasks?.cancel()
+            segmentTasks = nil
+            sessionTask?.cancel()
+            sessionTask = nil
             let retainedPath = writer?.url.path ?? "–"
             setState(.error(L10n.format(
                 "core.dictation.audio_write_failed", retainedPath, error.localizedDescription
@@ -642,6 +666,7 @@ public final class DictationEngine {
         sessionTask = nil
         segmentTasks?.cancel()
         segmentTasks = nil
+        recordingFailure = nil
         recorder?.stop()
         recorder = nil
         segmenter = nil
@@ -914,6 +939,20 @@ private final class RecordingSegmentTasks {
             cancelled = true
             tasks.forEach { $0.cancel() }
             tasks.removeAll()
+        }
+    }
+}
+
+/// Recorder dürfen Fehler aus einem Audio-Callback melden. Das kurze Lock sichert
+/// nur das Signal; Geräte-Stopp und UI-Zustand bleiben auf dem Hauptthread.
+private final class RecordingFailure {
+    private let lock = NSLock()
+    private var storedError: Error?
+    var error: Error? { lock.withLock { storedError } }
+
+    func record(_ error: Error) {
+        lock.withLock {
+            if storedError == nil { storedError = error }
         }
     }
 }

@@ -37,6 +37,69 @@ final class AudioFailureLifecycleTests: XCTestCase {
     }
 
     @MainActor
+    func testFailureImmediatelyBeforeStopCannotEnterSuccessfulProcessing() async throws {
+        let fixture = try LossFixture()
+        defer { fixture.removeFiles() }
+        await start(fixture)
+        fixture.recorder.onSamples?([0.1])
+        fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [0.1], hadSpeech: true, reason: .pause))
+        fixture.recorder.onFailure?(AudioRecorder.RecorderError.recordingInterrupted)
+        fixture.engine.stop()
+        await drainMainQueue()
+        guard case .error = fixture.engine.state else { return XCTFail("Der Gerätefehler muss dem normalen Stopp vorausgehen") }
+        XCTAssertEqual(fixture.segmenter.flushCount, 0)
+        XCTAssertEqual(fixture.cleanup.calls, 0)
+        XCTAssertEqual(fixture.deliveries, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(fixture.writerURL).path))
+    }
+
+    @MainActor
+    func testOffThreadFailureImmediatelyBeforeStopCannotEnterSuccessfulProcessing() async throws {
+        let fixture = try LossFixture()
+        defer { fixture.removeFiles() }
+        await start(fixture)
+        fixture.recorder.onSamples?([0.1])
+        let failure = try XCTUnwrap(fixture.recorder.onFailure)
+        // Das Signal ist schon angekommen; seine UI-Arbeit steht aber noch in
+        // der Mainqueue. stop() muss trotzdem den Gerätefehler berücksichtigen.
+        let emitted = DispatchSemaphore(value: 0)
+        DispatchQueue.global().async {
+            XCTAssertFalse(Thread.isMainThread)
+            failure(AudioRecorder.RecorderError.recordingInterrupted)
+            emitted.signal()
+        }
+        XCTAssertEqual(emitted.wait(timeout: .now() + 1), .success)
+        fixture.engine.stop()
+        await drainMainQueue()
+        guard case .error = fixture.engine.state else { return XCTFail("Der Gerätefehler muss dem normalen Stopp vorausgehen") }
+        XCTAssertEqual(fixture.segmenter.flushCount, 0)
+        XCTAssertEqual(fixture.cleanup.calls, 0)
+        XCTAssertEqual(fixture.deliveries, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(fixture.writerURL).path))
+    }
+
+    @MainActor
+    func testNormalStopWriterFailureCancelsPendingSegment() async throws {
+        let fixture = try LossFixture(writerFailure: .finish)
+        defer { fixture.removeFiles() }
+        let transcribing = expectation(description: "Segment läuft")
+        let cancelled = expectation(description: "Segment nach Schreibfehler storniert")
+        fixture.transcriber.waitForCancellation = true
+        fixture.transcriber.onStart = { transcribing.fulfill() }
+        fixture.transcriber.onCancel = { cancelled.fulfill() }
+        await start(fixture)
+        fixture.recorder.onSamples?([0.1])
+        fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [0.1], hadSpeech: true, reason: .pause))
+        await fulfillment(of: [transcribing], timeout: 2)
+        fixture.engine.stop()
+        await fulfillment(of: [cancelled], timeout: 2)
+        guard case .error = fixture.engine.state else { return XCTFail("Schreibfehler fehlt") }
+        XCTAssertEqual(fixture.cleanup.calls, 0)
+        XCTAssertEqual(fixture.deliveries, 0)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(fixture.writerURL).path))
+    }
+
+    @MainActor
     func testNormalStopStillCleansAllSegmentsExactlyOnce() async throws {
         let fixture = try LossFixture()
         defer { fixture.removeFiles() }
