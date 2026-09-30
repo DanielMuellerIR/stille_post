@@ -66,6 +66,7 @@ public final class DictationEngine {
     private let makeRecorder: (Config.Audio) -> any DictationRecorder
     private let makeSegmenter: (Config.Vad) -> any DictationSegmenter
     private let makeWavWriter: (URL) throws -> any DictationWavWriter
+    private let requestMicrophoneAccess: () async -> Bool
     /// Enge Testgrenze für die einzige asynchrone Nachverarbeitung nach Whisper.
     /// Produktiv zeigt sie immer direkt auf `CleanupService.clean`.
     private let cleanupText: (String) async -> CleanupService.Result
@@ -81,6 +82,7 @@ public final class DictationEngine {
     private var sessionGeneration: UInt64 = 0
     /// Segment-Ergebnisse in Aufnahme-Reihenfolge (Index -> Text).
     private var segmentResults: SegmentCollector?
+    private var segmentTasks: RecordingSegmentTasks?
     /// Die WAV-Datei, die gerade verarbeitet wird. `stop()` nimmt sie dem Writer
     /// ab; bis sie nachweislich gelöscht oder im Verlauf vermerkt ist, muss die
     /// Engine sie kennen — sonst hinterlässt ein Abbruch während `.processing`
@@ -111,6 +113,7 @@ public final class DictationEngine {
         self.makeRecorder = dependencies.makeRecorder
         self.makeSegmenter = dependencies.makeSegmenter
         self.makeWavWriter = dependencies.makeWavWriter
+        self.requestMicrophoneAccess = dependencies.requestMicrophoneAccess
         self.cleanupText = cleanupText ?? { raw in await cleanup.clean(raw) }
         // Fallback-Wechsel der Bereinigung an die Oberfläche durchreichen
         // (CleanupService meldet von beliebigem Thread -> auf Main-Thread heben).
@@ -148,7 +151,7 @@ public final class DictationEngine {
 
         Task { @MainActor in
             // 1. Mikrofon-Berechtigung sicherstellen (System fragt beim ersten Mal).
-            guard await AudioRecorder.requestMicrophoneAccess() else {
+            guard await self.requestMicrophoneAccess() else {
                 guard self.isCurrentSession(generation) else { return }
                 self.setState(.error(L10n.text("core.dictation.microphone_permission")))
                 return
@@ -187,6 +190,8 @@ public final class DictationEngine {
         let segmenter = makeSegmenter(config.vad)
         let recorder = makeRecorder(config.audio)
         let collector = SegmentCollector()
+        let segmentTasks = RecordingSegmentTasks()
+        self.segmentTasks = segmentTasks
         segmentResults = collector
 
         // Komplette Aufnahme zusätzlich als WAV auf Platte puffern: Schlägt später
@@ -220,17 +225,17 @@ public final class DictationEngine {
             // Reine Stille-Segmente überspringen: Whisper bekommt sie NIE zu sehen —
             // das ist die Abwesenheits-/Stille-Erkennung gegen Halluzinationen.
             guard segment.hadSpeech else { return }
-            let index = collector.reserveSlot()
-            Task {
-                await collector.run(index: index) {
-                    try await self.whisper.transcribe(samples: segment.samples)
-                }
+            segmentTasks.start(collector: collector) {
+                try await self.whisper.transcribe(samples: segment.samples)
             }
         }
 
         // Abwesenheitserkennung: lange Stille -> Aufnahme automatisch beenden.
         segmenter.onAutoStop = { [weak self] in
-            DispatchQueue.main.async { self?.stop() }
+            DispatchQueue.main.async {
+                guard let self, self.isCurrentSession(generation) else { return }
+                self.stop()
+            }
         }
 
         // Audio-Strom: an Segmentierer UND WAV-Datei verteilen.
@@ -242,13 +247,33 @@ public final class DictationEngine {
             do { try writer.append(samples) } catch {}
         }
 
+        recorder.onFailure = { [weak self] error in
+            DispatchQueue.main.async {
+                self?.failRecording(error, generation: generation)
+            }
+        }
+
         do {
             try recorder.start()
         } catch {
             wavWriter = nil
-            try? writer.finish()
-            try? FileManager.default.removeItem(at: wavURL)
-            setState(.error(L10n.format("core.dictation.recording_start_failed", error.localizedDescription)))
+            self.segmentTasks?.cancel()
+            self.segmentTasks = nil
+            segmentResults = nil
+            let startError = error
+            do {
+                try writer.finish()
+                // Der Recorder kann schon Samples geliefert haben, bevor sein
+                // Start scheitert. Deshalb auch hier keine Diagnose-WAV löschen.
+                setState(.error(L10n.format(
+                    "core.dictation.recording_start_failed_retained", wavURL.path,
+                    startError.localizedDescription
+                )))
+            } catch {
+                setState(.error(L10n.format(
+                    "core.dictation.audio_write_failed", wavURL.path, error.localizedDescription
+                )))
+            }
             return
         }
 
@@ -256,6 +281,56 @@ public final class DictationEngine {
         self.segmenter = segmenter
         self.recordingStart = Date()
         setState(.recording)
+    }
+
+    /// Ein unterbrochenes Mikrofon darf nicht den normalen Stopp auslösen:
+    /// dessen Flush und Bereinigung würden aus einer Teilaufnahme einen Erfolg machen.
+    private func failRecording(_ error: Error, generation: UInt64) {
+        guard isCurrentSession(generation), state == .recording else { return }
+        let duration = recordingDuration
+        sessionGeneration &+= 1
+        let failureGeneration = sessionGeneration
+        sessionTask?.cancel()
+        sessionTask = nil
+        segmentTasks?.cancel()
+        segmentTasks = nil
+        recorder?.stop()
+        recorder = nil
+        segmenter = nil
+        segmentResults = nil
+        let writer = wavWriter
+        wavWriter = nil
+        // Die Fehleraufnahme gehört ab jetzt zur Diagnose, nicht mehr zum
+        // normalen Abbruchpfad, der aktive WAV-Dateien löschen darf.
+        processingWavURL = nil
+        let message = error.localizedDescription
+        do {
+            try writer?.finish()
+        } catch {
+            setState(.error(L10n.format(
+                "core.dictation.audio_write_failed", writer?.url.path ?? "–",
+                error.localizedDescription
+            )))
+            return
+        }
+        setState(.error(message))
+        let entry = HistoryStore.Entry(
+            rawText: "", cleanText: "", status: "failed", errorMessage: message,
+            audioFileName: writer?.url.lastPathComponent, durationSec: duration
+        )
+        // Auch bei neuer Aufnahme bleibt der alte Fehlereintrag notwendig. Nur
+        // seine verspätete UI-Meldung darf nicht den neuen Zustand überschreiben.
+        Task { @MainActor in
+            do {
+                try await self.history.appendAsync(entry)
+            } catch {
+                guard self.isCurrentSession(failureGeneration) else { return }
+                self.setState(.error(L10n.format(
+                    "core.dictation.failure_history_write_failed", writer?.url.path ?? "–",
+                    error.localizedDescription
+                )))
+            }
+        }
     }
 
     // MARK: - Aufnahme stoppen + Ergebnis bauen
@@ -316,6 +391,7 @@ public final class DictationEngine {
             // Auf alle noch laufenden Segment-Transkriptionen warten
             // (dank Streaming meist nur noch das letzte Segment).
             let segments = await collector.finish()
+            if self.isCurrentSession(generation) { self.segmentTasks = nil }
             guard self.isCurrentSession(generation), !Task.isCancelled else { return }
             await self.finishSession(
                 segments: segments, duration: duration, wavURL: wavURL,
@@ -564,6 +640,8 @@ public final class DictationEngine {
         sessionGeneration &+= 1
         sessionTask?.cancel()
         sessionTask = nil
+        segmentTasks?.cancel()
+        segmentTasks = nil
         recorder?.stop()
         recorder = nil
         segmenter = nil
@@ -805,5 +883,37 @@ actor SegmentCollector {
         }
         while slots.count < reserved { slots.append(nil) }
         return slots
+    }
+}
+
+/// Der Audio-Thread kann noch einen Segment-Callback liefern, während der
+/// Hauptthread bereits abbricht. Das Lock verhindert neue Tasks nach dem Abbruch
+/// und storniert auch die schon laufenden Whisper-Anfragen.
+private final class RecordingSegmentTasks {
+    private let lock = NSLock()
+    private var cancelled = false
+    private var tasks: [Task<Void, Never>] = []
+
+    func start(collector: SegmentCollector, _ work: @escaping () async throws -> String) {
+        lock.withLock {
+            guard !cancelled else { return }
+            // Reservierung und Task gehören zusammen: Auch ein sofort stornierter
+            // Task muss seinen Platz abschließen, sonst wartet finish() endlos.
+            let index = collector.reserveSlot()
+            tasks.append(Task {
+                await collector.run(index: index) {
+                    try Task.checkCancellation()
+                    return try await work()
+                }
+            })
+        }
+    }
+
+    func cancel() {
+        lock.withLock {
+            cancelled = true
+            tasks.forEach { $0.cancel() }
+            tasks.removeAll()
+        }
     }
 }

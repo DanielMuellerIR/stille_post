@@ -5,6 +5,7 @@ import Foundation
 /// Await-/I/O-Punkte ersetzen, ohne Mikrofon, Server oder Dateisystem zu starten.
 protocol DictationRecorder: AnyObject {
     var onSamples: (([Float]) -> Void)? { get set }
+    var onFailure: ((Error) -> Void)? { get set }
     func start() throws
     func stop()
 }
@@ -54,6 +55,7 @@ struct DictationDependencies {
     let makeRecorder: (Config.Audio) -> any DictationRecorder
     let makeSegmenter: (Config.Vad) -> any DictationSegmenter
     let makeWavWriter: (URL) throws -> any DictationWavWriter
+    var requestMicrophoneAccess: () async -> Bool = { await AudioRecorder.requestMicrophoneAccess() }
 
     static func live(config: Config) -> Self {
         Self(

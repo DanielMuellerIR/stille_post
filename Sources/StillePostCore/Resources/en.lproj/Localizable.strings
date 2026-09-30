@@ -320,3 +320,7 @@
 "cli.key.empty" = "No key entered.";
 "cli.key.saved" = "Key saved in Keychain (entry: %@).";
 "cli.key.save_failed" = "Could not save: %@";
+
+"core.audio.recording_interrupted" = "Recording was interrupted because the microphone or audio configuration changed. Audio recorded so far is retained for diagnosis.";
+"core.dictation.failure_history_write_failed" = "The failed recording remains at %@. History could not be saved: %@";
+"core.dictation.recording_start_failed_retained" = "Recording could not be started. The diagnostic file remains at %@: %@";

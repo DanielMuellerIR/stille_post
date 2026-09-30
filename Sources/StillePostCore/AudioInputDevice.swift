@@ -123,11 +123,24 @@ public enum AudioInputDeviceCatalog {
         return AudioInputDevice(uid: uid, name: name)
     }
 
-    private static func deviceID(forUID uid: String) -> AudioDeviceID? {
+    static func deviceID(forUID uid: String) -> AudioDeviceID? {
         allDeviceIDs().first { id in
             hasInputStreams(id)
                 && stringProperty(id, selector: kAudioDevicePropertyDeviceUID) == uid
         }
+    }
+
+    /// Ein noch aufgelistetes Gerät kann bereits ausgefallen sein.
+    static func isAlive(_ id: AudioDeviceID) -> Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyDeviceIsAlive,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var alive: UInt32 = 0
+        var byteCount = UInt32(MemoryLayout<UInt32>.size)
+        return AudioObjectGetPropertyData(id, &address, 0, nil, &byteCount, &alive) == noErr
+            && alive != 0
     }
 
     /// CoreAudio übergibt Namen und UIDs mit Besitzrecht an den Aufrufer. Durch

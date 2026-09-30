@@ -320,3 +320,7 @@
 "cli.key.empty" = "Kein Key eingegeben.";
 "cli.key.saved" = "Key im Schlüsselbund gespeichert (Eintrag: %@).";
 "cli.key.save_failed" = "Speichern fehlgeschlagen: %@";
+
+"core.audio.recording_interrupted" = "Die Aufnahme wurde unterbrochen, weil das Mikrofon oder die Audio-Konfiguration geändert wurde. Das bisherige Audio bleibt zur Diagnose erhalten.";
+"core.dictation.failure_history_write_failed" = "Die Fehleraufnahme bleibt unter %@ erhalten. Der Verlauf konnte nicht gespeichert werden: %@";
+"core.dictation.recording_start_failed_retained" = "Die Aufnahme konnte nicht gestartet werden. Die Diagnose-Datei bleibt unter %@ erhalten: %@";
