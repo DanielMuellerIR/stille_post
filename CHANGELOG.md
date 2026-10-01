@@ -10,6 +10,15 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.18] — 2026-10-01
+
+### Behoben
+
+- Abbruch verwirft den eigenen Verlaufseintrag auch zwischen dem Abschluss
+  der Plattenarbeit und der Fortsetzung auf dem Hauptthread.
+- Der Stream-Abbruchtest prüft die aktuell gewählte Sprache und funktioniert
+  auf deutschen und englischen Testsystemen.
+
 ## [0.9.17] — 2026-10-01
 
 ### Behoben

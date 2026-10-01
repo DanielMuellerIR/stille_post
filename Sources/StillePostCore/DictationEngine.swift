@@ -555,7 +555,13 @@ public final class DictationEngine {
             )))
             return
         }
-        guard isCurrentSession(generation), !Task.isCancelled else { return }
+        guard isCurrentSession(generation), !Task.isCancelled else {
+            // Zwischen Rückkehr der Plattenarbeit und der Fortsetzung auf dem
+            // MainActor kann Abbrechen laufen. Auch diesen bereits gespeicherten
+            // eigenen Eintrag zurücknehmen, bevor die alte Session endet.
+            try? await history.discardAsync(entry)
+            return
+        }
         // Entweder ist die WAV gelöscht oder der bereits persistierte Eintrag
         // hält ihren Namen. In beiden Fällen darf die RAM-Verantwortung enden.
         processingWavURL = nil
