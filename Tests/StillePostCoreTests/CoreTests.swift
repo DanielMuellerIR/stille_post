@@ -1464,7 +1464,7 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(result.text, "Das" + raw.dropFirst(3))
         XCTAssertTrue(result.usedFallback)
         XCTAssertEqual(transport.streamCallCount, 2, "Direktpfad plus frische Verbindung")
-        XCTAssertTrue(result.fallbackReason?.contains("ohne Abschluss") ?? false)
+        XCTAssertTrue(result.fallbackReason?.contains(L10n.text("core.cleanup.incomplete_stream")) ?? false)
     }
 
     func testCleanupStreamRetriesProviderErrorOnFreshConnection() async {
