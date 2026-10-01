@@ -10,6 +10,16 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.19] — 2026-10-01
+
+### Behoben
+
+- App-Bau übernimmt Binärdateien und Lokalisierung aus dem aktuellen
+  SwiftPM-Ausgabepfad. Alte Architektur-Caches können dadurch keine veralteten
+  Übersetzungen mehr in das Bundle einschleusen.
+- Deutsche und englische Bilder von Bereinigung und Verlauf zeigen das aktuelle
+  Bereinigungsmodell `gemma4:e4b-it-qat` mit neutralen Beispieldaten.
+
 ## [0.9.18] — 2026-10-01
 
 ### Behoben

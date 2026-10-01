@@ -42,19 +42,22 @@ fi
 
 echo "Kompiliere (Release) …"
 swift build -c release
+BIN_DIR="$(swift build -c release --show-bin-path)"
 
 APP="build/StillePost.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
 
-cp .build/release/StillePost "$APP/Contents/MacOS/StillePost"
-cp .build/release/stillepost-cli "$APP/Contents/MacOS/stillepost-cli"
+cp "$BIN_DIR/StillePost" "$APP/Contents/MacOS/StillePost"
+cp "$BIN_DIR/stillepost-cli" "$APP/Contents/MacOS/stillepost-cli"
 
 # SwiftPM verpackt die gemeinsame App-/CLI-Lokalisierung in ein Ressourcen-Bundle.
 # Das manuell gebaute .app muss es selbst übernehmen; Bundle.module findet es dann
 # unter Contents/Resources sowohl aus der GUI als auch aus der eingebetteten CLI.
-CORE_RESOURCES="$(find .build -path '*/release/StillePost_StillePostCore.bundle' -type d -print -quit)"
-if [ -z "$CORE_RESOURCES" ]; then
+# Ein alter Architektur-Cache darf nicht das aktuelle Ressourcen-Bundle
+# ersetzen. SwiftPM liefert je nach Toolchain verschiedene Verzeichnislayouts.
+CORE_RESOURCES="$BIN_DIR/StillePost_StillePostCore.bundle"
+if [ ! -d "$CORE_RESOURCES" ]; then
     echo "FEHLER: Lokalisierungs-Bundle fehlt nach dem SwiftPM-Build." >&2
     exit 1
 fi
