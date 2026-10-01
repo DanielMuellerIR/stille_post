@@ -10,6 +10,18 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.17] — 2026-10-01
+
+### Behoben
+
+- Abgebrochene Verarbeitung kann den WAV-Verweis eines neuen Diktats nicht
+  mehr löschen. Jede Besitzänderung nach asynchroner Arbeit prüft die Session.
+- Abbruch während der Verlaufsspeicherung verwirft den eigenen Diktattext,
+  auch wenn der atomare Schreibvorgang bereits begonnen hat. Noch wartende
+  Writes werden storniert; vorhandene Diagnoseaufnahmen behalten einen textfreien Verweis.
+- Modellinstallation weist FIFOs am Teildateipfad ohne Warten auf eine Gegenseite ab.
+- Unbenutzter alter Text für Aufnahmestartfehler in beiden Sprachen entfernt.
+
 ## [0.9.16] — unveröffentlicht
 
 ### Behoben

@@ -19,6 +19,24 @@ final class ModelInstallerTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
+    func testFifoPartialFilesAreRejectedWithoutWaitingForPeer() throws {
+        let path = directory.appendingPathComponent("download.partial").path
+        XCTAssertEqual(mkfifo(path, 0o600), 0)
+        let rejected = expectation(description: "FIFO ohne Gegenseite abgewiesen")
+        DispatchQueue.global().async {
+            do {
+                _ = try ModelInstaller.openPartialFile(atPath: path, append: false, requestedOffset: 0)
+                XCTFail("FIFO darf kein Schreibziel sein")
+            } catch {}
+            do {
+                _ = try ModelInstaller.partialFileSize(atPath: path)
+                XCTFail("FIFO darf keine lesbare Teildatei sein")
+            } catch {}
+            rejected.fulfill()
+        }
+        wait(for: [rejected], timeout: 2)
+    }
+
     func testMissingModelIsReported() {
         let path = directory.appendingPathComponent("ggml-large-v3-turbo.bin").path
         guard case .missing = ModelInstaller.state(atPath: path) else {

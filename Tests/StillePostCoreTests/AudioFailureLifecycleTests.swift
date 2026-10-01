@@ -231,6 +231,70 @@ final class AudioFailureLifecycleTests: XCTestCase {
     }
 
     @MainActor
+    func testCancelDuringHistoryWriteRemovesOnlyCancelledText() async throws {
+        let entered = expectation(description: "Verlaufs-Write läuft")
+        let rolledBack = expectation(description: "Abgebrochener Write zurückgenommen")
+        let release = DispatchSemaphore(value: 0)
+        let gate = LossWriteGate()
+        let fixture = try LossFixture(atomicWrite: { data, url in
+            if gate.firstWrite() {
+                entered.fulfill()
+                _ = release.wait(timeout: .now() + 5)
+            } else { rolledBack.fulfill() }
+            try data.write(to: url, options: .atomic)
+        })
+        defer { release.signal(); fixture.removeFiles() }
+        await start(fixture)
+        fixture.recorder.onSamples?([0.1])
+        fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [0.1], hadSpeech: true, reason: .pause))
+        fixture.engine.stop()
+        await fulfillment(of: [entered], timeout: 2)
+        fixture.engine.cancel()
+        release.signal()
+        await fulfillment(of: [rolledBack], timeout: 2)
+        XCTAssertTrue(try fixture.history.list().isEmpty)
+        XCTAssertEqual(fixture.deliveries, 0)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(fixture.writerURL).path))
+    }
+
+    @MainActor
+    func testOldSilentWriteCannotClearNewProcessingWav() async throws {
+        let entered = expectation(description: "Alter Fehler-Write läuft")
+        let release = DispatchSemaphore(value: 0)
+        let gate = LossWriteGate()
+        let fixture = try LossFixture(atomicWrite: { data, url in
+            if gate.firstWrite() {
+                entered.fulfill()
+                _ = release.wait(timeout: .now() + 5)
+            }
+            try data.write(to: url, options: .atomic)
+        })
+        defer { release.signal(); fixture.removeFiles() }
+        await start(fixture)
+        fixture.recorder.onSamples?([0.1])
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: fixture.history.recordingsDir.path)
+        fixture.engine.stop()
+        await fulfillment(of: [entered], timeout: 2)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixture.history.recordingsDir.path)
+        fixture.engine.cancel()
+        fixture.transcriber.waitForCancellation = true
+        let transcribing = expectation(description: "Neue Transkription läuft")
+        fixture.transcriber.onStart = { transcribing.fulfill() }
+        await start(fixture)
+        fixture.recorder.onSamples?([0.1])
+        fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [0.1], hadSpeech: true, reason: .pause))
+        await fulfillment(of: [transcribing], timeout: 2)
+        fixture.engine.stop()
+        let newWav = try XCTUnwrap(fixture.writerURL)
+        release.signal()
+        // Die serielle History-Queue hat nach list() auch den alten Write beendet.
+        _ = try await Task.detached { try fixture.history.list() }.value
+        await drainMainQueue()
+        fixture.engine.cancel()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: newWav.path))
+    }
+
+    @MainActor
     private func start(_ fixture: LossFixture, preserveStateCallback: Bool = false) async {
         let started = expectation(description: "Aufnahme läuft")
         let prior = fixture.engine.onStateChange
@@ -264,11 +328,13 @@ private final class LossFixture {
     var writerURL: URL? { urlBox.url }
     var deliveries = 0
 
-    init(writerFailure: LossWriter.Failure? = nil, historyFailure: Bool = false) throws {
+    init(writerFailure: LossWriter.Failure? = nil, historyFailure: Bool = false,
+         atomicWrite: ((Data, URL) throws -> Void)? = nil) throws {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent("sp-audio-loss-\(UUID())")
         history = HistoryStore(baseDir: directory) { data, url in
             if historyFailure { throw NSError(domain: "LossTest", code: 2, userInfo: [NSLocalizedDescriptionKey: "Künstlicher Verlaufsfehler"]) }
-            try data.write(to: url, options: .atomic)
+            if let atomicWrite { try atomicWrite(data, url) }
+            else { try data.write(to: url, options: .atomic) }
         }
         let recorder = recorder, segmenter = segmenter, urlBox = urlBox
         engine = DictationEngine(config: Config(), history: history, dependencies: DictationDependencies(
@@ -368,5 +434,15 @@ private final class LossWriter: DictationWavWriter {
     }
     private var writeError: NSError {
         NSError(domain: "LossTest", code: 1, userInfo: [NSLocalizedDescriptionKey: "Künstlicher Schreibfehler"])
+    }
+}
+
+private final class LossWriteGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var writes = 0
+    func firstWrite() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        writes += 1
+        return writes == 1
     }
 }

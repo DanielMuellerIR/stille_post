@@ -471,8 +471,8 @@ public final class DictationEngine {
             }
             // Ab jetzt zeigt der Verlaufs-Eintrag auf die Aufnahme; die Engine
             // muss sie nicht mehr selbst im Auge behalten.
-            processingWavURL = nil
             guard isCurrentSession(generation), !Task.isCancelled else { return }
+            processingWavURL = nil
             setState(.error(L10n.text("core.dictation.transcription_failed")))
             deliverResult(DictationResult(text: "", entry: entry))
             return
@@ -486,6 +486,7 @@ public final class DictationEngine {
             if let wavURL {
                 do {
                     try await Self.removeFileAsync(at: wavURL)
+                    guard isCurrentSession(generation), !Task.isCancelled else { return }
                     processingWavURL = nil
                 } catch {
                     let deletionError = error
@@ -500,6 +501,7 @@ public final class DictationEngine {
                     )
                     do {
                         try await history.appendAsync(retained)
+                        guard isCurrentSession(generation), !Task.isCancelled else { return }
                         processingWavURL = nil
                     } catch {
                         guard isCurrentSession(generation) else { return }
@@ -596,6 +598,27 @@ public final class DictationEngine {
         replacingExisting: Bool,
         history: HistoryStore
     ) async throws -> PersistedEntryResult {
+        do {
+            try Task.checkCancellation()
+            let result = try await persistSuccessfulEntryUnchecked(
+                entry, wavURL: wavURL, replacingExisting: replacingExisting, history: history
+            )
+            try Task.checkCancellation()
+            return result
+        } catch {
+            if Task.isCancelled && !replacingExisting {
+                // Ein bereits gestarteter atomarer Write lässt sich nicht stoppen.
+                // Nur unseren eigenen Eintrag zurücknehmen; fremde Diktate bleiben.
+                try await history.discardAsync(entry)
+            }
+            throw error
+        }
+    }
+
+    private static func persistSuccessfulEntryUnchecked(
+        _ entry: HistoryStore.Entry, wavURL: URL?, replacingExisting: Bool,
+        history: HistoryStore
+    ) async throws -> PersistedEntryResult {
         guard let wavURL else {
             if replacingExisting {
                 try await history.updateAsync(entry)
@@ -615,6 +638,7 @@ public final class DictationEngine {
             try await history.appendAsync(withAudio)
         }
 
+        try Task.checkCancellation()
         do {
             try await removeFileAsync(at: wavURL)
         } catch {
@@ -625,6 +649,7 @@ public final class DictationEngine {
             )
         }
 
+        try Task.checkCancellation()
         var withoutAudio = withAudio
         withoutAudio.audioFileName = nil
         do {

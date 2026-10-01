@@ -416,8 +416,10 @@ public final class ModelInstaller {
     /// als Ziel unterlegt.
     static func openPartialFile(atPath path: String, append: Bool,
                                 requestedOffset: Int64) throws -> FileHandle {
+        // FIFO-Open darf nicht auf eine Gegenseite warten; erst danach kann
+        // fstat den Dateityp auf demselben Deskriptor sicher prüfen.
         let descriptor = path.withCString {
-            Darwin.open($0, O_WRONLY | O_CREAT | O_NOFOLLOW, mode_t(0o600))
+            Darwin.open($0, O_WRONLY | O_CREAT | O_NOFOLLOW | O_NONBLOCK, mode_t(0o600))
         }
         guard descriptor >= 0 else { throw InstallError.partialNotReplaceable(path) }
 
@@ -443,8 +445,8 @@ public final class ModelInstaller {
 
     /// Größe einer regulären Teildatei. Ein fehlender Pfad bedeutet einen
     /// neuen Download; Symlinks und Spezialdateien werden ausdrücklich abgewiesen.
-    private static func partialFileSize(atPath path: String) throws -> Int64 {
-        let descriptor = path.withCString { Darwin.open($0, O_RDONLY | O_NOFOLLOW) }
+    static func partialFileSize(atPath path: String) throws -> Int64 {
+        let descriptor = path.withCString { Darwin.open($0, O_RDONLY | O_NOFOLLOW | O_NONBLOCK) }
         if descriptor < 0 {
             if errno == ENOENT { return 0 }
             throw InstallError.partialNotReplaceable(path)

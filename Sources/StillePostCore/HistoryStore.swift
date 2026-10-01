@@ -143,7 +143,12 @@ public final class HistoryStore: @unchecked Sendable {
     /// Asynchrone Variante für die Diktier-Pipeline. Datei-Lock, JSON-Lesen und
     /// atomarer Write laufen auf der History-Queue statt auf dem Main-Thread.
     public func appendAsync(_ entry: Entry) async throws {
-        try await onQueue { try self.appendOnQueue(entry) }
+        let cancellation = PendingAppendCancellation()
+        try await withTaskCancellationHandler {
+            try await onQueue { try self.appendOnQueue(entry, cancellation: cancellation) }
+        } onCancel: {
+            cancellation.cancel()
+        }
         onChange?()
     }
 
@@ -161,11 +166,50 @@ public final class HistoryStore: @unchecked Sendable {
 
     /// Gemeinsamer Kern für synchrone und asynchrone Aufrufer. So können
     /// Lock-, Reload- und atomare Write-Reihenfolge nicht auseinanderlaufen.
-    private func appendOnQueue(_ entry: Entry) throws {
+    private func appendOnQueue(_ entry: Entry, cancellation: PendingAppendCancellation? = nil) throws {
         try withFileLock {
+            if cancellation?.isCancelled == true { throw CancellationError() }
             var fresh = try loadFromDiskLocked()
             fresh.append(entry)
             try saveLocked(fresh)
+            if cancellation?.isCancelled == true {
+                try discardLocked(entry)
+                throw CancellationError()
+            }
+        }
+    }
+
+    /// Abbruch verwirft ausschließlich diesen Text. Falls seine WAV noch
+    /// existiert, bleibt ein textfreier Verweis für einen späteren Löschversuch.
+    func discardAsync(_ entry: Entry) async throws {
+        try await onQueue { try self.withFileLock { try self.discardLocked(entry) } }
+        onChange?()
+    }
+
+    private func discardLocked(_ entry: Entry) throws {
+        var fresh = try loadFromDiskLocked()
+        guard let index = fresh.firstIndex(where: { $0.id == entry.id }) else { return }
+        let stored = fresh[index]
+        if let audio = audioURL(for: stored), FileManager.default.fileExists(atPath: audio.path) {
+            fresh[index] = Self.audioOnlyRemnant(of: stored)
+        } else {
+            fresh.remove(at: index)
+        }
+        try saveLocked(fresh)
+    }
+
+    /// Der Abbruch kommt vom Task, der Schreibbeginn von der seriellen Queue.
+    /// Das Lock verbindet beide, ohne den Hauptthread am Plattenzugriff zu halten.
+    private final class PendingAppendCancellation: @unchecked Sendable {
+        private let lock = NSLock()
+        private var cancelled = false
+        var isCancelled: Bool {
+            lock.lock(); defer { lock.unlock() }
+            return cancelled
+        }
+        func cancel() {
+            lock.lock(); defer { lock.unlock() }
+            cancelled = true
         }
     }
 
