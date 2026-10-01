@@ -258,6 +258,41 @@ final class AudioFailureLifecycleTests: XCTestCase {
     }
 
     @MainActor
+    func testCancelAfterFinalWriteBeforeMainActorResumeDiscardsText() async throws {
+        let entered = expectation(description: "Erster Write wartet")
+        let discarded = expectation(description: "Persistierter Text zurückgenommen")
+        let release = DispatchSemaphore(value: 0)
+        let finalWrite = DispatchSemaphore(value: 0)
+        let gate = LossWriteGate()
+        let fixture = try LossFixture(atomicWrite: { data, url in
+            let write = gate.nextWrite()
+            if write == 1 {
+                entered.fulfill()
+                _ = release.wait(timeout: .now() + 5)
+            }
+            try data.write(to: url, options: .atomic)
+            if write == 2 { finalWrite.signal() }
+            if write == 3 { discarded.fulfill() }
+        })
+        defer { release.signal(); fixture.removeFiles() }
+        await start(fixture)
+        fixture.recorder.onSamples?([0.1])
+        fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [0.1], hadSpeech: true, reason: .pause))
+        fixture.engine.stop()
+        await fulfillment(of: [entered], timeout: 2)
+        // Den MainActor festhalten, während die Plattenarbeit vollständig endet.
+        // Seine Fortsetzung muss erst NACH dem synchronen Abbruch laufen können.
+        release.signal()
+        XCTAssertEqual(finalWrite.wait(timeout: .now() + 2), .success)
+        Thread.sleep(forTimeInterval: 0.1)
+        fixture.engine.cancel()
+        await fulfillment(of: [discarded], timeout: 2)
+        XCTAssertTrue(try fixture.history.list().isEmpty)
+        XCTAssertEqual(fixture.deliveries, 0)
+        XCTAssertEqual(fixture.engine.state, .idle)
+    }
+
+    @MainActor
     func testOldSilentWriteCannotClearNewProcessingWav() async throws {
         let entered = expectation(description: "Alter Fehler-Write läuft")
         let release = DispatchSemaphore(value: 0)
@@ -440,9 +475,10 @@ private final class LossWriter: DictationWavWriter {
 private final class LossWriteGate: @unchecked Sendable {
     private let lock = NSLock()
     private var writes = 0
-    func firstWrite() -> Bool {
+    func nextWrite() -> Int {
         lock.lock(); defer { lock.unlock() }
         writes += 1
-        return writes == 1
+        return writes
     }
+    func firstWrite() -> Bool { nextWrite() == 1 }
 }

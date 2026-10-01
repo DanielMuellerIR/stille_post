@@ -16,6 +16,8 @@ Datei mit dem Versions-Bump fortgeschrieben.
 
 - Abbruch verwirft den eigenen Verlaufseintrag auch zwischen dem Abschluss
   der Plattenarbeit und der Fortsetzung auf dem Hauptthread.
+- Abbruch meldet keinen Löschfehler für eine WAV, die die erfolgreiche
+  Plattenarbeit bereits entfernt hat.
 - Der Stream-Abbruchtest prüft die aktuell gewählte Sprache und funktioniert
   auf deutschen und englischen Testsystemen.
 

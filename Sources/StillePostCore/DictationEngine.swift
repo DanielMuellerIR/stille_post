@@ -732,7 +732,14 @@ public final class DictationEngine {
                 try FileManager.default.removeItem(at: pending)
                 processingWavURL = nil
             } catch {
-                deletionFailure = error
+                if (error as NSError).domain == NSCocoaErrorDomain &&
+                    (error as NSError).code == NSFileNoSuchFileError {
+                    // Die erfolgreiche Plattenarbeit kann ihre eigene WAV schon
+                    // gelöscht haben, bevor Abbrechen auf dem MainActor läuft.
+                    processingWavURL = nil
+                } else {
+                    deletionFailure = error
+                }
             }
         }
         recordingStart = nil
