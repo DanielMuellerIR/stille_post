@@ -293,6 +293,142 @@ final class AudioFailureLifecycleTests: XCTestCase {
     }
 
     @MainActor
+    func testCancelAfterPartialFailureAppendBeforeMainActorResumeDiscardsText() async throws {
+        let entered = expectation(description: "Fehlereintrag wartet auf Write")
+        let discarded = expectation(description: "Abgebrochener Teiltext zurückgenommen")
+        let release = DispatchSemaphore(value: 0)
+        let appended = DispatchSemaphore(value: 0)
+        let gate = LossWriteGate()
+        let fixture = try LossFixture(atomicWrite: { data, url in
+            if gate.firstWrite() {
+                entered.fulfill()
+                _ = release.wait(timeout: .now() + 5)
+            } else { discarded.fulfill() }
+            try data.write(to: url, options: .atomic)
+        })
+        defer { release.signal(); fixture.removeFiles() }
+        fixture.transcriber.failNegativeSamples = true
+        fixture.history.onChange = { appended.signal() }
+        await start(fixture)
+        fixture.recorder.onSamples?([0.1, -0.1])
+        for sample in [Float(0.1), Float(-0.1)] {
+            fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [sample], hadSpeech: true, reason: .pause))
+        }
+        fixture.engine.stop()
+        await fulfillment(of: [entered], timeout: 2)
+        release.signal()
+        // onChange läuft erst nach dem Cancellation-Handler des Appends.
+        // Der MainActor bleibt bis zum Abbruch blockiert, der Write ist fertig.
+        XCTAssertEqual(appended.wait(timeout: .now() + 2), .success)
+        XCTAssertEqual(try fixture.history.list().first?.rawText, "Testtext")
+        fixture.engine.cancel()
+        await fulfillment(of: [discarded], timeout: 2)
+        let reloaded = HistoryStore(baseDir: fixture.directory)
+        XCTAssertTrue(try reloaded.list().isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(fixture.writerURL).path))
+        XCTAssertEqual(fixture.deliveries, 0)
+        XCTAssertEqual(fixture.cleanup.calls, 0)
+        XCTAssertEqual(fixture.engine.state, .idle)
+    }
+
+    @MainActor
+    func testCancelledPendingAppendRetainsUndeletableWavAcrossNextDictation() async throws {
+        let entered = expectation(description: "Fremder Write blockiert Queue")
+        let cleaned = expectation(description: "Eigener Text fertig bereinigt")
+        let retained = expectation(description: "Textfreier Audio-Verweis gespeichert")
+        let release = DispatchSemaphore(value: 0)
+        let writeGate = LossWriteGate()
+        let remnantGate = LossWriteGate()
+        let fixture = try LossFixture(atomicWrite: { data, url in
+            if writeGate.firstWrite() {
+                entered.fulfill()
+                _ = release.wait(timeout: .now() + 5)
+            }
+            try data.write(to: url, options: .atomic)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let entries = try decoder.decode([HistoryStore.Entry].self, from: data)
+            if entries.contains(where: { $0.audioFileName != nil && $0.rawText.isEmpty }),
+               remnantGate.firstWrite() { retained.fulfill() }
+        })
+        defer {
+            release.signal()
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixture.history.recordingsDir.path)
+            fixture.removeFiles()
+        }
+        let foreign = HistoryStore.Entry(date: Date(timeIntervalSince1970: 1_700_000_000), rawText: "Anderes Diktat", cleanText: "Anderes Diktat", status: "ok", durationSec: 1)
+        let history = fixture.history
+        let foreignWrite = Task { try await history.appendAsync(foreign) }
+        await fulfillment(of: [entered], timeout: 2)
+        fixture.cleanup.onClean = { cleaned.fulfill() }
+        await start(fixture)
+        fixture.recorder.onSamples?([0.1])
+        fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [0.1], hadSpeech: true, reason: .pause))
+        fixture.engine.stop()
+        await fulfillment(of: [cleaned], timeout: 2)
+        await drainMainQueue()
+        let cancelledWav = try XCTUnwrap(fixture.writerURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: history.recordingsDir.path)
+        fixture.engine.cancel()
+        guard case .error = fixture.engine.state else { return XCTFail("Löschfehler fehlt") }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: cancelledWav.path))
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: history.recordingsDir.path)
+
+        // Ein weiteres stilles Diktat überschreibt den RAM-Verweis der Engine.
+        let delivered = expectation(description: "Neues stilles Diktat beendet")
+        fixture.engine.onResult = { result in
+            XCTAssertTrue(result.text.isEmpty)
+            XCTAssertNil(result.entry)
+            delivered.fulfill()
+        }
+        await start(fixture)
+        fixture.recorder.onSamples?([0.1])
+        fixture.engine.stop()
+        await fulfillment(of: [delivered], timeout: 2)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(fixture.writerURL).path))
+        release.signal()
+        try await foreignWrite.value
+        await fulfillment(of: [retained], timeout: 2)
+        let reloaded = HistoryStore(baseDir: fixture.directory)
+        let entries = try reloaded.list()
+        XCTAssertEqual(entries.count, 2)
+        XCTAssertEqual(entries.first(where: { $0.id == foreign.id }), foreign)
+        let remnant = try XCTUnwrap(entries.first(where: { $0.audioFileName == cancelledWav.lastPathComponent }))
+        XCTAssertTrue(remnant.rawText.isEmpty)
+        XCTAssertTrue(remnant.cleanText.isEmpty)
+        XCTAssertEqual(remnant.status, "failed")
+        try reloaded.deleteAll()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: cancelledWav.path))
+        XCTAssertTrue(try reloaded.list().isEmpty)
+    }
+
+    @MainActor
+    func testCancelDuringRecordingRetainsUndeletableWavWithoutPendingAppend() async throws {
+        let fixture = try LossFixture()
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixture.history.recordingsDir.path)
+            fixture.removeFiles()
+        }
+        let saved = expectation(description: "Abbruchaufnahme bleibt löschbar")
+        fixture.history.onChange = { saved.fulfill() }
+        await start(fixture)
+        fixture.recorder.onSamples?([0.1])
+        let wav = try XCTUnwrap(fixture.writerURL)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: fixture.history.recordingsDir.path)
+        fixture.engine.cancel()
+        await fulfillment(of: [saved], timeout: 2)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixture.history.recordingsDir.path)
+        let reloaded = HistoryStore(baseDir: fixture.directory)
+        let entry = try XCTUnwrap(reloaded.list().first)
+        XCTAssertEqual(entry.audioFileName, wav.lastPathComponent)
+        XCTAssertTrue(entry.rawText.isEmpty)
+        XCTAssertTrue(entry.cleanText.isEmpty)
+        XCTAssertEqual(fixture.deliveries, 0)
+        try reloaded.deleteAll()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: wav.path))
+    }
+
+    @MainActor
     func testOldSilentWriteCannotClearNewProcessingWav() async throws {
         let entered = expectation(description: "Alter Fehler-Write läuft")
         let release = DispatchSemaphore(value: 0)
@@ -422,10 +558,14 @@ private final class LossSegmenter: DictationSegmenter {
 }
 private final class LossTranscriber: DictationTranscriber {
     var waitForCancellation = false
+    var failNegativeSamples = false
     var onStart: (() -> Void)?
     var onCancel: (() -> Void)?
     func transcribe(samples: [Float]) async throws -> String {
         onStart?()
+        if failNegativeSamples, samples.first.map({ $0 < 0 }) == true {
+            throw AudioRecorder.RecorderError.recordingInterrupted
+        }
         if waitForCancellation {
             do { try await Task.sleep(nanoseconds: 30_000_000_000) }
             catch { onCancel?(); throw error }
@@ -443,8 +583,10 @@ private final class LossCleanup: DictationCleanup {
     var onFallbackEndpoint: ((String) -> Void)?
     var onPrimaryRetry: (() -> Void)?
     var calls = 0
+    var onClean: (() -> Void)?
     func clean(_ rawText: String) async -> CleanupService.Result {
         calls += 1
+        onClean?()
         return CleanupService.Result(text: rawText, usedFallback: false, fallbackReason: nil, endpoint: nil)
     }
     func warmUp() {}

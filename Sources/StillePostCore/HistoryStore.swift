@@ -29,7 +29,7 @@ public final class HistoryStore: @unchecked Sendable {
         public var status: String
         /// Fehlerbeschreibung bei status == "failed".
         public var errorMessage: String?
-        /// Dateiname der zurückbehaltenen Aufnahme (nur bei Fehlschlag, sonst nil).
+        /// Dateiname einer noch nicht nachweislich gelöschten Aufnahme.
         /// Bewusst nur der Name, kein absoluter Pfad — der Basis-Ordner kann sich ändern.
         public var audioFileName: String?
         /// Dauer der Aufnahme in Sekunden (fürs Anzeigen).
@@ -181,6 +181,7 @@ public final class HistoryStore: @unchecked Sendable {
 
     /// Abbruch verwirft ausschließlich diesen Text. Falls seine WAV noch
     /// existiert, bleibt ein textfreier Verweis für einen späteren Löschversuch.
+    /// Das gilt auch, wenn der ursprüngliche Append noch nicht geschrieben hat.
     func discardAsync(_ entry: Entry) async throws {
         try await onQueue { try self.withFileLock { try self.discardLocked(entry) } }
         onChange?()
@@ -188,12 +189,25 @@ public final class HistoryStore: @unchecked Sendable {
 
     private func discardLocked(_ entry: Entry) throws {
         var fresh = try loadFromDiskLocked()
-        guard let index = fresh.firstIndex(where: { $0.id == entry.id }) else { return }
-        let stored = fresh[index]
+        // cancel() kennt vor einem Append nur den Audionamen. Beide Abbruchwege
+        // müssen denselben Rest finden, statt doppelte Einträge anzulegen.
+        let index = fresh.firstIndex(where: { $0.id == entry.id }) ??
+            entry.audioFileName.flatMap { name in
+                fresh.firstIndex(where: { $0.audioFileName == name })
+            }
+        let stored = index.map { fresh[$0] } ?? entry
         if let audio = audioURL(for: stored), FileManager.default.fileExists(atPath: audio.path) {
-            fresh[index] = Self.audioOnlyRemnant(of: stored)
-        } else {
+            let remnant = Self.audioOnlyRemnant(of: stored)
+            if let index {
+                if fresh[index] == remnant { return }
+                fresh[index] = remnant
+            } else {
+                fresh.append(remnant)
+            }
+        } else if let index {
             fresh.remove(at: index)
+        } else {
+            return
         }
         try saveLocked(fresh)
     }

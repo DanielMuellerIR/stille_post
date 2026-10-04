@@ -471,7 +471,12 @@ public final class DictationEngine {
             }
             // Ab jetzt zeigt der Verlaufs-Eintrag auf die Aufnahme; die Engine
             // muss sie nicht mehr selbst im Auge behalten.
-            guard isCurrentSession(generation), !Task.isCancelled else { return }
+            guard isCurrentSession(generation), !Task.isCancelled else {
+                // Auch ein Fehlereintrag kann fertig geschrieben sein, bevor
+                // der MainActor den Abbruch verarbeitet. Seinen Teiltext entfernen.
+                try? await history.discardAsync(entry)
+                return
+            }
             processingWavURL = nil
             setState(.error(L10n.text("core.dictation.transcription_failed")))
             deliverResult(DictationResult(text: "", entry: entry))
@@ -692,6 +697,7 @@ public final class DictationEngine {
     /// Bricht eine laufende Aufnahme ab, ohne Text zu erzeugen (Menüpunkt "Abbrechen").
     public func cancel() {
         let priorState = state
+        let duration = recordingDuration
         let discardsActiveAudio: Bool
         switch priorState {
         case .starting, .recording, .processing:
@@ -747,6 +753,29 @@ public final class DictationEngine {
             setState(.error(L10n.format(
                 "core.history.audio_delete_failed", deletionFailure.localizedDescription
             )))
+            if let pending = processingWavURL {
+                // Der ursprüngliche Append kann noch warten oder überhaupt nicht
+                // existieren. Den Löschrest unabhängig vom stornierten Task sichern,
+                // bevor ein späteres Diktat den RAM-Verweis ersetzt.
+                let retained = HistoryStore.Entry(
+                    rawText: "", cleanText: "", status: "failed",
+                    audioFileName: pending.lastPathComponent, durationSec: duration
+                )
+                let generation = sessionGeneration
+                Task { @MainActor in
+                    do {
+                        try await self.history.discardAsync(retained)
+                        guard self.isCurrentSession(generation),
+                              self.processingWavURL == pending else { return }
+                        self.processingWavURL = nil
+                    } catch {
+                        guard self.isCurrentSession(generation) else { return }
+                        self.setState(.error(L10n.format(
+                            "core.history.persistence_failed", error.localizedDescription
+                        )))
+                    }
+                }
+            }
         } else if case .error = priorState {
             // Ein Fehlerzustand besitzt seine Diagnoseaufnahme weiterhin. Vor
             // allem `shutdown()` und Einstellungen-Anwenden dürfen sie nicht als

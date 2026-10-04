@@ -10,6 +10,19 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.20] — 2026-10-04
+
+### Behoben
+
+- Abbruch entfernt auch den bereits gespeicherten Teiltext eines Diktats,
+  bei dem einzelne Segmente nicht transkribiert werden konnten.
+- Lässt sich eine abgebrochene Aufnahme nicht löschen, bleibt ein textfreier
+  Verweis im Verlauf erhalten. „Alle löschen“ erreicht sie auch nach einem
+  weiteren Diktat oder Neustart, selbst wenn ihr ursprünglicher Schreibvorgang
+  noch nicht begonnen hatte.
+- Lokaler App-Bau ohne Developer-ID-Zertifikat erreicht die vorgesehene
+  Ad-hoc-Signatur, statt bei der automatischen Identitätssuche abzubrechen.
+
 ## [0.9.19] — 2026-10-01
 
 ### Behoben

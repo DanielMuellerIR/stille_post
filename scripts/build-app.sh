@@ -175,8 +175,10 @@ done
 # sonst Ad-hoc ("-").
 IDENTITY="${CODESIGN_IDENTITY:-}"
 if [ -z "$IDENTITY" ]; then
+    # Kein Zertifikat ist ein regulärer Ad-hoc-Fall. awk liefert dann erfolgreich
+    # eine leere Ausgabe und liest auch bei mehreren Treffern die Pipeline fertig.
     IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
-        | grep -o '"Developer ID Application: [^"]*"' | head -1 | tr -d '"')"
+        | awk -F '"' '/"Developer ID Application: / && !found { print $2; found = 1 }')"
 fi
 
 if [ -n "$IDENTITY" ]; then
