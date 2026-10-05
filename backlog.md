@@ -1,5 +1,17 @@
 # Aktiver Backlog
 
+## Offene Abnahmen nach dem Review 2026-10-04
+
+- [ ] Am aktuellen notarisierten Bundle das Wörterbuch in DE/EN bearbeiten,
+  speichern, erneut öffnen und Änderungen abbrechen; außerdem die Brücke neu
+  konfigurieren, stoppen und zurücksetzen.
+- [ ] Mit realen Geräten Standardmikrofonwechsel, USB-/Bluetooth-Verlust und
+  iPhone-Zugriff über `.local` prüfen. Die bestehenden Sleep-/Firewall-Punkte
+  unten bleiben Teil dieser Abnahme. Technische Tests ersetzen diese Fälle nicht.
+
+Der Review-Stand 0.9.20 ist technisch geprüft; die installierte Version war beim
+Abschluss noch 0.9.18. Vor der Abnahme den aktuellen Stand notarisiert installieren.
+
 ## iPhone-Diktat über das Heimnetz (Stufe 0 gebaut in 0.9.2)
 
 Entscheidungen, Aufbau, Kurzbefehl-Anleitung und Messwerte stehen in
