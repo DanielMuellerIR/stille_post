@@ -1,5 +1,22 @@
 # Aktiver Backlog
 
+## Geplante Erweiterungen
+
+Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](docs/erweiterungsplan.md).
+
+- [ ] Bestehende Geräte- und Bundle-Abnahmen abschließen und den Ausgangsstand dokumentieren.
+- [ ] Einfügeziel prüfen, optionale Ergebnisvorschau und schnellen Abruf des letzten Textes ergänzen.
+- [ ] Verlaufssuche, Einzellöschung, Aufbewahrungsregeln und Diktate ohne dauerhaften Textverlauf ergänzen.
+- [ ] Textkorrektur, Änderungsvergleich, Wörterbuchübernahme und ausdrückliche erneute Textbereinigung ergänzen.
+- [ ] Diktierprofile, App-Zuordnung und eine durchgehend lokale Bereinigungsrichtlinie ergänzen.
+- [ ] Gedrückthalten, Pause/Fortsetzen, GUI-Diagnose, Testdiktat und laufende Rohtextvorschau ergänzen.
+- [ ] Audioimport, explizite gesprochene Formatierung und Bereinigung ausgewählten Textes ergänzen.
+- [ ] Parakeet und Silero gegen den bestehenden Weg messen und geeignete Kandidaten evidenzbasiert integrieren.
+- [ ] Native iPhone-App, TLS-/QR-Kopplung und lokales Offline-Diktat aufbauen.
+- [ ] Die wesentlichen Kombinationen auf realen Geräten abnehmen und beide Nutzungsanleitungen aktualisieren.
+
+Nächster Schritt: die nachfolgenden offenen Ausgangsabnahmen am aktuellen Stand prüfen. Die bisherigen Detailpunkte bleiben bis zu ihrer belegten Erledigung erhalten.
+
 ## Offene Abnahmen nach dem Review 2026-10-04
 
 - [ ] Am aktuellen notarisierten Bundle das Wörterbuch in DE/EN bearbeiten,
