@@ -26,12 +26,15 @@
 "app.raw_fallback_note" = "⚠️ Unbereinigter Rohtext (Bereinigung fehlgeschlagen/verworfen)";
 "app.screen_sharing_note" = "⚠️ Bildschirmfreigabe: dort jetzt ⌘V drücken (Text ist in der Zwischenablage)";
 "app.paste_permission_missing" = "Kein Einfüge-Recht — Text liegt in der Zwischenablage (⌘V)";
+"app.paste_target_changed" = "Einfügeziel geändert. Bitte jetzt ⌘V drücken.";
+"app.paste_target_unavailable" = "Einfügeziel nicht sicher erkennbar. Bitte jetzt ⌘V drücken.";
 "app.cleanup_fallback" = "⚠️ Ausweichweg: %@";
 "app.cleanup_primary_retry" = "⚠️ Verbindungsproblem — zweiter Versuch …";
 "app.bridge_start_failed" = "Netzwerkzugang konnte nicht geöffnet werden: %@";
 "overlay.recording" = "AUFNAHME";
 "overlay.transcribing" = "Transkribiere …";
 "overlay.inserted" = "Eingefügt";
+"overlay.copied" = "In Zwischenablage";
 "overlay.silence" = "Nur Stille erkannt";
 "overlay.failed" = "Fehlgeschlagen";
 

@@ -65,7 +65,12 @@ ein diszipliniertes kleines Modell putzt hier besser als die großen.
    bestätigen (~1,6 GB) und **Mikrofon** sowie **Bedienungshilfen** erlauben.
 
 Danach: Cursor in ein Textfeld setzen, **⌘⌥D** drücken, sprechen und **⌘⌥D**
-erneut drücken. Der Text wird an der Cursor-Position eingefügt.
+erneut drücken. Stille Post fügt nur ein, solange die ursprüngliche App, das
+Fenster und das Textfeld weiterhin fokussiert sind. Bei einem Zielwechsel oder
+fehlender Zuordnung bestätigt ein blauer Hinweis, dass der Text zum manuellen
+Einfügen in der Zwischenablage liegt. Die App wechselt nie selbst zum früheren
+Fenster zurück. Wird der Cursor innerhalb desselben Textfelds verschoben, gilt
+seine aktuelle Position; die ursprüngliche Cursor-Position wird nicht gespeichert.
 
 Stille Post sucht höchstens täglich nach signierten Updates und installiert nichts
 ungefragt. Eine sofortige Prüfung ist jederzeit im Menü unter **„Nach Updates

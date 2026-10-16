@@ -26,12 +26,15 @@
 "app.raw_fallback_note" = "⚠️ Uncleaned raw text (cleanup failed/rejected)";
 "app.screen_sharing_note" = "⚠️ Screen Sharing: press ⌘V there now (the text is on the clipboard)";
 "app.paste_permission_missing" = "No permission to paste — the text is on the clipboard (⌘V)";
+"app.paste_target_changed" = "Paste target changed. Press ⌘V to insert the text.";
+"app.paste_target_unavailable" = "Paste target could not be verified. Press ⌘V to insert the text.";
 "app.cleanup_fallback" = "⚠️ Fallback: %@";
 "app.cleanup_primary_retry" = "⚠️ Connection problem — retrying …";
 "app.bridge_start_failed" = "The network access could not be opened: %@";
 "overlay.recording" = "RECORDING";
 "overlay.transcribing" = "Transcribing …";
 "overlay.inserted" = "Inserted";
+"overlay.copied" = "Copied to clipboard";
 "overlay.silence" = "Only silence detected";
 "overlay.failed" = "Failed";
 

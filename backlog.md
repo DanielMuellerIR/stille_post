@@ -5,7 +5,8 @@
 Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](docs/erweiterungsplan.md).
 
 - [ ] Bestehende Geräte- und Bundle-Abnahmen abschließen und den Ausgangsstand dokumentieren.
-- [ ] Einfügeziel prüfen, optionale Ergebnisvorschau und schnellen Abruf des letzten Textes ergänzen.
+- [x] Einfügeziel vor automatischem Einfügen prüfen; siehe [sicheres Einfügen](docs/sicheres-einfuegen.md).
+- [ ] Optionale Ergebnisvorschau und schnellen Abruf des letzten Textes ergänzen.
 - [ ] Verlaufssuche, Einzellöschung, Aufbewahrungsregeln und Diktate ohne dauerhaften Textverlauf ergänzen.
 - [ ] Textkorrektur, Änderungsvergleich, Wörterbuchübernahme und ausdrückliche erneute Textbereinigung ergänzen.
 - [ ] Diktierprofile, App-Zuordnung und eine durchgehend lokale Bereinigungsrichtlinie ergänzen.
@@ -17,7 +18,7 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
 [docs/ausgangspruefung-2026-10-16.md](docs/ausgangspruefung-2026-10-16.md) dokumentiert.
-Nächster unabhängiger Entwicklungsschritt: das Einfügeziel absichern. Die offenen
+Nächster unabhängiger Entwicklungsschritt: Ergebnisvorschau und letzten Text ergänzen. Die offenen
 Gerätefälle bleiben bis zu ihrer tatsächlichen Abnahme erhalten.
 
 ## Offene Abnahmen nach dem Review 2026-10-04

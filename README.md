@@ -64,7 +64,11 @@ task a small, disciplined model cleans better than the large ones.
    **Microphone** and **Accessibility** access when macOS asks.
 
 Now place the cursor in a text field, press **⌘⌥D**, speak, and press **⌘⌥D**
-again. The text is pasted at the cursor.
+again. Stille Post pastes only while the original app, window and text field are
+still focused. If the target changes or cannot be identified, a blue notice
+confirms that the text is in the clipboard for manual pasting. The app never
+switches back to an earlier window. Moving the cursor within the same text field
+uses its current position; the original cursor position is not saved.
 
 Stille Post checks for signed updates at most once per day and never installs one
 without permission. Use **“Check for Updates …”** in the menu to check immediately;

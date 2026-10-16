@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hotkey: HotkeyManager!
     private var overlay: OverlayController!
     private var historyWindow: HistoryWindowController!
+    private var pasteTarget: PasteService.Target?
     private var settingsWindow: SettingsWindowController!
     /// Netzwerkzugang für eigene Geräte im Heimnetz; nil = ausgeschaltet.
     private var bridge: BridgeServer?
@@ -107,6 +108,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )))
         case "success-raw":
             overlay.show(.success(note: L10n.text("app.raw_fallback_note")))
+        case "clipboard-target-changed":
+            overlay.show(.clipboard(note: L10n.text("app.paste_target_changed")))
+        case "clipboard-target-unavailable":
+            overlay.show(.clipboard(note: L10n.text("app.paste_target_unavailable")))
         case .some, .none:
             break
         }
@@ -122,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Baut Engine, Overlay, Verlaufsfenster und Hotkey aus der aktuellen Config auf.
     /// Läuft beim Start und nach jedem Speichern der Einstellungen.
     private func buildComponents() {
+        pasteTarget = nil
         engine = DictationEngine(config: config)
         overlay = OverlayController(config: config.ui)
         historyWindow = HistoryWindowController(engine: engine)
@@ -365,6 +371,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.updateStatusIcon(for: state)
             switch state {
+            case .starting:
+                self.pasteTarget = PasteService.captureTarget()
             case .recording:
                 self.overlay.show(.recording)
             case .processing:
@@ -374,15 +382,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .error(let message):
                 self.playSound(custom: nil, fallback: "Basso")  // Fehler-Sound
                 self.overlay.show(.failure(message))
-            case .idle, .starting:
+            case .idle:
                 break
             }
         }
 
         engine.onResult = { [weak self] result in
             guard let self else { return }
+            defer { self.pasteTarget = nil }
             if let entry = result.entry, !entry.isFailed, !result.text.isEmpty {
-                let outcome = PasteService.paste(result.text)
+                let outcome = PasteService.paste(result.text, target: self.pasteTarget)
                 // Transparenz: Wurde die LLM-Bereinigung verworfen (Rohtext benutzt),
                 // soll man das SOFORT sehen — nicht erst später im Verlauf rätseln.
                 let note = entry.cleanupFellBack == true
@@ -394,7 +403,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // Bildschirmfreigabe: Wir tippen bewusst nicht (käme drüben als
                     // nacktes "v" an) — der Sync trägt den Text rüber, der Nutzer
                     // fügt am entfernten Mac selbst ein.
-                    self.overlay.show(.success(note: L10n.text("app.screen_sharing_note")))
+                    self.overlay.show(.clipboard(note: L10n.text("app.screen_sharing_note")))
+                case .clipboardOnlyTargetChanged:
+                    self.overlay.show(.clipboard(note: L10n.text("app.paste_target_changed")))
+                case .clipboardOnlyTargetUnavailable:
+                    self.overlay.show(.clipboard(note: L10n.text("app.paste_target_unavailable")))
                 case .noPermission:
                     // Ohne Bedienungshilfen-Recht liegt der Text in der Zwischenablage.
                     self.overlay.show(.failure(L10n.text("app.paste_permission_missing")))
@@ -422,6 +435,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleDictation() { engine.toggle() }
     @objc private func cancelDictation() {
+        pasteTarget = nil
         engine.cancel()
         overlay.hide()
     }

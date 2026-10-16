@@ -10,6 +10,17 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.22] — 2026-10-16
+
+### Neu
+
+- Automatisches Einfügen prüft die beim Aufnahmebeginn fokussierte App, das
+  Fenster und das Textfeld. Bei einem Zielwechsel oder fehlender Zuordnung bleibt
+  der Text mit einem blauen Hinweis zum manuellen Einfügen in der Zwischenablage.
+- Auch bei Bildschirmfreigabe bezeichnet der Hinweis das Ergebnis ausdrücklich
+  als kopiert. Eine neue Kopieraktion hat weiterhin Vorrang vor der automatischen
+  Wiederherstellung der früheren Zwischenablage.
+
 ## [0.9.21] — 2026-10-16
 
 ### Behoben

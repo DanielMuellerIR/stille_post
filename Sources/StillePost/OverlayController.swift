@@ -19,6 +19,7 @@ final class OverlayController {
         case recording                       // rot, pulsierend, Pegel + Uhr
         case processing(detail: String? = nil)  // orange, "Transkribiere …" (+ Zusatzzeile, z. B. Fallback-Hinweis)
         case success(note: String? = nil)    // grün, kurz "Eingefügt ✓" (+ Hinweis, z. B. "Rohtext"), blendet selbst aus
+        case clipboard(note: String)        // blau, Text bleibt zum manuellen Einfügen bereit
         case silence                         // grau, kurz "Nur Stille erkannt"
         case failure(String)                 // rot, Fehlermeldung, blendet nach ein paar Sekunden aus
     }
@@ -59,6 +60,11 @@ final class OverlayController {
             // Mit Hinweis (z. B. "Rohtext eingefügt") länger stehen lassen — der
             // Nutzer soll die Abweichung vom Normalfall wirklich mitbekommen.
             scheduleHide(after: note == nil ? 0.9 : 3)
+        case .clipboard(let note):
+            model.mode = .clipboard(note: note)
+            stopLevelUpdates()
+            presentPanel()
+            scheduleHide(after: 4)
         case .silence:
             model.mode = .silence
             stopLevelUpdates()
@@ -180,6 +186,7 @@ final class OverlayModel: ObservableObject {
         case recording, silence
         case processing(detail: String?)
         case success(note: String?)
+        case clipboard(note: String)
         case failure(String)
     }
     @Published var mode: Mode = .recording
@@ -254,6 +261,18 @@ struct OverlayView: View {
                             .padding(.horizontal, 14)
                     }
                 }
+            case .clipboard(let note):
+                VStack(spacing: 5) {
+                    Label(L10n.text("overlay.copied"), systemImage: "doc.on.clipboard")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundColor(.white)
+                    Text(note)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.9))
+                        .lineLimit(3)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 14)
+                }
             case .silence:
                 Label(L10n.text("overlay.silence"), systemImage: "waveform.slash")
                     .font(.system(size: 17, weight: .semibold))
@@ -280,6 +299,7 @@ struct OverlayView: View {
         case .recording: return Color(red: 0.55, green: 0.05, blue: 0.05).opacity(0.94)
         case .processing: return Color(red: 0.55, green: 0.33, blue: 0).opacity(0.94)
         case .success: return Color(red: 0.05, green: 0.42, blue: 0.1).opacity(0.94)
+        case .clipboard: return Color(red: 0.1, green: 0.25, blue: 0.45).opacity(0.94)
         case .silence: return Color(white: 0.22).opacity(0.94)
         case .failure: return Color(red: 0.45, green: 0.07, blue: 0.07).opacity(0.96)
         }
@@ -290,6 +310,7 @@ struct OverlayView: View {
         case .recording: return .red
         case .processing: return .orange
         case .success: return .green
+        case .clipboard: return .blue
         case .silence: return .gray
         case .failure: return .red
         }
