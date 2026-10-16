@@ -344,3 +344,32 @@
 "result.copy_shortcut" = "Copy (⌘⇧C)";
 
 "result.keyboard_help" = "⌘↩ Insert · ⌘⇧C Copy · ⌘. Discard";
+
+/* Verlaufssuche und Einzellöschung */
+"history.search" = "Search raw text and result";
+"history.clear_search" = "Clear search";
+"history.period" = "Period";
+"history.status" = "Status";
+"history.period.all" = "All dates";
+"history.period.today" = "Today";
+"history.period.lastSevenDays" = "Last 7 days";
+"history.period.lastThirtyDays" = "Last 30 days";
+"history.status.all" = "All";
+"history.status.successful" = "Successful";
+"history.status.failed" = "Failed";
+"history.no_matches" = "No matching dictations found.";
+"history.reset_filters" = "Reset filters";
+"history.match_count" = "%d of %d entries";
+"history.refresh" = "Refresh (⌘R)";
+"history.delete_one" = "Delete entry …";
+"history.delete_one.confirm" = "Delete this entry?";
+"history.delete_one.message" = "The text and its recording will be removed. If a recording cannot be deleted, a text-free reference remains for a later deletion attempt.";
+
+/* Standardaktionen für fokussierte Textfelder */
+"menu.edit" = "Edit";
+"menu.undo" = "Undo";
+"menu.redo" = "Redo";
+"menu.cut" = "Cut";
+"menu.copy" = "Copy";
+"menu.paste" = "Paste";
+"menu.select_all" = "Select All";

@@ -6,7 +6,7 @@ import Glibc
 #endif
 
 /// Verlauf aller Diktate: Text ansehen/kopieren, fehlgeschlagene erneut
-/// transkribieren, alles löschen.
+/// transkribieren, einzelne oder alle Einträge löschen.
 ///
 /// Speicher-Prinzip (Datensparsamkeit):
 ///  - Der TEXT jedes Diktats wird im Verlauf behalten (bis "Alle löschen").
@@ -45,14 +45,26 @@ public final class HistoryStore: @unchecked Sendable {
         /// Wie lange hat die Bereinigung gedauert (Sekunden)? (Diagnose: "warum war
         /// das Diktat lahm — Bereinigung oder etwas anderes?")
         public var cleanupSec: Double?
+        /// Text ist bereits gelöscht; nur eine noch zu entfernende Aufnahme bleibt.
+        public var deletionPending: Bool?
 
         public var isFailed: Bool { status == "failed" }
+        public var isDeletionPending: Bool {
+            if let deletionPending { return deletionPending }
+            // Frühere Versionen hatten noch kein Flag. Deren textfreie
+            // Löschreste dürfen ebenfalls nicht erneut Text erhalten.
+            guard isFailed, rawText.isEmpty, cleanText.isEmpty, audioFileName != nil else { return false }
+            return ["de", "en"].contains {
+                errorMessage == L10n.text("core.history.audio_delete_pending", language: $0)
+            }
+        }
 
         public init(id: UUID = UUID(), date: Date = Date(), rawText: String, cleanText: String,
                     status: String, errorMessage: String? = nil, audioFileName: String? = nil,
                     durationSec: Double, cleanupFellBack: Bool? = nil,
                     cleanupFallbackReason: String? = nil,
-                    cleanupEndpoint: String? = nil, cleanupSec: Double? = nil) {
+                    cleanupEndpoint: String? = nil, cleanupSec: Double? = nil,
+                    deletionPending: Bool? = nil) {
             self.id = id
             self.date = date
             self.rawText = rawText
@@ -65,6 +77,7 @@ public final class HistoryStore: @unchecked Sendable {
             self.cleanupFallbackReason = cleanupFallbackReason
             self.cleanupEndpoint = cleanupEndpoint
             self.cleanupSec = cleanupSec
+            self.deletionPending = deletionPending
         }
     }
 
@@ -99,13 +112,19 @@ public final class HistoryStore: @unchecked Sendable {
 
     /// Alle Einträge, neueste zuerst.
     public func list() throws -> [Entry] {
-        try queue.sync {
-            try withFileLock {
-                // Maßgeblich ist immer der Plattenstand: App und CLI schreiben
-                // beide in dieselbe Datei. Einen Zwischenspeicher gibt es
-                // deshalb bewusst nicht.
-                try loadFromDiskLocked().sorted { $0.date > $1.date }
-            }
+        try queue.sync { try listOnQueue() }
+    }
+
+    public func listAsync() async throws -> [Entry] {
+        try await onQueue { try self.listOnQueue() }
+    }
+
+    private func listOnQueue() throws -> [Entry] {
+        try withFileLock {
+            // Maßgeblich ist immer der Plattenstand: App und CLI schreiben
+            // beide in dieselbe Datei. Einen Zwischenspeicher gibt es
+            // deshalb bewusst nicht.
+            try loadFromDiskLocked().sorted { $0.date > $1.date }
         }
     }
 
@@ -233,7 +252,55 @@ public final class HistoryStore: @unchecked Sendable {
             guard let index = fresh.firstIndex(where: { $0.id == entry.id }) else {
                 throw PersistenceError.entryNoLongerExists
             }
+            guard !fresh[index].isDeletionPending else {
+                throw PersistenceError.entryNoLongerExists
+            }
             fresh[index] = entry
+            try saveLocked(fresh)
+        }
+    }
+
+    /// Löscht nur den aktuellen Plattenstand dieser ID. Parallele Änderungen an
+    /// anderen Einträgen bleiben unter demselben Prozess-Lock erhalten.
+    public func delete(id: UUID) throws {
+        defer { onChange?() }
+        try queue.sync { try deleteOnQueue(id: id) }
+    }
+
+    public func deleteAsync(id: UUID) async throws {
+        defer { onChange?() }
+        try await onQueue { try self.deleteOnQueue(id: id) }
+    }
+
+    private func deleteOnQueue(id: UUID) throws {
+        try withFileLock {
+            var fresh = try loadFromDiskLocked()
+            guard let index = fresh.firstIndex(where: { $0.id == id }) else { return }
+            let entry = fresh[index]
+            guard let name = entry.audioFileName else {
+                fresh.remove(at: index)
+                try saveLocked(fresh)
+                return
+            }
+            guard Self.safeAudioName(name) != nil else {
+                fresh.remove(at: index)
+                try saveLocked(fresh)
+                throw PersistenceError.unsafeAudioFileName
+            }
+            // Ein manuell duplizierter Audio-Verweis gehört weiter zum anderen
+            // Eintrag. Seine Aufnahme darf die Einzellöschung nicht entfernen.
+            if fresh.contains(where: { $0.id != id && $0.audioFileName == name }) {
+                fresh.remove(at: index)
+                try saveLocked(fresh)
+                return
+            }
+            // Vor dem Dateizugriff den Löschauftrag dauerhaft festhalten. So
+            // bleiben bei Dateifehler oder zweitem Write-Fehler alle Verweise da,
+            // und ein verspätetes Retry darf den gelöschten Text nicht zurückholen.
+            fresh[index] = Self.audioOnlyRemnant(of: entry)
+            try saveLocked(fresh)
+            try removeAudioFile(named: name)
+            fresh.remove(at: index)
             try saveLocked(fresh)
         }
     }
@@ -315,7 +382,7 @@ public final class HistoryStore: @unchecked Sendable {
               status: "failed",
               errorMessage: L10n.text("core.history.audio_delete_pending"),
               audioFileName: entry.audioFileName,
-              durationSec: entry.durationSec)
+              durationSec: entry.durationSec, deletionPending: true)
     }
 
     private func loadFromDiskLocked() throws -> [Entry] {
@@ -372,7 +439,11 @@ public final class HistoryStore: @unchecked Sendable {
     /// Löschen benutzen dieselbe Prüfung; eine Angabe, die zum Löschen zu
     /// unsicher ist, darf auch nicht gelesen werden.
     private static func safeAudioName(_ name: String) -> String? {
-        guard !name.isEmpty, URL(fileURLWithPath: name).lastPathComponent == name else {
+        // Beim Wurzelpfad ist lastPathComponent ebenfalls "/". Ohne diese
+        // zusätzliche Grenze würde appendingPathComponent den Aufnahmeordner
+        // selbst adressieren und eine Dateilöschung könnte ihn ganz entfernen.
+        guard !name.isEmpty, !name.contains("/"), !name.contains("\0"),
+              URL(fileURLWithPath: name).lastPathComponent == name else {
             return nil
         }
         return name
@@ -383,8 +454,12 @@ public final class HistoryStore: @unchecked Sendable {
             throw PersistenceError.unsafeAudioFileName
         }
         let url = audioDir.appendingPathComponent(name)
-        guard FileManager.default.fileExists(atPath: url.path) else { return }
-        try FileManager.default.removeItem(at: url)
+        // unlink entfernt Dateien und Links, niemals rekursiv ein Verzeichnis.
+        // Zugriffsfehler dürfen nicht wie ein fehlender Pfad behandelt werden.
+        let (result, failure) = url.path.withCString { path in (unlink(path), errno) }
+        guard result != 0 else { return }
+        guard failure != ENOENT else { return }
+        throw POSIXError(POSIXErrorCode(rawValue: failure) ?? .EIO)
     }
 
     public enum PersistenceError: Error, LocalizedError {

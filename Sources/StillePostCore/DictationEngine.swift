@@ -795,6 +795,11 @@ public final class DictationEngine {
     /// Transkribiert die zurückbehaltene Aufnahme eines fehlgeschlagenen Eintrags neu.
     /// Bei Erfolg wird der Eintrag aktualisiert und die Audio-Datei gelöscht.
     public func retry(entry: HistoryStore.Entry) async throws -> HistoryStore.Entry {
+        guard let stored = (try await history.listAsync()).first(where: { $0.id == entry.id }),
+              !stored.isDeletionPending else {
+            throw HistoryStore.PersistenceError.entryNoLongerExists
+        }
+        let entry = stored
         guard let audioURL = history.audioURL(for: entry),
               FileManager.default.fileExists(atPath: audioURL.path) else {
             var updated = entry

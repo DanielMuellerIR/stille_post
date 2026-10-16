@@ -10,6 +10,24 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.24] — 2026-10-16
+
+### Neu
+
+- Der lokale Verlauf lässt sich über Rohtext und Ergebnis durchsuchen und nach
+  Kalendertagen oder Fehlerstatus filtern. Aktualisieren lädt auch Änderungen
+  durch die CLI; Lesen und Filtern laufen außerhalb des Hauptthreads.
+- Einzelne Einträge lassen sich nach Bestätigung löschen. Fehlgeschlagene
+  Audiolöschungen behalten einen textfreien, erneut löschbaren Verweis.
+  Verspätete Wiederholungen stellen gelöschten Text nicht wieder her.
+
+### Behoben
+
+- Standardkürzel für Auswählen, Kopieren und Einfügen funktionieren auch in
+  den Textfeldern der App.
+- Ungültige Audioverweise können den Aufnahmeordner oder darin abgelegte
+  Verzeichnisse nicht löschen. Die Dateilöschung entfernt nur Dateien und Links.
+
 ## [0.9.23] — 2026-10-16
 
 ### Neu

@@ -41,6 +41,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// gehalten, damit der laufende Download nicht mitsamt Controller wegoptimiert wird.
     private let modelDownload = ModelDownloadController()
 
+    private func setupEditingMenu() {
+        let menu = NSMenu()
+        let applicationItem = NSMenuItem()
+        let applicationMenu = NSMenu()
+        applicationMenu.addItem(NSMenuItem(title: L10n.text("menu.quit"),
+            action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
+        applicationItem.submenu = applicationMenu
+        menu.addItem(applicationItem)
+        let item = NSMenuItem(title: L10n.text("menu.edit"), action: nil, keyEquivalent: "")
+        let edit = NSMenu(title: item.title)
+        for (key, selector, equivalent) in [
+            ("undo", "undo:", "z"), ("redo", "redo:", "z"),
+            ("cut", "cut:", "x"), ("copy", "copy:", "c"),
+            ("paste", "paste:", "v"), ("select_all", "selectAll:", "a")
+        ] {
+            let command = NSMenuItem(title: L10n.text("menu." + key),
+                                     action: NSSelectorFromString(selector), keyEquivalent: equivalent)
+            if key == "redo" { command.keyEquivalentModifierMask = [.command, .shift] }
+            edit.addItem(command)
+        }
+        item.submenu = edit
+        menu.addItem(item)
+        NSApp.mainMenu = menu
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Einzelinstanz-Schutz: Läuft schon eine Stille Post, beendet sich die neue
         // sofort. Zwei Instanzen würden sonst beide aufnehmen und beide einfügen —
@@ -55,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Menüleisten-App ohne Dock-Symbol (LSUIElement steht zusätzlich im Info.plist
         // des App-Bundles; .accessory deckt den `swift run`-Entwicklungsfall ab).
         NSApp.setActivationPolicy(.accessory)
+        setupEditingMenu()
 
         settingsWindow = SettingsWindowController(
             onApply: { [weak self] newConfig in

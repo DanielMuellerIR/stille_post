@@ -18,6 +18,8 @@ well.
 | ![Menu bar menu](assets/en/menu.png) | ![History window](assets/en/history.png) |
 | *Menu bar: start/stop, history, settings, quit* | *History: every dictation (raw + cleaned), copy with one click* |
 
+History supports local search across raw and cleaned text, date and status filters, and confirmed deletion of individual entries. ⌘F focuses search; ⌘R reloads changes made by the CLI. If audio deletion fails, a text-free reference remains available for another deletion attempt. [History details](docs/verlauf-verwalten.md).
+
 ## Ready in five minutes
 
 The signed app package runs on **Apple Silicon Macs with macOS 13 or later**.

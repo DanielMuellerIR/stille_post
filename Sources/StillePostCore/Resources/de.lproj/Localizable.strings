@@ -344,3 +344,32 @@
 "result.copy_shortcut" = "Kopieren (⌘⇧C)";
 
 "result.keyboard_help" = "⌘↩ Einfügen · ⌘⇧C Kopieren · ⌘. Verwerfen";
+
+/* Verlaufssuche und Einzellöschung */
+"history.search" = "Rohtext und Ergebnis durchsuchen";
+"history.clear_search" = "Suche leeren";
+"history.period" = "Zeitraum";
+"history.status" = "Status";
+"history.period.all" = "Alle Tage";
+"history.period.today" = "Heute";
+"history.period.lastSevenDays" = "Letzte 7 Tage";
+"history.period.lastThirtyDays" = "Letzte 30 Tage";
+"history.status.all" = "Alle";
+"history.status.successful" = "Erfolgreich";
+"history.status.failed" = "Fehlgeschlagen";
+"history.no_matches" = "Keine passenden Diktate gefunden.";
+"history.reset_filters" = "Filter zurücksetzen";
+"history.match_count" = "%d von %d Einträgen";
+"history.refresh" = "Aktualisieren (⌘R)";
+"history.delete_one" = "Eintrag löschen …";
+"history.delete_one.confirm" = "Diesen Eintrag löschen?";
+"history.delete_one.message" = "Text und zugehörige Aufnahme werden entfernt. Lässt sich eine Aufnahme nicht löschen, bleibt ein textfreier Verweis für einen späteren Löschversuch erhalten.";
+
+/* Standardaktionen für fokussierte Textfelder */
+"menu.edit" = "Bearbeiten";
+"menu.undo" = "Widerrufen";
+"menu.redo" = "Wiederholen";
+"menu.cut" = "Ausschneiden";
+"menu.copy" = "Kopieren";
+"menu.paste" = "Einfügen";
+"menu.select_all" = "Alles auswählen";

@@ -3,7 +3,7 @@ import SwiftUI
 import StillePostCore
 
 /// Fenster mit dem Diktat-Verlauf: ansehen, kopieren, fehlgeschlagene erneut
-/// transkribieren, alles löschen.
+/// transkribieren, lokal suchen und gezielt löschen.
 final class HistoryWindowController {
 
     private var window: NSWindow?
@@ -18,13 +18,14 @@ final class HistoryWindowController {
         model.reload()
         if window == nil {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 560, height: 520),
+                contentRect: NSRect(x: 0, y: 0, width: 680, height: 600),
                 styleMask: [.titled, .closable, .resizable, .miniaturizable],
                 backing: .buffered, defer: false
             )
             window.title = L10n.text("window.history.title")
             window.center()
             window.isReleasedWhenClosed = false
+            window.contentMinSize = NSSize(width: 640, height: 400)
             window.contentView = NSHostingView(rootView: HistoryView(model: model))
             self.window = window
         }
@@ -42,6 +43,11 @@ final class HistoryWindowController {
 /// Beobachtbares Modell fürs Verlaufsfenster.
 final class HistoryViewModel: ObservableObject {
     @Published var entries: [HistoryStore.Entry] = []
+    @Published var visibleEntries: [HistoryStore.Entry] = []
+    @Published var query = HistoryQuery() { didSet { filterEntries() } }
+    @Published var loading = false
+    @Published var filtering = false
+    @Published var deleting: Set<UUID> = []
     /// IDs der Einträge, bei denen gerade "Erneut transkribieren" läuft.
     @Published var retrying: Set<UUID> = []
     @Published var errorMessage: String?
@@ -50,6 +56,8 @@ final class HistoryViewModel: ObservableObject {
     /// Zwei schnell aufeinanderfolgende Reloads können off-main andersherum
     /// fertig werden, obwohl beide korrekt gelesen haben.
     private var reloadGeneration: UInt64 = 0
+    private var filterGeneration: UInt64 = 0
+    private var filterWorker: Task<[HistoryStore.Entry], Never>?
 
     let engine: DictationEngine
 
@@ -60,21 +68,43 @@ final class HistoryViewModel: ObservableObject {
         }
     }
 
+    deinit { filterWorker?.cancel() }
+
     func reload() {
+        loading = true
         reloadGeneration &+= 1
         let generation = reloadGeneration
         let history = engine.history
         Task { @MainActor [weak self] in
-            let result = await Task.detached(priority: .userInitiated) {
-                Result { try history.list() }
-            }.value
+            let result: Result<[HistoryStore.Entry], Error>
+            do { result = .success(try await history.listAsync()) }
+            catch { result = .failure(error) }
             guard let self, generation == self.reloadGeneration else { return }
+            self.loading = false
             switch result {
             case .success(let entries):
                 self.entries = entries
+                self.filterEntries()
             case .failure(let error):
                 self.errorMessage = error.localizedDescription
             }
+        }
+    }
+
+    private func filterEntries() {
+        filterGeneration &+= 1
+        let generation = filterGeneration
+        let entries = entries
+        let query = query
+        filtering = true
+        filterWorker?.cancel()
+        let worker = Task.detached(priority: .userInitiated) { query.filter(entries) }
+        filterWorker = worker
+        Task { @MainActor [weak self] in
+            let matches = await worker.value
+            guard let self, generation == self.filterGeneration else { return }
+            self.visibleEntries = matches
+            self.filtering = false
         }
     }
 
@@ -84,6 +114,8 @@ final class HistoryViewModel: ObservableObject {
     }
 
     func retry(_ entry: HistoryStore.Entry) {
+        guard !deletingAll, !deleting.contains(entry.id), !retrying.contains(entry.id),
+              !entry.isDeletionPending else { return }
         retrying.insert(entry.id)
         Task { @MainActor in
             do {
@@ -96,8 +128,23 @@ final class HistoryViewModel: ObservableObject {
         }
     }
 
+    func delete(_ entry: HistoryStore.Entry) {
+        guard !deletingAll, !retrying.contains(entry.id), !deleting.contains(entry.id) else { return }
+        deleting.insert(entry.id)
+        let history = engine.history
+        Task { @MainActor [weak self] in
+            defer { self?.deleting.remove(entry.id) }
+            do {
+                try await history.deleteAsync(id: entry.id)
+            } catch {
+                self?.errorMessage = error.localizedDescription
+            }
+            self?.reload()
+        }
+    }
+
     func deleteAll() {
-        guard !deletingAll else { return }
+        guard !deletingAll, deleting.isEmpty, retrying.isEmpty else { return }
         deletingAll = true
         let history = engine.history
         Task { @MainActor [weak self] in
@@ -117,37 +164,108 @@ final class HistoryViewModel: ObservableObject {
 struct HistoryView: View {
     @ObservedObject var model: HistoryViewModel
     @State private var confirmDeleteAll = false
+    @State private var selection: UUID?
+    @State private var pendingDeletion: HistoryStore.Entry?
+    @FocusState private var searchFocused: Bool
+
+    private var selectedEntry: HistoryStore.Entry? {
+        model.visibleEntries.first { $0.id == selection }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            if model.entries.isEmpty {
+            VStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    Button { searchFocused = true } label: {
+                        Image(systemName: "magnifyingglass")
+                    }
+                    .buttonStyle(.borderless)
+                    .help(L10n.text("history.search"))
+                    .accessibilityLabel(L10n.text("history.search"))
+                    .keyboardShortcut("f", modifiers: .command)
+                    TextField(L10n.text("history.search"), text: $model.query.text)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($searchFocused)
+                        .accessibilityIdentifier("historySearch")
+                    if !model.query.text.isEmpty {
+                        Button { model.query.text = "" } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel(L10n.text("history.clear_search"))
+                    }
+                }
+                HStack(spacing: 14) {
+                    Picker(L10n.text("history.period"), selection: $model.query.period) {
+                        ForEach(HistoryQuery.Period.allCases, id: \.self) { period in
+                            Text(L10n.text("history.period.\(period.rawValue)")).tag(period)
+                        }
+                    }
+                    .accessibilityIdentifier("historyPeriod")
+                    Picker(L10n.text("history.status"), selection: $model.query.status) {
+                        ForEach(HistoryQuery.Status.allCases, id: \.self) { status in
+                            Text(L10n.text("history.status.\(status.rawValue)")).tag(status)
+                        }
+                    }
+                    .accessibilityIdentifier("historyStatus")
+                }
+                .pickerStyle(.menu)
+            }
+            .padding(14)
+            Divider()
+            if model.loading && model.entries.isEmpty {
+                Spacer()
+                ProgressView()
+                Spacer()
+            } else if model.entries.isEmpty {
                 Spacer()
                 Text(L10n.text("history.empty"))
                     .foregroundColor(.secondary)
                 Spacer()
+            } else if model.visibleEntries.isEmpty {
+                Spacer()
+                Text(L10n.text("history.no_matches"))
+                    .foregroundColor(.secondary)
+                Button(L10n.text("history.reset_filters")) { model.query = HistoryQuery() }
+                    .padding(.top, 6)
+                Spacer()
             } else {
-                List(model.entries) { entry in
+                List(model.visibleEntries, selection: $selection) { entry in
                     EntryRow(entry: entry, model: model)
                         .padding(.vertical, 4)
+                        .tag(entry.id)
+                        .contextMenu {
+                            Button(L10n.text("history.delete_one"), role: .destructive) {
+                                pendingDeletion = entry
+                            }
+                            .disabled(model.deletingAll || model.retrying.contains(entry.id) || model.deleting.contains(entry.id))
+                        }
                 }
                 .listStyle(.inset)
             }
 
             Divider()
             HStack {
-                Text(L10n.format(
-                    model.entries.count == 1 ? "history.entry_count.one" : "history.entry_count.other",
-                    model.entries.count
-                ))
+                Text(L10n.format("history.match_count", model.visibleEntries.count, model.entries.count))
                     .font(.caption)
                     .foregroundColor(.secondary)
                 Spacer()
+                if model.loading || model.filtering || !model.deleting.isEmpty {
+                    ProgressView().controlSize(.small)
+                }
+                Button { model.reload() } label: { Image(systemName: "arrow.clockwise") }
+                    .help(L10n.text("history.refresh"))
+                    .accessibilityLabel(L10n.text("history.refresh"))
+                    .keyboardShortcut("r", modifiers: .command)
+                Button(L10n.text("history.delete_one"), role: .destructive) {
+                    pendingDeletion = selectedEntry
+                }
+                .disabled(selectedEntry == nil || model.deletingAll ||
+                    selectedEntry.map { model.retrying.contains($0.id) || model.deleting.contains($0.id) } == true)
                 Button(role: .destructive) {
                     confirmDeleteAll = true
                 } label: {
                     Label(L10n.text("history.delete_all"), systemImage: "trash")
                 }
-                .disabled(model.entries.isEmpty || model.deletingAll)
+                .disabled(model.entries.isEmpty || model.deletingAll || !model.deleting.isEmpty || !model.retrying.isEmpty)
                 .confirmationDialog(L10n.text("history.delete_all.confirm"),
                                     isPresented: $confirmDeleteAll) {
                     Button(L10n.text("history.delete_all"), role: .destructive) { model.deleteAll() }
@@ -158,7 +276,21 @@ struct HistoryView: View {
             }
             .padding(10)
         }
-        .frame(minWidth: 480, minHeight: 320)
+        .frame(minWidth: 640, minHeight: 400)
+        .onChange(of: model.visibleEntries.map(\.id)) { ids in
+            if let selection, !ids.contains(selection) { self.selection = nil }
+        }
+        .alert(L10n.text("history.delete_one.confirm"), isPresented: Binding(
+            get: { pendingDeletion != nil }, set: { if !$0 { pendingDeletion = nil } }
+        ), presenting: pendingDeletion) { entry in
+            Button(L10n.text("history.delete_one"), role: .destructive) {
+                model.delete(entry)
+                pendingDeletion = nil
+            }
+            Button(L10n.text("common.cancel"), role: .cancel) { pendingDeletion = nil }
+        } message: { _ in
+            Text(L10n.text("history.delete_one.message"))
+        }
         .alert(L10n.text("history.persistence_error"), isPresented: Binding(
             get: { model.errorMessage != nil },
             set: { if !$0 { model.errorMessage = nil } }
@@ -210,11 +342,14 @@ struct EntryRow: View {
                 Spacer()
 
                 if entry.isFailed {
-                    if model.retrying.contains(entry.id) {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Button(L10n.text("history.retry")) { model.retry(entry) }
-                            .font(.caption)
+                    if !entry.isDeletionPending {
+                        if model.retrying.contains(entry.id) {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Button(L10n.text("history.retry")) { model.retry(entry) }
+                                .font(.caption)
+                                .disabled(model.deletingAll || model.deleting.contains(entry.id))
+                        }
                     }
                 } else {
                     Button {

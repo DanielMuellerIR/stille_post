@@ -18,6 +18,8 @@ Spracheinstellungen. Auch die CLI-Diagnosen sind lokalisiert.
 | ![Menüleisten-Menü](assets/menu.png) | ![Verlauf-Fenster](assets/history.png) |
 | *Menüleiste: Start/Stopp, Verlauf, Einstellungen, Beenden* | *Verlauf: jedes Diktat (roh + bereinigt), Kopieren per Klick* |
 
+Der [Verlauf](docs/verlauf-verwalten.md) lässt sich lokal nach Rohtext und Ergebnis durchsuchen, nach Zeitraum und Fehlerstatus filtern und eintragsweise löschen. ⌘F fokussiert die Suche, ⌘R lädt Änderungen der CLI nach. Ein Löschfehler erhält einen textfreien, erneut löschbaren Audioverweis.
+
 ## In fünf Minuten startklar
 
 Das fertige, signierte App-Paket läuft auf **Apple-Silicon-Macs ab macOS 13**.
