@@ -10,6 +10,14 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.21] — 2026-10-16
+
+### Behoben
+
+- Die Einstellungen bleiben beim Einschalten der Heimnetz-Brücke bedienbar,
+  auch wenn die DNS-Auflösung des eigenen Rechnernamens nicht antwortet.
+  Die angezeigte Adresse verwendet jetzt direkt den lokalen Bonjour-Namen.
+
 ## [0.9.20] — 2026-10-04
 
 ### Behoben

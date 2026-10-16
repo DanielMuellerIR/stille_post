@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import SystemConfiguration
 
 /// Produktversion zur Anzeige. Im App-Bundle steht sie in der Info.plist; die
 /// eingebettete CLI hat keine und meldet deshalb „dev“.
@@ -18,9 +19,13 @@ public enum BridgeAddress {
     /// `STILLEPOST_HOSTNAME` ist ein reproduzierbarer Testweg für Screenshots und
     /// Dokumentation — damit gerät kein echter Rechnername in öffentliche Bilder.
     public static func baseURL(port: Int) -> String {
+        // ProcessInfo.hostName kann synchron DNS auflösen. Die Adresse wird auch
+        // im Einstellungsformular gerendert und muss ohne Netzwerkantwort lesbar sein.
+        let localName = SCDynamicStoreCopyLocalHostName(nil) as String?
         let host = ProcessInfo.processInfo.environment["STILLEPOST_HOSTNAME"]
             .flatMap { $0.isEmpty ? nil : $0 }
-            ?? ProcessInfo.processInfo.hostName
+            ?? localName.flatMap { $0.isEmpty ? nil : "\($0).local" }
+            ?? "mac.local"
         return "http://\(host.isEmpty ? "mac.local" : host):\(port)"
     }
 }

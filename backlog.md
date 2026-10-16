@@ -15,19 +15,23 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [ ] Native iPhone-App, TLS-/QR-Kopplung und lokales Offline-Diktat aufbauen.
 - [ ] Die wesentlichen Kombinationen auf realen Geräten abnehmen und beide Nutzungsanleitungen aktualisieren.
 
-Nächster Schritt: die nachfolgenden offenen Ausgangsabnahmen am aktuellen Stand prüfen. Die bisherigen Detailpunkte bleiben bis zu ihrer belegten Erledigung erhalten.
+Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
+[docs/ausgangspruefung-2026-10-16.md](docs/ausgangspruefung-2026-10-16.md) dokumentiert.
+Nächster unabhängiger Entwicklungsschritt: das Einfügeziel absichern. Die offenen
+Gerätefälle bleiben bis zu ihrer tatsächlichen Abnahme erhalten.
 
 ## Offene Abnahmen nach dem Review 2026-10-04
 
-- [ ] Am aktuellen notarisierten Bundle das Wörterbuch in DE/EN bearbeiten,
+- [x] Am aktuellen notarisierten Bundle das Wörterbuch in DE/EN bearbeiten,
   speichern, erneut öffnen und Änderungen abbrechen; außerdem die Brücke neu
   konfigurieren, stoppen und zurücksetzen.
 - [ ] Mit realen Geräten Standardmikrofonwechsel, USB-/Bluetooth-Verlust und
   iPhone-Zugriff über `.local` prüfen. Die bestehenden Sleep-/Firewall-Punkte
   unten bleiben Teil dieser Abnahme. Technische Tests ersetzen diese Fälle nicht.
 
-Der Review-Stand 0.9.20 ist technisch geprüft; die installierte Version war beim
-Abschluss noch 0.9.18. Vor der Abnahme den aktuellen Stand notarisiert installieren.
+Am 2026-10-16 am notarisierten Bundle 0.9.21 geprüft: Wörterbuchpflege DE/EN
+einschließlich Speichern, erneutem Öffnen und Abbrechen; außerdem die Brücke
+einschalten, Port ändern, stoppen und zurücksetzen. Die Gerätefälle bleiben offen.
 
 ## iPhone-Diktat über das Heimnetz (Stufe 0 gebaut in 0.9.2)
 
@@ -294,13 +298,14 @@ einen chirurgischen Fix ist, und die Reste zweier Fixes.
 Der Report (17 Funde) ist abgearbeitet: 15 Funde sind behoben, zwei bleiben
 liegen, weil sie mehr als einen chirurgischen Eingriff brauchen.
 
-- **TCP-Halbschluss: Kern korrigiert, Netzabnahme offen.** Ein vollständig
+- **TCP-Halbschluss: Kern und Netz geprüft.** Ein vollständig
   übertragener Request wird trotz Empfangs-EOF beantwortet. EOF beendet nur
   die Senderichtung des Clients; Reset/Fehler, Abschalten und fehlgeschlagenes
   Senden stornieren Arbeit. Die Gegenproben unterscheiden HTTP 200 nach
   `shutdown(SHUT_WR)` und echte Cancellation nach TCP-Reset. Der Transport
   behält nach dem Senden seine begrenzte Abholfrist. Eine Gegenprobe über das
-  echte Heimnetz am aktuellen notarisierten App-Bundle fehlt noch.
+  echte Heimnetz an einer isolierten Instanz des notarisierten App-Bundles wurde
+  am 2026-10-16 mit HTTP 200 nach TCP-Sendeschluss bestätigt.
 - **Der Modell-Download beweist nur die Dateigröße, nicht den Inhalt.** Die
   Quelle zeigt auf `…/resolve/main/…`, also auf einen veränderlichen Stand, und
   die Abschlussprüfung vergleicht ausschließlich die Bytezahl. Seit 2026-08-20
@@ -353,8 +358,8 @@ liegen, weil sie mehr als einen chirurgischen Eingriff brauchen.
   gleichzeitiger Stopp sind im Kern geprüft. Die Gegenproben an echten Geräten
   am aktuellen notarisierten Bundle sind noch offen.
 - Wörterbuch-Pflege: Editor mit einem Begriff pro Zeile im Bereinigungs-Tab
-  vorbereitet und kompiliert. Sichtprüfung in DE/EN sowie Bearbeiten, Speichern,
-  erneutes Öffnen und Abbrechen am aktuellen notarisierten Bundle sind offen.
+  am 2026-10-16 in DE/EN visuell sowie mit Bearbeiten, Speichern, erneutem Öffnen
+  und Abbrechen am aktuellen notarisierten Bundle geprüft.
   Vorbelegung siehe `Config.Cleanup.defaultDictionary` (seit 0.9.0).
 
 Erledigte Release-, README-, Lizenz-, GitHub- und Settings-Arbeit gehört in
