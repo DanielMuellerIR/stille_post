@@ -37,6 +37,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Pinnt das primäre Bereinigungs-Modell jede Minute neu — läuft nur im Modus
     /// "dauerhaft geladen" (siehe buildComponents); bei befristetem keep_alive nil.
     private var warmUpTimer: Timer?
+    private var temporaryPrivateHistory = false
+    private var historyMaintenanceTimer: Timer?
+    private var historyMaintenanceTask: Task<Void, Never>?
+    private var historyGeneration: UInt64 = 0
     /// Fragt beim Start nach dem Whisper-Modell, falls keines da ist. Als Feld
     /// gehalten, damit der laufende Download nicht mitsamt Controller wegoptimiert wird.
     private let modelDownload = ModelDownloadController()
@@ -176,6 +180,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationWillTerminate(_ notification: Notification) {
         bridge?.stop()
+        historyMaintenanceTimer?.invalidate()
+        historyMaintenanceTask?.cancel()
         engine.shutdown()
     }
 
@@ -185,10 +191,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Läuft beim Start und nach jedem Speichern der Einstellungen.
     private func buildComponents() {
         pasteTarget = nil
-        engine = DictationEngine(config: config)
+        var engineConfig = config
+        engineConfig.history = effectiveHistoryPolicy
+        engine = DictationEngine(config: engineConfig)
         overlay = OverlayController(config: config.ui)
         historyWindow = HistoryWindowController(engine: engine)
         setupEngineCallbacks()
+        startHistoryMaintenance()
 
         registerHotkey()
 
@@ -319,17 +328,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    /// Übernimmt die im Einstellungsfenster gespeicherte Config: schreibt config.json
-    /// und baut alle Bausteine neu auf. Eine laufende Aufnahme wird dabei abgebrochen;
-    /// ein selbst gestarteter whisper-server wird beendet und beim nächsten Diktat mit
-    /// den neuen Einstellungen frisch gestartet (kostet dort einmalig den Modell-Load —
-    /// bewusst so, statt Sonderfälle für "hat sich Whisper geändert?" zu pflegen).
+    private var effectiveHistoryPolicy: Config.History {
+        var policy = config.history
+        if temporaryPrivateHistory { policy.storeText = false }
+        return policy
+    }
+
+    @objc private func togglePrivateHistory() {
+        guard config.history.storeText else { return }
+        temporaryPrivateHistory.toggle()
+        let environment = ProcessInfo.processInfo.environment
+        if environment["STILLEPOST_HISTORY_TRACE"] == "1",
+           environment["STILLEPOST_CONFIG"] != nil, environment["STILLEPOST_APP_SUPPORT"] != nil {
+            FileHandle.standardError.write(Data("history-policy: storesText=\(effectiveHistoryPolicy.storeText)\n".utf8))
+        }
+        engine.configureHistory(effectiveHistoryPolicy)
+        updatePrivateHistoryMenu()
+    }
+
+    private func updatePrivateHistoryMenu() {
+        let item = statusItem.menu?.items.first { $0.action == #selector(togglePrivateHistory) }
+        item?.state = effectiveHistoryPolicy.storeText ? .off : .on
+        item?.isEnabled = config.history.storeText
+    }
+
+    private func startHistoryMaintenance() {
+        historyGeneration &+= 1
+        historyMaintenanceTask?.cancel()
+        historyMaintenanceTask = nil
+        historyMaintenanceTimer?.invalidate()
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.runHistoryMaintenance() }
+        RunLoop.main.add(timer, forMode: .common)
+        historyMaintenanceTimer = timer
+        runHistoryMaintenance()
+    }
+
+    private func runHistoryMaintenance() {
+        guard historyMaintenanceTask == nil else { return }
+        let history = engine.history
+        let generation = historyGeneration
+        historyMaintenanceTask = Task { @MainActor [weak self] in
+            defer {
+                if self?.historyGeneration == generation { self?.historyMaintenanceTask = nil }
+            }
+            do { try await history.applyRetentionAsync() }
+            catch {
+                guard let self, self.historyGeneration == generation else { return }
+                let message = L10n.format("history.retention_error", error.localizedDescription)
+                self.historyWindow.reportError(message)
+                if self.canRecallResult { self.overlay.show(.failure(message)) }
+            }
+        }
+    }
+
+    /// Reine Verlaufsregeln gelten erst für neue Aufträge und beenden keine
+    /// laufende Aufnahme. Andere Einstellungen behalten ihren Neuaufbau.
     private func applySettings(_ newConfig: Config) {
         do {
             try newConfig.save()
         } catch {
             NSSound(named: "Basso")?.play()
             overlay.show(.failure(L10n.format("app.settings_save_failed", error.localizedDescription)))
+            return
+        }
+        var historyOnly = config
+        historyOnly.history = newConfig.history
+        if historyOnly == newConfig {
+            config = newConfig
+            engine.configureHistory(effectiveHistoryPolicy)
+            updatePrivateHistoryMenu()
             return
         }
         overlay.hide()
@@ -370,6 +437,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             HotkeyManager.describe(config.lastResultHotkey)), action: #selector(showLastResult), keyEquivalent: "")
         lastResultItem.target = self
         menu.addItem(lastResultItem)
+        let privateItem = NSMenuItem(title: L10n.text("menu.private_history"),
+            action: #selector(togglePrivateHistory), keyEquivalent: "")
+        privateItem.target = self
+        privateItem.state = effectiveHistoryPolicy.storeText ? .off : .on
+        privateItem.toolTip = L10n.text("menu.private_history.help")
+        menu.addItem(privateItem)
         let historyItem = NSMenuItem(title: L10n.text("menu.history"),
                                      action: #selector(showHistory), keyEquivalent: "")
         historyItem.target = self
@@ -478,6 +551,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // Fehlerfall zeigt schon onStateChange(.error) an.
         }
 
+        engine.onPrivateRetryResult = { [weak self] entry in
+            guard let self, let result = TransientResultStore.Result(text: entry.cleanText,
+                rawFallback: entry.cleanupFellBack == true) else { return }
+            self.showPreview(result, target: PasteService.captureTarget(), focus: self.canRecallResult, floating: false)
+        }
+
         // Bereinigung weicht gerade auf einen Fallback-Endpoint aus: im Overlay
         // anzeigen, damit eine evtl. längere Wartezeit erklärbar ist.
         engine.onCleanupFallback = { [weak self] label in
@@ -499,7 +578,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        menuItem.action != #selector(showLastResult) ||
+        if menuItem.action == #selector(togglePrivateHistory) { return config.history.storeText }
+        return menuItem.action != #selector(showLastResult) ||
             ((resultMemory.last != nil || resultPreview.isVisible) && canRecallResult)
     }
 
@@ -521,8 +601,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         resultMemory.accept(text: result.text, rawFallback: result.rawFallback)
     }
 
-    private func showPreview(_ result: TransientResultStore.Result, target: PasteService.Target?, focus: Bool = false) {
-        resultPreview.show(result, focus: focus) { [weak self] action in
+    private func showPreview(_ result: TransientResultStore.Result, target: PasteService.Target?, focus: Bool = false, floating: Bool = true) {
+        resultPreview.show(result, focus: focus, floating: floating) { [weak self] action in
             guard let self else { return }
             switch action {
             case .discard: break

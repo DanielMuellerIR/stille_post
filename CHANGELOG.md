@@ -10,6 +10,20 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.25] — 2026-10-16
+
+### Neu
+
+- Text neuer Diktate lässt sich unbegrenzt, für 1/7/30 Tage oder ohne Textverlauf
+  aufbewahren. Der vorübergehende Menümodus gilt bis zum Ausschalten oder Beenden;
+  laufende Aufnahmen behalten ihre beim Start gewählte Regel.
+- Fehleraufnahmen haben eine getrennte, ausdrücklich gewählte Aufbewahrungsfrist.
+  Standardmäßig bleiben sie bis zur manuellen Löschung. Bestehende Einträge
+  erhalten keine nachträgliche Frist.
+- Ohne Textverlauf bleiben Fehleraufnahmen als textfreie Diagnoseverweise sichtbar.
+  Ergebnisse einer privaten Wiederholung erscheinen nur in der flüchtigen Vorschau.
+  Strengere gespeicherte Regeln haben Vorrang vor verspäteten Schreibvorgängen.
+
 ## [0.9.24] — 2026-10-16
 
 ### Neu

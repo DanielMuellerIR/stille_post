@@ -20,6 +20,8 @@ well.
 
 History supports local search across raw and cleaned text, date and status filters, and confirmed deletion of individual entries. ⌘F focuses search; ⌘R reloads changes made by the CLI. If audio deletion fails, a text-free reference remains available for another deletion attempt. [History details](docs/verlauf-verwalten.md).
 
+Text retention and a temporary mode without text history are available under **Settings → History**. Error recordings have a separate explicit policy; existing entries retain their previous policy. [Retention details](docs/aufbewahrung.md).
+
 ## Ready in five minutes
 
 The signed app package runs on **Apple Silicon Macs with macOS 13 or later**.

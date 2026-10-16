@@ -387,7 +387,7 @@ final class AudioFailureLifecycleTests: XCTestCase {
         await fulfillment(of: [delivered], timeout: 2)
         XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(fixture.writerURL).path))
         release.signal()
-        try await foreignWrite.value
+        _ = try await foreignWrite.value
         await fulfillment(of: [retained], timeout: 2)
         let reloaded = HistoryStore(baseDir: fixture.directory)
         let entries = try reloaded.list()
@@ -466,6 +466,57 @@ final class AudioFailureLifecycleTests: XCTestCase {
     }
 
     @MainActor
+    func testPrivateDeviceSegmentAndCancelFailuresKeepOnlyAudioMetadata() async throws {
+        let marker = "PRIVATE-LIFECYCLE-ARTIFICIAL-128"
+        for scenario in ["device", "segment", "cancel"] {
+            var config = Config()
+            config.history.storeText = false
+            config.history.audioRetentionDays = 7
+            let fixture = try LossFixture(atomicWrite: { data, url in
+                XCTAssertFalse(String(decoding: data, as: UTF8.self).contains(marker))
+                try data.write(to: url, options: .atomic)
+            }, config: config)
+            defer {
+                try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixture.history.recordingsDir.path)
+                fixture.engine.shutdown()
+                fixture.removeFiles()
+            }
+            let saved = expectation(description: "Privater Fehlerverweis \(scenario)")
+            fixture.history.onChange = { saved.fulfill() }
+            var texts: [String] = []
+            fixture.engine.onResult = { texts.append($0.text) }
+            await start(fixture)
+            fixture.recorder.onSamples?([0.1])
+            switch scenario {
+            case "device":
+                fixture.recorder.onFailure?(NSError(domain: marker, code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: marker]))
+            case "segment":
+                fixture.transcriber.text = marker
+                fixture.transcriber.failNegativeSamples = true
+                for value: Float in [0.1, -0.1] {
+                    fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [value], hadSpeech: true, reason: .pause))
+                }
+                fixture.engine.stop()
+            default:
+                try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: fixture.history.recordingsDir.path)
+                fixture.engine.cancel()
+            }
+            await fulfillment(of: [saved], timeout: 2)
+            let entry = try XCTUnwrap(HistoryStore(baseDir: fixture.directory).list().first)
+            XCTAssertTrue(entry.isTextPrivate)
+            XCTAssertEqual(entry.rawText, "")
+            XCTAssertEqual(entry.cleanText, "")
+            XCTAssertNil(entry.errorMessage)
+            XCTAssertNotNil(entry.audioExpiresAt)
+            XCTAssertNotNil(entry.audioFileName)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(fixture.history.audioURL(for: entry)).path))
+            XCTAssertTrue(texts.allSatisfy(\.isEmpty))
+            XCTAssertEqual(fixture.cleanup.calls, 0)
+        }
+    }
+
+    @MainActor
     private func start(_ fixture: LossFixture, preserveStateCallback: Bool = false) async {
         let started = expectation(description: "Aufnahme läuft")
         let prior = fixture.engine.onStateChange
@@ -500,7 +551,7 @@ private final class LossFixture {
     var deliveries = 0
 
     init(writerFailure: LossWriter.Failure? = nil, historyFailure: Bool = false,
-         atomicWrite: ((Data, URL) throws -> Void)? = nil) throws {
+         atomicWrite: ((Data, URL) throws -> Void)? = nil, config: Config = Config()) throws {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent("sp-audio-loss-\(UUID())")
         history = HistoryStore(baseDir: directory) { data, url in
             if historyFailure { throw NSError(domain: "LossTest", code: 2, userInfo: [NSLocalizedDescriptionKey: "Künstlicher Verlaufsfehler"]) }
@@ -508,7 +559,7 @@ private final class LossFixture {
             else { try data.write(to: url, options: .atomic) }
         }
         let recorder = recorder, segmenter = segmenter, urlBox = urlBox
-        engine = DictationEngine(config: Config(), history: history, dependencies: DictationDependencies(
+        engine = DictationEngine(config: config, history: history, dependencies: DictationDependencies(
             transcriber: transcriber, server: LossServer(), cleanup: cleanup,
             makeRecorder: { _ in recorder }, makeSegmenter: { _ in segmenter },
             makeWavWriter: { url in
@@ -557,6 +608,7 @@ private final class LossSegmenter: DictationSegmenter {
     func flush() { flushCount += 1 }
 }
 private final class LossTranscriber: DictationTranscriber {
+    var text = "Testtext"
     var waitForCancellation = false
     var failNegativeSamples = false
     var onStart: (() -> Void)?
@@ -570,9 +622,9 @@ private final class LossTranscriber: DictationTranscriber {
             do { try await Task.sleep(nanoseconds: 30_000_000_000) }
             catch { onCancel?(); throw error }
         }
-        return "Testtext"
+        return text
     }
-    func transcribe(wavFile: URL) async throws -> String { "Testtext" }
+    func transcribe(wavFile: URL) async throws -> String { text }
     func isReachable() async -> Bool { true }
 }
 private final class LossServer: DictationServer {

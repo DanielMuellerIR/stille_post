@@ -275,6 +275,7 @@ public struct Config: Codable, Equatable {
     public var vad: Vad = Vad()
     public var audio: Audio = Audio()
     public var ui: UI = UI()
+    public var history: History = History()
     public var hotkey: Hotkey = Hotkey()
     public var lastResultHotkey: Hotkey = .lastResultDefault
 
@@ -336,6 +337,7 @@ public struct Config: Codable, Equatable {
     /// persistent werden.
     public func validate() throws {
         _ = try WhisperEndpoint(serverURL: whisper.serverURL)
+        guard history.isValid else { throw ValidationError.invalidHistory }
         if let detail = vad.validationFailure {
             throw ValidationError.invalidVad(detail)
         }
@@ -353,6 +355,7 @@ public struct Config: Codable, Equatable {
         case invalidVad(String)
         case invalidBridge(String)
         case invalidHotkeys
+        case invalidHistory
 
         public var errorDescription: String? {
             switch self {
@@ -360,6 +363,8 @@ public struct Config: Codable, Equatable {
                 return L10n.format("core.config.invalid_vad", detail)
             case .invalidBridge(let detail):
                 return L10n.format("core.config.invalid_bridge", detail)
+            case .invalidHistory:
+                return L10n.text("core.config.invalid_history")
             case .invalidHotkeys:
                 return L10n.text("core.config.invalid_hotkeys")
             }
@@ -373,7 +378,7 @@ public struct Config: Codable, Equatable {
 
     // MARK: - Tolerantes Dekodieren (fehlende Felder -> Defaults)
 
-    private enum CodingKeys: String, CodingKey { case whisper, cleanup, bridge, vad, audio, ui, hotkey, lastResultHotkey }
+    private enum CodingKeys: String, CodingKey { case whisper, cleanup, bridge, vad, audio, ui, history, hotkey, lastResultHotkey }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -393,6 +398,9 @@ public struct Config: Codable, Equatable {
         vad = decodedVad.runtimeSafe
         audio = c.decodeOrDefault(Audio.self, forKey: .audio, default: Audio())
         ui = c.decodeOrDefault(UI.self, forKey: .ui, default: UI())
+        var historyFallback = History()
+        if c.contains(.history) { historyFallback.storeText = false }
+        history = c.decodeOrDefault(History.self, forKey: .history, default: historyFallback)
         hotkey = c.decodeOrDefault(Hotkey.self, forKey: .hotkey, default: Hotkey())
         lastResultHotkey = c.decodeOrDefault(Hotkey.self, forKey: .lastResultHotkey,
                                               default: .lastResultDefault)

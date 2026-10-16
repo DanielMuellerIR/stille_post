@@ -554,7 +554,7 @@ case "history":
             let formatter = ISO8601DateFormatter()
             for entry in entries {
                 let status = entry.isFailed ? L10n.text("cli.history.failed") : "ok"
-                let preview = entry.cleanText.isEmpty ? (entry.errorMessage ?? "") : String(entry.cleanText.prefix(80))
+                let preview = entry.cleanText.isEmpty ? (entry.diagnosticMessage ?? "") : String(entry.cleanText.prefix(80))
                 // Diagnose: Bereinigungsdauer + Endpoint (zeigt Fallback-Nutzung).
                 var cleanupInfo = ""
                 if let sec = entry.cleanupSec, let endpoint = entry.cleanupEndpoint {

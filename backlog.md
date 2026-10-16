@@ -8,7 +8,7 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Einfügeziel vor automatischem Einfügen prüfen; siehe [sicheres Einfügen](docs/sicheres-einfuegen.md).
 - [x] Optionale Ergebnisvorschau und schnellen Abruf des letzten Textes ergänzen; siehe [Ergebnisvorschau](docs/ergebnisvorschau.md).
 - [x] Lokale Verlaufssuche, Kalender-/Statusfilter und sichere Einzellöschung ergänzen; siehe [Verlauf verwalten](docs/verlauf-verwalten.md).
-- [ ] Aufbewahrungsregeln und Diktate ohne dauerhaften Textverlauf ergänzen.
+- [x] Aufbewahrungsregeln und Diktate ohne dauerhaften Textverlauf ergänzen; siehe [Aufbewahrung](docs/aufbewahrung.md).
 - [ ] Textkorrektur, Änderungsvergleich, Wörterbuchübernahme und ausdrückliche erneute Textbereinigung ergänzen.
 - [ ] Diktierprofile, App-Zuordnung und eine durchgehend lokale Bereinigungsrichtlinie ergänzen.
 - [ ] Gedrückthalten, Pause/Fortsetzen, GUI-Diagnose, Testdiktat und laufende Rohtextvorschau ergänzen.
@@ -19,7 +19,7 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
 [docs/ausgangspruefung-2026-10-16.md](docs/ausgangspruefung-2026-10-16.md) dokumentiert.
-Nächster unabhängiger Entwicklungsschritt: Aufbewahrungsregeln und Diktate ohne Textverlauf ergänzen. Die offenen
+Nächster unabhängiger Entwicklungsschritt: Textkorrektur und Änderungsvergleich ergänzen. Die offenen
 Gerätefälle bleiben bis zu ihrer tatsächlichen Abnahme erhalten.
 
 ## Offene Abnahmen nach dem Review 2026-10-04

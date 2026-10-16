@@ -13,6 +13,8 @@ final class HistoryWindowController {
         model = HistoryViewModel(engine: engine)
     }
 
+    func reportError(_ message: String) { model.errorMessage = message }
+
     /// Öffnet das Fenster (oder holt es nach vorn) und lädt die Einträge neu.
     func show() {
         model.reload()
@@ -342,7 +344,7 @@ struct EntryRow: View {
                 Spacer()
 
                 if entry.isFailed {
-                    if !entry.isDeletionPending {
+                    if entry.canRetry {
                         if model.retrying.contains(entry.id) {
                             ProgressView().controlSize(.small)
                         } else {
@@ -372,9 +374,12 @@ struct EntryRow: View {
             }
 
             if entry.isFailed {
-                Text(entry.errorMessage ?? L10n.text("history.transcription_failed"))
+                Text(entry.diagnosticMessage ?? L10n.text("history.transcription_failed"))
                     .font(.callout)
                     .foregroundColor(.red)
+                if entry.audioFileName != nil, entry.isAudioExpired {
+                    Text(L10n.text("core.history.audio_expired")).font(.caption).foregroundColor(.secondary)
+                }
             } else {
                 Text(showRaw ? entry.rawText : entry.cleanText)
                     .font(.body)

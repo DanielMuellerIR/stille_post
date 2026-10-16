@@ -20,6 +20,8 @@ Spracheinstellungen. Auch die CLI-Diagnosen sind lokalisiert.
 
 Der [Verlauf](docs/verlauf-verwalten.md) lässt sich lokal nach Rohtext und Ergebnis durchsuchen, nach Zeitraum und Fehlerstatus filtern und eintragsweise löschen. ⌘F fokussiert die Suche, ⌘R lädt Änderungen der CLI nach. Ein Löschfehler erhält einen textfreien, erneut löschbaren Audioverweis.
 
+Textaufbewahrung und ein vorübergehender Modus ohne Textverlauf sind unter **Einstellungen → Verlauf** konfigurierbar. Fehleraufnahmen haben eine getrennte ausdrückliche Regel; vorhandene Einträge behalten ihre bisherige Regel. [Details zur Aufbewahrung](docs/aufbewahrung.md).
+
 ## In fünf Minuten startklar
 
 Das fertige, signierte App-Paket läuft auf **Apple-Silicon-Macs ab macOS 13**.

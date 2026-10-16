@@ -373,3 +373,27 @@
 "menu.copy" = "Copy";
 "menu.paste" = "Paste";
 "menu.select_all" = "Select All";
+
+/* Aufbewahrung und Diktat ohne Textverlauf */
+"core.config.invalid_history" = "Invalid retention policy.";
+"core.history.private_audio" = "No text saved. The recording remains available for an explicit retry or deletion.";
+"core.history.audio_expired" = "This recording has reached its retention deadline. Transcription retry is disabled.";
+"history.retention_error" = "Retention could not be completed: %@";
+"menu.private_history" = "New dictations without text history";
+"menu.private_history.help" = "Applies until turned off or the app quits. Active recordings keep their starting policy. Disabling text history in settings takes precedence.";
+"settings.tab.history" = "History";
+"settings.history.text" = "Text retention";
+"settings.history.store_text" = "Save text of new dictations in history";
+"settings.history.text_period" = "Keep text";
+"settings.history.unlimited" = "Unlimited";
+"settings.history.days" = "%d days";
+"settings.history.future_only" = "Applies to new dictations and explicitly started retries. Choosing a new policy alone does not delete existing entries. Deadlines are checked at the next app launch and while the app is running.";
+"settings.history.audio" = "Retained error recordings";
+"settings.history.audio_period" = "Keep recordings";
+"settings.history.manual" = "Until manually deleted";
+"settings.history.audio_help" = "Audio is retained on errors, including without text history. A deadline explicitly chosen here applies only to new recordings. Text deadlines never delete audio; audio deadlines preserve text according to its own policy.";
+"settings.history.private" = "Temporarily without text history";
+"settings.history.private_help" = "The “New dictations without text history” app menu switch applies until turned off or the app quits. It does not stop an active recording and overrides enabled text storage.";
+"settings.history.memory_help" = "Without text history, errors leave only text-free audio references. Completed text and “Last text” may remain in RAM until the app quits; clipboard contents remain separate. Cleanup can still send text to configured services.";
+"settings.history.day" = "1 day";
+"core.history.private_audio_expired" = "No text saved. The expired recording remains accessible until it can be deleted successfully.";

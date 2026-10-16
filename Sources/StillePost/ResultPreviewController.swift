@@ -11,7 +11,7 @@ final class ResultPreviewController: NSObject, NSWindowDelegate {
     private var completion: ((Action) -> Void)?
     var isVisible: Bool { panel?.isVisible == true }
 
-    func show(_ result: TransientResultStore.Result, focus: Bool = false,
+    func show(_ result: TransientResultStore.Result, focus: Bool = false, floating: Bool = true,
               completion: @escaping (Action) -> Void) {
         dismiss()
         if panel == nil {
@@ -30,6 +30,8 @@ final class ResultPreviewController: NSObject, NSWindowDelegate {
             self.panel = panel
         }
         self.completion = completion
+        panel?.isFloatingPanel = floating
+        panel?.level = floating ? .floating : .normal
         panel?.contentView = ResultHostingView(rootView: ResultPreviewView(result: result) { [weak self] action in
             self?.finish(action)
         })

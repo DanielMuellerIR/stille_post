@@ -9,7 +9,7 @@ import Glibc
 /// transkribieren, einzelne oder alle Einträge löschen.
 ///
 /// Speicher-Prinzip (Datensparsamkeit):
-///  - Der TEXT jedes Diktats wird im Verlauf behalten (bis "Alle löschen").
+///  - TEXT bleibt entsprechend der auftragsbezogenen Aufbewahrungsregel erhalten.
 ///  - Das AUDIO wird sofort nach ERFOLGREICHER Transkription gelöscht.
 ///  - Nur bei FEHLGESCHLAGENER Transkription bleibt die Audio-Datei liegen, damit
 ///    "Erneut transkribieren" möglich ist. Klappt der neue Versuch, wird sie dann
@@ -47,6 +47,27 @@ public final class HistoryStore: @unchecked Sendable {
         public var cleanupSec: Double?
         /// Text ist bereits gelöscht; nur eine noch zu entfernende Aufnahme bleibt.
         public var deletionPending: Bool?
+        public var storesText: Bool?
+        public var textExpiresAt: Date?
+        public var audioExpiresAt: Date?
+
+        public var isAudioExpired: Bool { audioExpiresAt.map { $0 <= Date() } == true }
+
+        public var canRetry: Bool {
+            audioFileName != nil && !isDeletionPending && !isAudioExpired
+        }
+
+        public var diagnosticMessage: String? {
+            if isDeletionPending { return L10n.text("core.history.audio_delete_pending") }
+            if isTextPrivate {
+                return L10n.text(isAudioExpired ? "core.history.private_audio_expired" : "core.history.private_audio")
+            }
+            return errorMessage
+        }
+
+        public var isTextPrivate: Bool {
+            storesText == false || textExpiresAt.map { $0 <= Date() } == true
+        }
 
         public var isFailed: Bool { status == "failed" }
         public var isDeletionPending: Bool {
@@ -64,7 +85,8 @@ public final class HistoryStore: @unchecked Sendable {
                     durationSec: Double, cleanupFellBack: Bool? = nil,
                     cleanupFallbackReason: String? = nil,
                     cleanupEndpoint: String? = nil, cleanupSec: Double? = nil,
-                    deletionPending: Bool? = nil) {
+                    deletionPending: Bool? = nil, storesText: Bool? = nil,
+                    textExpiresAt: Date? = nil, audioExpiresAt: Date? = nil) {
             self.id = id
             self.date = date
             self.rawText = rawText
@@ -78,6 +100,9 @@ public final class HistoryStore: @unchecked Sendable {
             self.cleanupEndpoint = cleanupEndpoint
             self.cleanupSec = cleanupSec
             self.deletionPending = deletionPending
+            self.storesText = storesText
+            self.textExpiresAt = textExpiresAt
+            self.audioExpiresAt = audioExpiresAt
         }
     }
 
@@ -124,7 +149,9 @@ public final class HistoryStore: @unchecked Sendable {
             // Maßgeblich ist immer der Plattenstand: App und CLI schreiben
             // beide in dieselbe Datei. Einen Zwischenspeicher gibt es
             // deshalb bewusst nicht.
-            try loadFromDiskLocked().sorted { $0.date > $1.date }
+            var fresh = try loadFromDiskLocked()
+            try expireTextLocked(&fresh, now: Date())
+            return fresh.sorted { $0.date > $1.date }
         }
     }
 
@@ -154,47 +181,59 @@ public final class HistoryStore: @unchecked Sendable {
     // MARK: - Schreiben
 
     /// Fügt einen Eintrag hinzu und speichert.
-    public func append(_ entry: Entry) throws {
-        try queue.sync { try appendOnQueue(entry) }
+    @discardableResult
+    public func append(_ entry: Entry) throws -> Entry {
+        let receipt = try queue.sync { try appendOnQueue(entry) }
         onChange?()
+        return receipt
     }
 
     /// Asynchrone Variante für die Diktier-Pipeline. Datei-Lock, JSON-Lesen und
     /// atomarer Write laufen auf der History-Queue statt auf dem Main-Thread.
-    public func appendAsync(_ entry: Entry) async throws {
+    @discardableResult
+    public func appendAsync(_ entry: Entry) async throws -> Entry {
         let cancellation = PendingAppendCancellation()
-        try await withTaskCancellationHandler {
+        let receipt = try await withTaskCancellationHandler {
             try await onQueue { try self.appendOnQueue(entry, cancellation: cancellation) }
         } onCancel: {
             cancellation.cancel()
         }
         onChange?()
+        return receipt
     }
 
     /// Ersetzt einen Eintrag (z. B. nach "Erneut transkribieren") und speichert.
-    public func update(_ entry: Entry) throws {
-        try queue.sync { try updateOnQueue(entry) }
+    @discardableResult
+    public func update(_ entry: Entry) throws -> Entry {
+        let receipt = try queue.sync { try updateOnQueue(entry) }
         onChange?()
+        return receipt
     }
 
     /// Asynchrone Variante von `update`; siehe `appendAsync`.
-    public func updateAsync(_ entry: Entry) async throws {
-        try await onQueue { try self.updateOnQueue(entry) }
+    @discardableResult
+    public func updateAsync(_ entry: Entry) async throws -> Entry {
+        let receipt = try await onQueue { try self.updateOnQueue(entry) }
         onChange?()
+        return receipt
     }
 
     /// Gemeinsamer Kern für synchrone und asynchrone Aufrufer. So können
     /// Lock-, Reload- und atomare Write-Reihenfolge nicht auseinanderlaufen.
-    private func appendOnQueue(_ entry: Entry, cancellation: PendingAppendCancellation? = nil) throws {
+    private func appendOnQueue(_ entry: Entry, cancellation: PendingAppendCancellation? = nil) throws -> Entry {
         try withFileLock {
             if cancellation?.isCancelled == true { throw CancellationError() }
             var fresh = try loadFromDiskLocked()
-            fresh.append(entry)
-            try saveLocked(fresh)
+            let receipt = Self.effectiveEntry(entry, stored: nil, now: Date())
+            if let persisted = Self.persistableEntry(receipt) {
+                fresh.append(persisted)
+                try saveLocked(fresh)
+            }
             if cancellation?.isCancelled == true {
                 try discardLocked(entry)
                 throw CancellationError()
             }
+            return receipt
         }
     }
 
@@ -246,7 +285,7 @@ public final class HistoryStore: @unchecked Sendable {
         }
     }
 
-    private func updateOnQueue(_ entry: Entry) throws {
+    private func updateOnQueue(_ entry: Entry) throws -> Entry {
         try withFileLock {
             var fresh = try loadFromDiskLocked()
             guard let index = fresh.firstIndex(where: { $0.id == entry.id }) else {
@@ -255,8 +294,14 @@ public final class HistoryStore: @unchecked Sendable {
             guard !fresh[index].isDeletionPending else {
                 throw PersistenceError.entryNoLongerExists
             }
-            fresh[index] = entry
+            if fresh[index].isAudioExpired, entry.audioFileName != nil {
+                throw PersistenceError.audioRetentionExpired
+            }
+            let receipt = Self.effectiveEntry(entry, stored: fresh[index], now: Date())
+            if let persisted = Self.persistableEntry(receipt) { fresh[index] = persisted }
+            else { fresh.remove(at: index) }
             try saveLocked(fresh)
+            return receipt
         }
     }
 
@@ -275,34 +320,113 @@ public final class HistoryStore: @unchecked Sendable {
     private func deleteOnQueue(id: UUID) throws {
         try withFileLock {
             var fresh = try loadFromDiskLocked()
-            guard let index = fresh.firstIndex(where: { $0.id == id }) else { return }
-            let entry = fresh[index]
-            guard let name = entry.audioFileName else {
-                fresh.remove(at: index)
-                try saveLocked(fresh)
-                return
-            }
-            guard Self.safeAudioName(name) != nil else {
-                fresh.remove(at: index)
-                try saveLocked(fresh)
-                throw PersistenceError.unsafeAudioFileName
-            }
-            // Ein manuell duplizierter Audio-Verweis gehört weiter zum anderen
-            // Eintrag. Seine Aufnahme darf die Einzellöschung nicht entfernen.
-            if fresh.contains(where: { $0.id != id && $0.audioFileName == name }) {
-                fresh.remove(at: index)
-                try saveLocked(fresh)
-                return
-            }
-            // Vor dem Dateizugriff den Löschauftrag dauerhaft festhalten. So
-            // bleiben bei Dateifehler oder zweitem Write-Fehler alle Verweise da,
-            // und ein verspätetes Retry darf den gelöschten Text nicht zurückholen.
-            fresh[index] = Self.audioOnlyRemnant(of: entry)
-            try saveLocked(fresh)
-            try removeAudioFile(named: name)
+            try deleteLocked(id: id, entries: &fresh)
+        }
+    }
+
+    private func deleteLocked(id: UUID, entries fresh: inout [Entry]) throws {
+        guard let index = fresh.firstIndex(where: { $0.id == id }) else { return }
+        let entry = fresh[index]
+        guard let name = entry.audioFileName else {
             fresh.remove(at: index)
             try saveLocked(fresh)
+            return
         }
+        guard Self.safeAudioName(name) != nil else {
+            fresh.remove(at: index)
+            try saveLocked(fresh)
+            throw PersistenceError.unsafeAudioFileName
+        }
+        // Ein manuell duplizierter Audio-Verweis gehört weiter zum anderen
+        // Eintrag. Seine Aufnahme darf die Einzellöschung nicht entfernen.
+        if fresh.contains(where: { $0.id != id && $0.audioFileName == name }) {
+            fresh.remove(at: index)
+            try saveLocked(fresh)
+            return
+        }
+        // Vor dem Dateizugriff den Löschauftrag dauerhaft festhalten. So
+        // bleiben bei Dateifehler oder zweitem Write-Fehler alle Verweise da,
+        // und ein verspätetes Retry darf den gelöschten Text nicht zurückholen.
+        fresh[index] = Self.audioOnlyRemnant(of: entry)
+        try saveLocked(fresh)
+        try removeAudioFile(named: name)
+        fresh.remove(at: index)
+        try saveLocked(fresh)
+    }
+
+    /// Fristen gelten ausschließlich anhand der bereits gespeicherten Metadaten.
+    /// Ein späterer Konfigurationswechsel verändert vorhandene Einträge nicht.
+    public func applyRetentionAsync(now: Date = Date()) async throws {
+        defer { onChange?() }
+        try await onQueue {
+            try self.withFileLock {
+                var fresh = try self.loadFromDiskLocked()
+                try self.expireTextLocked(&fresh, now: now)
+                let ids = fresh.filter { $0.audioFileName != nil && $0.audioExpiresAt.map { $0 <= now } == true }.map(\.id)
+                var firstError: Error?
+                for id in ids {
+                    do { try self.expireAudioLocked(id: id, entries: &fresh) }
+                    catch { if firstError == nil { firstError = error } }
+                }
+                if let firstError { throw firstError }
+            }
+        }
+    }
+
+    private func expireAudioLocked(id: UUID, entries: inout [Entry]) throws {
+        guard let index = entries.firstIndex(where: { $0.id == id }),
+              let name = entries[index].audioFileName else { return }
+        guard Self.safeAudioName(name) != nil else { throw PersistenceError.unsafeAudioFileName }
+        let shared = entries.contains { $0.id != id && $0.audioFileName == name }
+        if !shared { try removeAudioFile(named: name) }
+        var completed = entries[index]
+        completed.audioFileName = nil
+        // Die Frist bleibt als Grenze gegen eine verspätete Wiederholung erhalten.
+        if let retained = Self.persistableEntry(completed) { entries[index] = retained }
+        else { entries.remove(at: index) }
+        try saveLocked(entries)
+    }
+
+    private func expireTextLocked(_ entries: inout [Entry], now: Date) throws {
+        let pruned = entries.compactMap { entry -> Entry? in
+            Self.persistableEntry(Self.effectiveEntry(entry, stored: nil, now: now))
+        }
+        guard pruned != entries else { return }
+        try saveLocked(pruned)
+        entries = pruned
+    }
+
+    private static func earlier(_ first: Date?, _ second: Date?) -> Date? {
+        if let first, let second { return min(first, second) }
+        return first ?? second
+    }
+
+    /// Der Rückgabebeleg behält den fertigen Text ausschließlich im RAM; der
+    /// persistierte Wert wird separat redigiert. Frische strengere Regeln gewinnen.
+    private static func effectiveEntry(_ entry: Entry, stored: Entry?, now: Date) -> Entry {
+        var result = entry
+        result.textExpiresAt = earlier(entry.textExpiresAt, stored?.textExpiresAt)
+        result.audioExpiresAt = earlier(entry.audioExpiresAt, stored?.audioExpiresAt)
+        if entry.storesText == false || stored?.storesText == false ||
+            result.textExpiresAt.map({ $0 <= now }) == true {
+            result.storesText = false
+        }
+        return result
+    }
+
+    private static func persistableEntry(_ entry: Entry) -> Entry? {
+        guard entry.storesText == false else { return entry }
+        guard entry.audioFileName != nil else { return nil }
+        var result = entry
+        result.rawText = ""
+        result.cleanText = ""
+        result.cleanupFellBack = nil
+        result.cleanupFallbackReason = nil
+        result.cleanupEndpoint = nil
+        result.cleanupSec = nil
+        result.status = "failed"
+        result.errorMessage = nil
+        return result
     }
 
     /// Löscht ALLE Einträge samt zurückbehaltener Audio-Dateien ("Alle löschen"-Button).
@@ -382,7 +506,8 @@ public final class HistoryStore: @unchecked Sendable {
               status: "failed",
               errorMessage: L10n.text("core.history.audio_delete_pending"),
               audioFileName: entry.audioFileName,
-              durationSec: entry.durationSec, deletionPending: true)
+              durationSec: entry.durationSec, deletionPending: true, storesText: false,
+              textExpiresAt: entry.textExpiresAt, audioExpiresAt: entry.audioExpiresAt)
     }
 
     private func loadFromDiskLocked() throws -> [Entry] {
@@ -463,11 +588,13 @@ public final class HistoryStore: @unchecked Sendable {
     }
 
     public enum PersistenceError: Error, LocalizedError {
+        case audioRetentionExpired
         case entryNoLongerExists
         case unsafeAudioFileName
 
         public var errorDescription: String? {
             switch self {
+            case .audioRetentionExpired: return L10n.text("core.history.audio_expired")
             case .entryNoLongerExists:
                 return L10n.text("core.history.entry_missing")
             case .unsafeAudioFileName:

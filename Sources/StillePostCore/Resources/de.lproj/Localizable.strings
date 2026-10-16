@@ -373,3 +373,27 @@
 "menu.copy" = "Kopieren";
 "menu.paste" = "Einfügen";
 "menu.select_all" = "Alles auswählen";
+
+/* Aufbewahrung und Diktat ohne Textverlauf */
+"core.config.invalid_history" = "Ungültige Aufbewahrungsregel.";
+"core.history.private_audio" = "Kein Text gespeichert. Die Aufnahme bleibt zur bewussten Wiederholung oder Löschung erhalten.";
+"core.history.audio_expired" = "Die Aufbewahrungsfrist dieser Aufnahme ist abgelaufen. Erneute Transkription ist gesperrt.";
+"history.retention_error" = "Aufbewahrung konnte nicht abgeschlossen werden: %@";
+"menu.private_history" = "Neue Diktate ohne Textverlauf";
+"menu.private_history.help" = "Gilt bis zum Ausschalten oder Beenden. Laufende Aufnahmen behalten ihre Startregel. Eine dauerhafte Abschaltung in den Einstellungen hat Vorrang.";
+"settings.tab.history" = "Verlauf";
+"settings.history.text" = "Textaufbewahrung";
+"settings.history.store_text" = "Text neuer Diktate im Verlauf speichern";
+"settings.history.text_period" = "Text aufbewahren";
+"settings.history.unlimited" = "Unbegrenzt";
+"settings.history.days" = "%d Tage";
+"settings.history.future_only" = "Gilt für neue Diktate und ausdrücklich gestartete Wiederholungen. Allein die Wahl einer neuen Regel löscht keine bestehenden Einträge. Fristen werden beim nächsten App-Start und während des Betriebs geprüft.";
+"settings.history.audio" = "Zurückbehaltene Fehleraufnahmen";
+"settings.history.audio_period" = "Aufnahmen aufbewahren";
+"settings.history.manual" = "Bis manuell gelöscht";
+"settings.history.audio_help" = "Audio bleibt bei Fehlern erhalten, auch ohne Textverlauf. Eine hier ausdrücklich gewählte Frist gilt nur für neue Aufnahmen. Eine Textfrist löscht kein Audio; eine Audiofrist erhält Text entsprechend seiner eigenen Regel.";
+"settings.history.private" = "Vorübergehend ohne Textverlauf";
+"settings.history.private_help" = "Der Schalter „Neue Diktate ohne Textverlauf“ im App-Menü gilt bis zum Ausschalten oder Beenden. Er beendet keine laufende Aufnahme und hat Vorrang vor aktivem Textspeichern.";
+"settings.history.memory_help" = "Ohne Textverlauf bleiben bei Fehlern nur textfreie Audioverweise. Fertiger Text und „Letzter Text“ können bis zum Beenden im RAM bleiben; die Zwischenablage bleibt separat erhalten. Bereinigung kann weiterhin Text an konfigurierte Dienste senden.";
+"settings.history.day" = "1 Tag";
+"core.history.private_audio_expired" = "Kein Text gespeichert. Die abgelaufene Aufnahme bleibt bis zur erfolgreichen Löschung erreichbar.";

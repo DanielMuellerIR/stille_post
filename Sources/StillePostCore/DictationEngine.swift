@@ -47,6 +47,8 @@ public final class DictationEngine {
     public var onBeforeRecordingStart: (() async -> Void)?
     /// Fertiges Diktat (App fügt den Text ein). Auf Main-Thread.
     public var onResult: ((DictationResult) -> Void)?
+    /// Private Wiederholung: Ergebnis nur flüchtig anzeigen, niemals automatisch einfügen.
+    public var onPrivateRetryResult: ((HistoryStore.Entry) -> Void)?
     /// Die Bereinigung wechselt gerade auf einen Ausweich-Endpoint (Label als Text).
     /// Die App zeigt das im Overlay an — sonst wirkt ein Fallback nur wie
     /// unerklärliche Wartezeit. Auf Main-Thread.
@@ -65,6 +67,21 @@ public final class DictationEngine {
     public let history: HistoryStore
 
     private let config: Config
+    private let historyPolicyLock = NSLock()
+    private var nextHistoryPolicy: Config.History
+    private var sessionHistoryPolicy: Config.History
+
+    public func configureHistory(_ policy: Config.History) {
+        historyPolicyLock.withLock { nextHistoryPolicy = policy }
+    }
+
+    private func historyPolicyForNextRequest() -> Config.History {
+        historyPolicyLock.withLock { nextHistoryPolicy }
+    }
+
+    private func sessionEntry(_ entry: HistoryStore.Entry) -> HistoryStore.Entry {
+        sessionHistoryPolicy.applying(to: entry)
+    }
     private let whisper: any DictationTranscriber
     private let serverManager: any DictationServer
     private let cleanup: any DictationCleanup
@@ -111,6 +128,8 @@ public final class DictationEngine {
          dependencies: DictationDependencies,
          cleanupText: ((String) async -> CleanupService.Result)? = nil) {
         self.config = config
+        self.nextHistoryPolicy = config.history
+        self.sessionHistoryPolicy = config.history
         self.history = history ?? HistoryStore()
         self.whisper = dependencies.transcriber
         self.serverManager = dependencies.server
@@ -153,6 +172,7 @@ public final class DictationEngine {
         sessionTask = nil
         sessionGeneration &+= 1
         let generation = sessionGeneration
+        sessionHistoryPolicy = historyPolicyForNextRequest()
         setState(.starting)
 
         Task { @MainActor in
@@ -334,10 +354,10 @@ public final class DictationEngine {
             return
         }
         setState(.error(message))
-        let entry = HistoryStore.Entry(
+        let entry = sessionEntry(HistoryStore.Entry(
             rawText: "", cleanText: "", status: "failed", errorMessage: message,
             audioFileName: writer?.url.lastPathComponent, durationSec: duration
-        )
+        ))
         // Auch bei neuer Aufnahme bleibt der alte Fehlereintrag notwendig. Nur
         // seine verspätete UI-Meldung darf nicht den neuen Zustand überschreiben.
         Task { @MainActor in
@@ -457,13 +477,13 @@ public final class DictationEngine {
             // von dort aus kann man "Erneut transkribieren" klicken.
             // (Keine Bereinigung: Der Text ist ohnehin unvollständig; "Erneut
             // transkribieren" bereinigt später den vollständigen Text.)
-            let entry = HistoryStore.Entry(
+            let entry = sessionEntry(HistoryStore.Entry(
                 rawText: rawJoined, cleanText: rawJoined,
                 status: "failed",
                 errorMessage: L10n.format("core.dictation.segments_failed", failures),
                 audioFileName: wavURL?.lastPathComponent,
                 durationSec: duration
-            )
+            ))
             guard isCurrentSession(generation), !Task.isCancelled else { return }
             do {
                 try await history.appendAsync(entry)
@@ -500,7 +520,7 @@ public final class DictationEngine {
                     processingWavURL = nil
                 } catch {
                     let deletionError = error
-                    let retained = HistoryStore.Entry(
+                    let retained = sessionEntry(HistoryStore.Entry(
                         rawText: "", cleanText: "", status: "failed",
                         errorMessage: L10n.format(
                             "core.history.audio_delete_failed",
@@ -508,7 +528,7 @@ public final class DictationEngine {
                         ),
                         audioFileName: wavURL.lastPathComponent,
                         durationSec: duration
-                    )
+                    ))
                     do {
                         try await history.appendAsync(retained)
                         guard isCurrentSession(generation), !Task.isCancelled else { return }
@@ -543,13 +563,13 @@ public final class DictationEngine {
         let cleaned = await cleanupText(rawJoined)
         guard isCurrentSession(generation), !Task.isCancelled else { return }
 
-        let entry = HistoryStore.Entry(
+        let entry = sessionEntry(HistoryStore.Entry(
             rawText: rawJoined, cleanText: cleaned.text, status: "ok",
             durationSec: duration, cleanupFellBack: cleaned.usedFallback,
             cleanupFallbackReason: cleaned.fallbackReason,
             cleanupEndpoint: cleaned.endpoint,
             cleanupSec: Date().timeIntervalSince(cleanupStarted)
-        )
+        ))
         let finalized: PersistedEntryResult
         do {
             finalized = try await Self.persistSuccessfulEntry(
@@ -636,22 +656,18 @@ public final class DictationEngine {
         history: HistoryStore
     ) async throws -> PersistedEntryResult {
         guard let wavURL else {
-            if replacingExisting {
-                try await history.updateAsync(entry)
-            } else {
-                try await history.appendAsync(entry)
-            }
+            let receipt = replacingExisting ? try await history.updateAsync(entry) : try await history.appendAsync(entry)
             return PersistedEntryResult(
-                entry: entry, deletionError: nil, persistenceError: nil
+                entry: receipt, deletionError: nil, persistenceError: nil
             )
         }
 
         var withAudio = entry
         withAudio.audioFileName = wavURL.lastPathComponent
         if replacingExisting {
-            try await history.updateAsync(withAudio)
+            withAudio = try await history.updateAsync(withAudio)
         } else {
-            try await history.appendAsync(withAudio)
+            withAudio = try await history.appendAsync(withAudio)
         }
 
         try Task.checkCancellation()
@@ -669,11 +685,12 @@ public final class DictationEngine {
         var withoutAudio = withAudio
         withoutAudio.audioFileName = nil
         do {
-            try await history.updateAsync(withoutAudio)
+            withoutAudio = try await history.updateAsync(withoutAudio)
             return PersistedEntryResult(
                 entry: withoutAudio, deletionError: nil, persistenceError: nil
             )
         } catch HistoryStore.PersistenceError.entryNoLongerExists {
+            if replacingExisting { throw HistoryStore.PersistenceError.entryNoLongerExists }
             // „Alle löschen“ hat den Eintrag parallel bewusst entfernt. Die WAV
             // ist ebenfalls weg; es gibt nichts mehr zu reparieren.
             return PersistedEntryResult(
@@ -762,10 +779,10 @@ public final class DictationEngine {
                 // Der ursprüngliche Append kann noch warten oder überhaupt nicht
                 // existieren. Den Löschrest unabhängig vom stornierten Task sichern,
                 // bevor ein späteres Diktat den RAM-Verweis ersetzt.
-                let retained = HistoryStore.Entry(
+                let retained = sessionEntry(HistoryStore.Entry(
                     rawText: "", cleanText: "", status: "failed",
                     audioFileName: pending.lastPathComponent, durationSec: duration
-                )
+                ))
                 let generation = sessionGeneration
                 Task { @MainActor in
                     do {
@@ -795,11 +812,25 @@ public final class DictationEngine {
     /// Transkribiert die zurückbehaltene Aufnahme eines fehlgeschlagenen Eintrags neu.
     /// Bei Erfolg wird der Eintrag aktualisiert und die Audio-Datei gelöscht.
     public func retry(entry: HistoryStore.Entry) async throws -> HistoryStore.Entry {
+        let policy = historyPolicyForNextRequest()
         guard let stored = (try await history.listAsync()).first(where: { $0.id == entry.id }),
               !stored.isDeletionPending else {
             throw HistoryStore.PersistenceError.entryNoLongerExists
         }
-        let entry = stored
+        guard !stored.isAudioExpired else {
+            throw HistoryStore.PersistenceError.audioRetentionExpired
+        }
+        var policyInput = stored
+        policyInput.date = Date()
+        var entry = policy.applying(to: policyInput)
+        entry.date = stored.date
+        entry.audioExpiresAt = stored.audioExpiresAt
+        // Die Aufnahme behält ihre ursprüngliche Regel. Eine neue Textfrist
+        // beginnt mit diesem Auftrag und verlängert keine vorhandene Frist.
+        if stored.storesText == false { entry.storesText = false }
+        if let expiry = stored.textExpiresAt {
+            entry.textExpiresAt = entry.textExpiresAt.map { min($0, expiry) } ?? expiry
+        }
         guard let audioURL = history.audioURL(for: entry),
               FileManager.default.fileExists(atPath: audioURL.path) else {
             var updated = entry
@@ -835,6 +866,9 @@ public final class DictationEngine {
             replacingExisting: true,
             history: history
         )
+        if finalized.entry.isTextPrivate && !finalized.entry.cleanText.isEmpty {
+            await MainActor.run { self.onPrivateRetryResult?(finalized.entry) }
+        }
         if let deletionError = finalized.deletionError {
             throw AudioDeletionError(message: deletionError)
         }
@@ -924,6 +958,7 @@ public final class DictationEngine {
         sessionTask?.cancel()
         sessionGeneration &+= 1
         let generation = sessionGeneration
+        sessionHistoryPolicy = historyPolicyForNextRequest()
         // Wie in `stop()`: Bis die Aufnahme nachweislich gelöscht oder im Verlauf
         // vermerkt ist, gehört sie der Engine.
         processingWavURL = wavURL

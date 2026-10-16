@@ -51,16 +51,17 @@ final class SettingsWindowController {
 // MARK: - Hauptansicht
 
 struct SettingsView: View {
-    /// Die vier Einstellungs-Bereiche (eigener Umschalter statt TabView — der
+    /// Die Einstellungs-Bereiche (eigener Umschalter statt TabView — der
     /// rendert als Fenster-Toolbar und ließ die Tabs ins Overflow-Menü rutschen).
     enum Tab: String, CaseIterable {
-        case allgemein, bereinigung, spracherkennung, aufnahme
+        case allgemein, bereinigung, spracherkennung, aufnahme, verlauf
         var title: String {
             switch self {
             case .allgemein: return L10n.text("settings.tab.general")
             case .bereinigung: return L10n.text("settings.tab.cleanup")
             case .spracherkennung: return L10n.text("settings.tab.speech")
             case .aufnahme: return L10n.text("settings.tab.recording")
+            case .verlauf: return L10n.text("settings.tab.history")
             }
         }
     }
@@ -107,6 +108,7 @@ struct SettingsView: View {
             case .bereinigung: CleanupTab(cleanup: $config.cleanup)
             case .spracherkennung: WhisperTab(whisper: $config.whisper)
             case .aufnahme: RecordingTab(audio: $config.audio, vad: $config.vad)
+            case .verlauf: HistorySettingsTab(history: $config.history)
             }
 
             Divider()
@@ -125,6 +127,46 @@ struct SettingsView: View {
         }
         .frame(minWidth: 600, minHeight: 640)
         .environment(\.locale, Locale(identifier: L10n.languageCode))
+    }
+}
+
+private struct HistorySettingsTab: View {
+    @Binding var history: Config.History
+
+    var body: some View {
+        Form {
+            Section(L10n.text("settings.history.text")) {
+                Toggle(L10n.text("settings.history.store_text"), isOn: $history.storeText)
+                    .accessibilityIdentifier("historyStoreText")
+                Picker(L10n.text("settings.history.text_period"), selection: $history.textRetentionDays) {
+                    Text(L10n.text("settings.history.unlimited")).tag(0)
+                    ForEach([1, 7, 30], id: \.self) { Text($0 == 1 ? L10n.text("settings.history.day") : L10n.format("settings.history.days", $0)).tag($0) }
+                }
+                .disabled(!history.storeText)
+                .accessibilityIdentifier("historyTextRetention")
+                Text(L10n.text("settings.history.future_only"))
+                    .font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Section(L10n.text("settings.history.audio")) {
+                Picker(L10n.text("settings.history.audio_period"), selection: $history.audioRetentionDays) {
+                    Text(L10n.text("settings.history.manual")).tag(0)
+                    ForEach([7, 30], id: \.self) { Text($0 == 1 ? L10n.text("settings.history.day") : L10n.format("settings.history.days", $0)).tag($0) }
+                }
+                .accessibilityIdentifier("historyAudioRetention")
+                Text(L10n.text("settings.history.audio_help"))
+                    .font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Section(L10n.text("settings.history.private")) {
+                Text(L10n.text("settings.history.private_help"))
+                    .font(.callout).fixedSize(horizontal: false, vertical: true)
+                Text(L10n.text("settings.history.memory_help"))
+                    .font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .formStyle(.grouped)
     }
 }
 
