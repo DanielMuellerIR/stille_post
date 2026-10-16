@@ -24,6 +24,8 @@ Textaufbewahrung und ein vorübergehender Modus ohne Textverlauf sind unter **Ei
 
 **Bearbeiten** im Verlauf öffnet Textkorrektur, Wortvergleich und frühere Fassungen. Der Rohtext und die ursprüngliche Ausgabe bleiben erhalten; höchstens drei Vorfassungen folgen denselben Aufbewahrungsregeln. [Details zur Textkorrektur](docs/textkorrektur.md).
 
+Im Editor übernimmt **Ins Wörterbuch …** ausdrücklich bestätigte Schreibweisen für künftige Bereinigungen. **Neu bereinigen** erstellt aus dem vollständigen Rohtext eine neue Fassung mit der aktuellen Konfiguration; sie wird erst nach **Neue Fassung übernehmen** gespeichert und nie automatisch eingefügt.
+
 ## In fünf Minuten startklar
 
 Das fertige, signierte App-Paket läuft auf **Apple-Silicon-Macs ab macOS 13**.
@@ -183,6 +185,7 @@ Die wichtigsten Schalter:
 | `cleanup.remote` | `baseURL`, `model` | OpenAI-kompatibler Anbieter |
 | `cleanup` | `fallbacks` | Ausweich-Endpoints, falls der primäre nicht antwortet (s. u.) |
 | `cleanup` | `dictionary` | persönliches Fachbegriffs-Wörterbuch mit bevorzugten Schreibweisen (z. B. `"RAG"`). Geht an das Bereinigungsmodell, und die Worttreue-Prüfung akzeptiert ähnlich klingende Korrekturen auf genau diese Begriffe („Rack" → „RAG") |
+| `cleanup` | `dictionaryVariants` | ausdrücklich bestätigte, eng begrenzte Aufteilungen von Fachbegriffen, z. B. `[{"source":"Whis per","target":"Whisper"}]`; im Editor anlegen und in den Einstellungen löschen. [Grenzen und Verhalten](docs/textkorrektur.md) |
 | `vad` | `autoStopAfterSilenceSec` | Abwesenheits-Stopp (0 = aus) |
 | `ui` | `overlayPosition` | `"mouse"` oder `"bottomCenter"` |
 

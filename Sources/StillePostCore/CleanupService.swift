@@ -14,7 +14,7 @@ import Security
 public final class CleanupService {
 
     /// Ergebnis einer Bereinigung.
-    public struct Result {
+    public struct Result: Sendable {
         /// Der zu verwendende Text (bereinigt — oder Rohtext, falls verworfen/fehlgeschlagen).
         public let text: String
         /// Wurde die LLM-Ausgabe verworfen und der Rohtext genommen? (Diagnose/Verlauf)
@@ -75,6 +75,19 @@ public final class CleanupService {
         self.transport = transport
     }
 
+    public func replacingVocabulary(with vocabulary: Config.Cleanup) -> CleanupService {
+        var next = config
+        next.dictionary = vocabulary.dictionary
+        next.dictionaryVariants = vocabulary.dictionaryVariants
+        let service = CleanupService(config: next, transport: transport)
+        service.onFallbackEndpoint = onFallbackEndpoint
+        service.onPrimaryRetry = onPrimaryRetry
+        stateLock.lock()
+        service.lastPrimarySuccess = lastPrimarySuccess
+        stateLock.unlock()
+        return service
+    }
+
     // MARK: - Öffentliche API
 
     /// Bereinigt einen Text. Wirft NIE zum Aufrufer durch — bei jedem Fehler kommt
@@ -98,6 +111,7 @@ public final class CleanupService {
         }
         let cancelled = Result(text: TranscriptPolish.repairPunctuation(trimmed),
                                usedFallback: true, fallbackReason: nil, endpoint: nil)
+        let prepared = VocabularyRules.applying(to: trimmed, cleanup: config)
         var failures: [String] = []
         for (index, endpoint) in config.chain.enumerated() {
             guard !Task.isCancelled else { return cancelled }
@@ -106,7 +120,7 @@ public final class CleanupService {
                 let cleaned: String
                 switch endpoint.provider {
                 case "openai":
-                    cleaned = try await cleanViaOpenAICompatible(trimmed, endpoint: endpoint)
+                    cleaned = try await cleanViaOpenAICompatible(prepared, endpoint: endpoint)
                 default:
                     if index == 0, primaryWasRecentlyReachable {
                         // KEINE Probe vorweg — die war der eigentliche Schwachpunkt:
@@ -119,7 +133,7 @@ public final class CleanupService {
                         // "Verbindung lebt") — und bei Fehler SOFORT ein zweiter
                         // Versuch, dessen Form zur Ursache passt (siehe unten).
                         do {
-                            cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
+                            cleaned = try await cleanViaOllama(prepared, endpoint: endpoint,
                                                                streaming: true,
                                                                freshConnection: false)
                         } catch {
@@ -141,14 +155,14 @@ public final class CleanupService {
                                     // verschenken, sofort zum nächsten Endpoint.
                                     throw CleanupError.unreachable(endpoint.ollamaURL)
                                 }
-                                cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
+                                cleaned = try await cleanViaOllama(prepared, endpoint: endpoint,
                                                                    streaming: false,
                                                                    freshConnection: false)
                             } else {
                                 // Abgebrochener Stream, kaputter Frame, Providerfehler:
                                 // frische Verbindung, falls eine gestorbene
                                 // Pool-Verbindung schuld war.
-                                cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
+                                cleaned = try await cleanViaOllama(prepared, endpoint: endpoint,
                                                                    streaming: true,
                                                                    freshConnection: true)
                             }
@@ -165,7 +179,7 @@ public final class CleanupService {
                         guard try await isReachable(ollamaURL: endpoint.ollamaURL) else {
                             throw CleanupError.unreachable(endpoint.ollamaURL)
                         }
-                        cleaned = try await cleanViaOllama(trimmed, endpoint: endpoint,
+                        cleaned = try await cleanViaOllama(prepared, endpoint: endpoint,
                                                            streaming: false,
                                                            freshConnection: false)
                         if index == 0 { notePrimarySuccess() }
@@ -175,7 +189,7 @@ public final class CleanupService {
                 // Worttreue-Abgleich: Hat das Modell gedichtet/gekürzt/geantwortet?
                 // Einzelne veränderte Satzteile werden chirurgisch auf die
                 // Roh-Wörter zurückgesetzt statt die ganze Bereinigung zu verwerfen.
-                switch Self.reconcile(raw: trimmed, cleaned: cleaned,
+                switch Self.reconcile(raw: prepared, cleaned: cleaned,
                                       dictionary: Self.normalizedDictionary(config.dictionary)) {
                 case .rejected(let reason):
                     return Result(text: TranscriptPolish.repairPunctuation(trimmed),

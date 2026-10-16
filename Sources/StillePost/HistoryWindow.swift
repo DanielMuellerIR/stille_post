@@ -9,8 +9,8 @@ final class HistoryWindowController {
     private var window: NSWindow?
     private let model: HistoryViewModel
 
-    init(engine: DictationEngine) {
-        model = HistoryViewModel(engine: engine)
+    init(engine: DictationEngine, onVocabularySaved: @escaping (Config) -> Void = { _ in }) {
+        model = HistoryViewModel(engine: engine, onVocabularySaved: onVocabularySaved)
     }
 
     func reportError(_ message: String) { model.errorMessage = message }
@@ -64,9 +64,11 @@ final class HistoryViewModel: ObservableObject {
     private var filterWorker: Task<[HistoryStore.Entry], Never>?
 
     let engine: DictationEngine
+    private let onVocabularySaved: (Config) -> Void
 
-    init(engine: DictationEngine) {
+    init(engine: DictationEngine, onVocabularySaved: @escaping (Config) -> Void = { _ in }) {
         self.engine = engine
+        self.onVocabularySaved = onVocabularySaved
         engine.history.onChange = { [weak self] in
             DispatchQueue.main.async { self?.reload() }
         }
@@ -120,7 +122,7 @@ final class HistoryViewModel: ObservableObject {
 
     func edit(_ entry: HistoryStore.Entry) {
         guard entry.canEdit, !deletingAll, !deleting.contains(entry.id), !retrying.contains(entry.id) else { return }
-        editor = HistoryEditorModel(entry: entry, history: engine.history)
+        editor = HistoryEditorModel(entry: entry, history: engine.history, onVocabularySaved: onVocabularySaved)
     }
 
     func retry(_ entry: HistoryStore.Entry) {
@@ -337,7 +339,7 @@ struct EntryRow: View {
                         .padding(.horizontal, 6).padding(.vertical, 2)
                         .background(Color.blue.opacity(0.15))
                         .cornerRadius(4)
-                } else if entry.cleanupFellBack == true {
+                } else if entry.resultOrigin == .rawFallback {
                     // Kennzeichnung: Die LLM-Bereinigung wurde verworfen (Plausibilitäts-
                     // prüfung) — es wurde der rohe Whisper-Text verwendet. Der
                     // gespeicherte Grund beantwortet als Tooltip "warum eigentlich?".
@@ -347,6 +349,12 @@ struct EntryRow: View {
                         .background(Color.orange.opacity(0.2))
                         .cornerRadius(4)
                         .help(entry.cleanupFallbackReason ?? "")
+                } else if entry.resultMetadata?.origin == .cleanup {
+                    Text(L10n.text("editor.origin.cleanup"))
+                        .font(.caption2)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.green.opacity(0.15))
+                        .cornerRadius(4)
                 } else if let note = entry.cleanupFallbackReason {
                     // Teil-Rücksetzung: Bereinigung wurde verwendet, aber einzelne
                     // Satzteile kamen aus dem Rohtext (Worttreue-Prüfung).
@@ -383,8 +391,12 @@ struct EntryRow: View {
 
             // Diagnose-Zeile: welcher Bereinigungs-Endpoint, wie lange? Beantwortet
             // "warum war dieses Diktat lahm?" direkt im Verlauf (Fallback sichtbar).
-            if let endpoint = entry.cleanupEndpoint, let sec = entry.cleanupSec {
-                Text(L10n.format(entry.resultOrigin == .manual ? "editor.original_cleaned_via" : "history.cleaned_via", sec, endpoint))
+            if entry.resultMetadata?.origin == .cleanup,
+               let endpoint = entry.resultMetadata?.endpoint, let sec = entry.resultMetadata?.durationSec {
+                Text(L10n.format("history.cleaned_via", sec, endpoint))
+                    .font(.caption2).foregroundColor(.secondary).lineLimit(1).truncationMode(.middle)
+            } else if let endpoint = entry.cleanupEndpoint, let sec = entry.cleanupSec {
+                Text(L10n.format(entry.resultMetadata != nil || entry.resultOrigin == .manual ? "editor.original_cleaned_via" : "history.cleaned_via", sec, endpoint))
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .lineLimit(1)

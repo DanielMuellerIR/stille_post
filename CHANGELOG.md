@@ -10,6 +10,23 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.27] — 2026-10-16
+
+### Neu
+
+- Korrigierte Schreibweisen lassen sich im Verlaufseditor ausdrücklich ins
+  Wörterbuch übernehmen. Eng begrenzte bestätigte Verhörvarianten gelten ab dem
+  nächsten Auftrag und bleiben in den Einstellungen einzeln löschbar.
+- Gespeicherter Rohtext lässt sich mit der aktuellen Konfiguration erneut
+  bereinigen, ohne Audio oder automatisches Einfügen. Die neue Fassung erscheint
+  zuerst zur Prüfung und ersetzt die bisherige erst nach ausdrücklicher Übernahme.
+  Herkunft, ursprüngliche Ausgabe und begrenzte Vorfassungen bleiben nachvollziehbar.
+
+### Behoben
+
+- Parallele Wörterbuchänderungen bleiben erhalten. Bereits offene Einstellungen
+  erkennen einen veralteten Konfigurationsstand vor dem Speichern als Konflikt.
+
 ## [0.9.26] — 2026-10-16
 
 ### Neu

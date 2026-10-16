@@ -50,6 +50,7 @@ public enum BridgeAddress {
 public final class BridgeServer: @unchecked Sendable {
 
     private let config: Config.Bridge
+    private let vocabularyUpdate: (@Sendable (Config.Cleanup) -> Void)?
     private let router: BridgeRouter
     private let queue = DispatchQueue(label: "de.stillepost.bridge")
     private var listener: NWListener?
@@ -89,23 +90,26 @@ public final class BridgeServer: @unchecked Sendable {
     private let tokenStatus: @Sendable () -> BridgeToken.LoadOutcome
 
     public init(config: Config.Bridge, router: BridgeRouter,
+                vocabularyUpdate: (@Sendable (Config.Cleanup) -> Void)? = nil,
                 tokenStatus: @escaping @Sendable () -> BridgeToken.LoadOutcome
                     = { BridgeToken.loadOutcome() }) {
         self.config = config
         self.router = router
+        self.vocabularyUpdate = vocabularyUpdate
         self.tokenStatus = tokenStatus
         queue.setSpecific(key: queueKey, value: true)
     }
 
     public convenience init(config: Config, version: String = AppVersion.current) {
+        let handlers = BridgeHandlers.live(config: config, version: version)
         self.init(
             config: config.bridge,
-            router: BridgeRouter(
-                handlers: .live(config: config, version: version),
-                maxBodyBytes: config.bridge.maxRequestMegabytes * 1_048_576
-            )
+            router: BridgeRouter(handlers: handlers, maxBodyBytes: config.bridge.maxRequestMegabytes * 1_048_576),
+            vocabularyUpdate: handlers.updateVocabulary
         )
     }
+
+    public func configureVocabulary(_ config: Config.Cleanup) { vocabularyUpdate?(config) }
 
     deinit {
         let cleanup = {

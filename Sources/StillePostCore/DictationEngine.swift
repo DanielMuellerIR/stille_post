@@ -85,6 +85,20 @@ public final class DictationEngine {
     private let whisper: any DictationTranscriber
     private let serverManager: any DictationServer
     private let cleanup: any DictationCleanup
+    private let vocabularyLock = NSLock()
+    private var configuredCleanup: CleanupService?
+    private var sessionConfiguredCleanup: CleanupService?
+
+    public func configureVocabulary(_ vocabulary: Config.Cleanup) {
+        vocabularyLock.withLock {
+            guard let service = configuredCleanup ?? (cleanup as? CleanupService) else { return }
+            configuredCleanup = service.replacingVocabulary(with: vocabulary)
+        }
+    }
+
+    private func cleanupForNextRequest() -> CleanupService? {
+        vocabularyLock.withLock { configuredCleanup }
+    }
     private let makeRecorder: (Config.Audio) -> any DictationRecorder
     private let makeSegmenter: (Config.Vad) -> any DictationSegmenter
     private let makeWavWriter: (URL) throws -> any DictationWavWriter
@@ -174,6 +188,7 @@ public final class DictationEngine {
         sessionGeneration &+= 1
         let generation = sessionGeneration
         sessionHistoryPolicy = historyPolicyForNextRequest()
+        sessionConfiguredCleanup = cleanupForNextRequest()
         setState(.starting)
 
         Task { @MainActor in
@@ -198,7 +213,7 @@ public final class DictationEngine {
             guard self.state == .starting, self.isCurrentSession(generation),
                   !Task.isCancelled else { return }
             // 3. Bereinigungs-Modell VORWÄRMEN — lädt parallel, während man spricht.
-            self.cleanup.warmUp()
+            (self.sessionConfiguredCleanup as (any DictationCleanup)? ?? self.cleanup).warmUp()
             // 4. Startsignal vollständig VOR der Aufnahme abspielen. Unsere kurzen
             //    Sounds liegen deutlich über der VAD-Schwelle; in der Aufnahme
             //    würden sie deshalb als Sprache an Whisper geschickt.
@@ -561,7 +576,9 @@ public final class DictationEngine {
         // Aufnahme-Start vorgewärmt). Bei Fehlern/Verdacht fällt clean() selbst
         // auf den Rohtext zurück — hier kommt immer verwendbarer Text an.
         let cleanupStarted = Date()
-        let cleaned = await cleanupText(rawJoined)
+        let cleaned: CleanupService.Result
+        if let service = sessionConfiguredCleanup { cleaned = await service.clean(rawJoined) }
+        else { cleaned = await cleanupText(rawJoined) }
         guard isCurrentSession(generation), !Task.isCancelled else { return }
 
         let entry = sessionEntry(HistoryStore.Entry(
@@ -814,6 +831,7 @@ public final class DictationEngine {
     /// Bei Erfolg wird der Eintrag aktualisiert und die Audio-Datei gelöscht.
     public func retry(entry: HistoryStore.Entry) async throws -> HistoryStore.Entry {
         let policy = historyPolicyForNextRequest()
+        let requestCleanup: any DictationCleanup = cleanupForNextRequest() ?? cleanup
         guard let stored = (try await history.listAsync()).first(where: { $0.id == entry.id }),
               !stored.isDeletionPending else {
             throw HistoryStore.PersistenceError.entryNoLongerExists
@@ -851,7 +869,7 @@ public final class DictationEngine {
             return updated
         }
         let cleanupStarted = Date()
-        let cleaned = await cleanup.clean(raw)
+        let cleaned = await requestCleanup.clean(raw)
         var updated = entry
         updated.rawText = raw
         updated.cleanText = cleaned.text
@@ -896,7 +914,7 @@ public final class DictationEngine {
     /// ist der nicht erreichbar, wird stattdessen der Fallback vorgewärmt, damit
     /// sein Kaltstart nicht ins nächste Diktat fällt.
     public func keepCleanupModelWarm() {
-        cleanup.warmUp()
+        (cleanupForNextRequest() as (any DictationCleanup)? ?? cleanup).warmUp()
     }
 
     private func trackHistoryWork(_ work: @escaping @MainActor () async -> Void) {
@@ -976,6 +994,7 @@ public final class DictationEngine {
         sessionGeneration &+= 1
         let generation = sessionGeneration
         sessionHistoryPolicy = historyPolicyForNextRequest()
+        sessionConfiguredCleanup = cleanupForNextRequest()
         // Wie in `stop()`: Bis die Aufnahme nachweislich gelöscht oder im Verlauf
         // vermerkt ist, gehört sie der Engine.
         processingWavURL = wavURL

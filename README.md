@@ -24,6 +24,8 @@ Text retention and a temporary mode without text history are available under **S
 
 **Edit** in history opens text correction, word comparison, and previous versions. Raw text and the original output are preserved; up to three previous versions follow the same retention policy. [Text correction details](docs/textkorrektur.md).
 
+In the editor, **Add to dictionary …** adopts explicitly confirmed spellings for future cleanup. **Clean up again** creates a new version from the entire raw transcript with the current configuration; it is saved only after **Accept new version** and is never pasted automatically.
+
 ## Ready in five minutes
 
 The signed app package runs on **Apple Silicon Macs with macOS 13 or later**.
@@ -178,6 +180,7 @@ The most important switches:
 | `cleanup.remote` | `baseURL`, `model` | OpenAI-compatible provider |
 | `cleanup` | `fallbacks` | backup endpoints tried when the primary does not respond (see below) |
 | `cleanup` | `dictionary` | personal glossary of preferred spellings (e.g. `"RAG"`). Passed to the cleanup model, and the word-fidelity check accepts sound-alike corrections to exactly these terms ("Rack" → "RAG") |
+| `cleanup` | `dictionaryVariants` | explicitly confirmed, narrowly bounded splits of technical terms, e.g. `[{"source":"Whis per","target":"Whisper"}]`; create in the editor and remove in Settings. [Limits and behavior](docs/textkorrektur.md) |
 | `vad` | `autoStopAfterSilenceSec` | absence auto-stop (0 = off) |
 | `ui` | `overlayPosition` | `"mouse"` or `"bottomCenter"` |
 

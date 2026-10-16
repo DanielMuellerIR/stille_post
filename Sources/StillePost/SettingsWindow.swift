@@ -10,11 +10,11 @@ final class SettingsWindowController {
 
     private var window: NSWindow?
     /// Wird beim Speichern mit der neuen Config aufgerufen (App wendet sie an).
-    private let onApply: (Config) -> Void
+    private let onApply: (Config, Config) throws -> Void
     /// true = registrierte Hotkeys an den aktiven Recorder statt an das Diktat leiten.
     private let onHotkeyRecording: (Bool) -> Void
 
-    init(onApply: @escaping (Config) -> Void, onHotkeyRecording: @escaping (Bool) -> Void) {
+    init(onApply: @escaping (Config, Config) throws -> Void, onHotkeyRecording: @escaping (Bool) -> Void) {
         self.onApply = onApply
         self.onHotkeyRecording = onHotkeyRecording
     }
@@ -34,10 +34,11 @@ final class SettingsWindowController {
         }
         // Bei jedem Öffnen frisch von Platte laden — die Datei kann inzwischen
         // von Hand oder von einer anderen Stelle geändert worden sein.
+        let expected = Config.load()
         window?.contentView = NSHostingView(rootView: SettingsView(
-            config: Config.load(),
+            config: expected,
             onApply: { [weak self] newConfig in
-                self?.onApply(newConfig)
+                try self?.onApply(newConfig, expected)
                 self?.window?.close()
             },
             onCancel: { [weak self] in self?.window?.close() },
@@ -69,7 +70,8 @@ struct SettingsView: View {
     /// Arbeitskopie — erst "Speichern" gibt sie an die App weiter.
     @State var config: Config
     @State private var tab: Tab
-    let onApply: (Config) -> Void
+    let onApply: (Config) throws -> Void
+    @State private var saveError: String?
     let onCancel: () -> Void
     let onHotkeyRecording: (Bool) -> Void
 
@@ -82,7 +84,7 @@ struct SettingsView: View {
         }
     }
 
-    init(config: Config, onApply: @escaping (Config) -> Void, onCancel: @escaping () -> Void,
+    init(config: Config, onApply: @escaping (Config) throws -> Void, onCancel: @escaping () -> Void,
          onHotkeyRecording: @escaping (Bool) -> Void = { _ in }) {
         _config = State(initialValue: config)
         self.onHotkeyRecording = onHotkeyRecording
@@ -113,13 +115,16 @@ struct SettingsView: View {
 
             Divider()
             HStack {
-                Text(configValidationError ?? L10n.text("settings.config_hint"))
+                Text(saveError ?? configValidationError ?? L10n.text("settings.config_hint"))
                     .font(.caption)
-                    .foregroundColor(configValidationError == nil ? .secondary : .red)
+                    .foregroundColor(saveError == nil && configValidationError == nil ? .secondary : .red)
                 Spacer()
                 Button(L10n.text("common.cancel")) { onCancel() }
                     .keyboardShortcut(.cancelAction)
-                Button(L10n.text("common.save")) { onApply(config) }
+                Button(L10n.text("common.save")) {
+                    do { try onApply(config) }
+                    catch { saveError = error.localizedDescription }
+                }
                     .keyboardShortcut(.defaultAction)
                     .disabled(configValidationError != nil)
             }
@@ -387,6 +392,19 @@ private struct CleanupTab: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                ForEach(cleanup.dictionaryVariants.indices, id: \.self) { index in
+                    HStack {
+                        Text(verbatim: cleanup.dictionaryVariants[index].source + " → " + cleanup.dictionaryVariants[index].target)
+                            .textSelection(.enabled)
+                        Spacer()
+                        Button(L10n.text("common.delete")) { cleanup.dictionaryVariants.remove(at: index) }
+                            .accessibilityLabel(L10n.format("settings.cleanup.remove_variant", cleanup.dictionaryVariants[index].source))
+                    }
+                }
+                if !cleanup.dictionaryVariants.isEmpty {
+                    Text(L10n.text("settings.cleanup.variants_help"))
+                        .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Section(L10n.text("settings.cleanup.primary")) {

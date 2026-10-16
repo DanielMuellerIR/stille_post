@@ -85,6 +85,7 @@ public struct Config: Codable, Equatable {
         /// Editierbar in den Einstellungen und in config.json; die Vorbelegung deckt gängige
         /// Diktier-Verhörer aus dem Software-Alltag ab.
         public var dictionary: [String] = Cleanup.defaultDictionary
+        public var dictionaryVariants: [DictionaryVariant] = []
 
         /// Vorbelegung des Wörterbuchs (bewusst generisch, keine privaten Namen).
         public static let defaultDictionary: [String] = [
@@ -311,7 +312,7 @@ public struct Config: Codable, Equatable {
         let url = configFile
         guard let data = try? Data(contentsOf: url) else {
             let config = Config()
-            try? config.save()
+            try? config.save(expected: Config())
             return config
         }
         do {
@@ -324,12 +325,8 @@ public struct Config: Codable, Equatable {
     }
 
     /// Schreibt die Config als hübsch formatiertes JSON (damit sie von Hand editierbar bleibt).
-    public func save() throws {
-        try validate()
-        try FileManager.default.createDirectory(at: Config.appSupportDir, withIntermediateDirectories: true)
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try encoder.encode(self).write(to: Config.configFile, options: .atomic)
+    public func save(expected: Config? = nil) throws {
+        try ConfigFile().save(self, expected: expected)
     }
 
     /// Prüft Werte, die nicht allein durch ihren JSON-Typ sicher werden. Die GUI
@@ -338,6 +335,7 @@ public struct Config: Codable, Equatable {
     public func validate() throws {
         _ = try WhisperEndpoint(serverURL: whisper.serverURL)
         guard history.isValid else { throw ValidationError.invalidHistory }
+        try VocabularyRules.validate(cleanup)
         if let detail = vad.validationFailure {
             throw ValidationError.invalidVad(detail)
         }
@@ -449,7 +447,7 @@ extension Config.Whisper {
 }
 
 extension Config.Cleanup {
-    private enum CodingKeys: String, CodingKey { case enabled, provider, ollamaURL, model, numCtx, keepAlive, remote, fallbacks, dictionary }
+    private enum CodingKeys: String, CodingKey { case enabled, provider, ollamaURL, model, numCtx, keepAlive, remote, fallbacks, dictionary, dictionaryVariants }
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -463,6 +461,7 @@ extension Config.Cleanup {
         fallbacks = c.decodeOrDefault([Config.Cleanup.Endpoint].self, forKey: .fallbacks,
                                       default: fallbacks)
         dictionary = c.decodeOrDefault([String].self, forKey: .dictionary, default: dictionary)
+        dictionaryVariants = c.decodeOrDefault([DictionaryVariant].self, forKey: .dictionaryVariants, default: [])
     }
 }
 

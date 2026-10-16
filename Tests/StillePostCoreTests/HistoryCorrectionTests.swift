@@ -119,6 +119,8 @@ final class HistoryCorrectionTests: XCTestCase {
             candidate.originalCleanText = "ORIGINAL-MARKER"
             candidate.manualEditCount = 2
             candidate.previousResults = [.init(text: "REVISION-MARKER", date: candidate.date, origin: .manual)]
+            candidate.resultMetadata = .init(date: candidate.date, origin: .cleanup, generation: 3,
+                                            endpoint: "ENDPOINT-MARKER", durationSec: 1)
             candidate.audioFileName = "fixture.wav"
             try Data([1]).write(to: store.recordingsDir.appendingPathComponent("fixture.wav"))
             if scenario == "private-append" { candidate.storesText = false }
@@ -136,7 +138,7 @@ final class HistoryCorrectionTests: XCTestCase {
             default: break
             }
             let json = String(decoding: try Data(contentsOf: base.appendingPathComponent("history.json")), as: UTF8.self)
-            for marker in ["RAW-MARKER", "CLEAN-MARKER", "ORIGINAL-MARKER", "REVISION-MARKER"] { XCTAssertFalse(json.contains(marker), "\(scenario): \(marker)") }
+            for marker in ["RAW-MARKER", "CLEAN-MARKER", "ORIGINAL-MARKER", "REVISION-MARKER", "ENDPOINT-MARKER", "resultMetadata"] { XCTAssertFalse(json.contains(marker), "\(scenario): \(marker)") }
         }
     }
 }

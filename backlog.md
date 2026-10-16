@@ -10,7 +10,7 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Lokale Verlaufssuche, Kalender-/Statusfilter und sichere Einzellöschung ergänzen; siehe [Verlauf verwalten](docs/verlauf-verwalten.md).
 - [x] Aufbewahrungsregeln und Diktate ohne dauerhaften Textverlauf ergänzen; siehe [Aufbewahrung](docs/aufbewahrung.md).
 - [x] Textkorrektur und Änderungsvergleich mit nachvollziehbaren Fassungen ergänzen; siehe [Textkorrektur](docs/textkorrektur.md).
-- [ ] Wörterbuchübernahme aus ausdrücklichen Korrekturen und erneute Textbereinigung ergänzen.
+- [x] Wörterbuchübernahme aus ausdrücklichen Korrekturen und erneute Textbereinigung ergänzen; siehe [Textkorrektur](docs/textkorrektur.md).
 - [ ] Diktierprofile, App-Zuordnung und eine durchgehend lokale Bereinigungsrichtlinie ergänzen.
 - [ ] Gedrückthalten, Pause/Fortsetzen, GUI-Diagnose, Testdiktat und laufende Rohtextvorschau ergänzen.
 - [ ] Audioimport, explizite gesprochene Formatierung und Bereinigung ausgewählten Textes ergänzen.
@@ -20,8 +20,8 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
 [docs/ausgangspruefung-2026-10-16.md](docs/ausgangspruefung-2026-10-16.md) dokumentiert.
-Nächster unabhängiger Entwicklungsschritt: Wörterbuchübernahme aus Korrekturen und
-ausdrückliche erneute Textbereinigung ergänzen. Die offenen Gerätefälle bleiben bis
+Nächster unabhängiger Entwicklungsschritt: manuell wechselbare Diktierprofile
+ergänzen. Die offenen Gerätefälle bleiben bis
 zu ihrer tatsächlichen Abnahme erhalten.
 
 ## Offene Abnahmen nach dem Review 2026-10-04

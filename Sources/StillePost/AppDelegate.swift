@@ -89,8 +89,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         setupEditingMenu()
 
         settingsWindow = SettingsWindowController(
-            onApply: { [weak self] newConfig in
-                self?.applySettings(newConfig)
+            onApply: { [weak self] newConfig, expected in
+                try self?.applySettings(newConfig, expected: expected)
             },
             onHotkeyRecording: { [weak self] recording in
                 self?.setHotkeyCaptureActive(recording)
@@ -218,7 +218,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         engineConfig.history = effectiveHistoryPolicy
         engine = DictationEngine(config: engineConfig)
         overlay = OverlayController(config: config.ui)
-        historyWindow = HistoryWindowController(engine: engine)
+        historyWindow = HistoryWindowController(engine: engine, onVocabularySaved: { [weak self] saved in
+            guard let self else { return }
+            self.config.cleanup.dictionary = saved.cleanup.dictionary
+            self.config.cleanup.dictionaryVariants = saved.cleanup.dictionaryVariants
+            self.engine.configureVocabulary(saved.cleanup)
+            self.bridge?.configureVocabulary(saved.cleanup)
+        })
         setupEngineCallbacks()
         startHistoryMaintenance()
 
@@ -404,22 +410,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    /// Reine Verlaufsregeln gelten erst für neue Aufträge und beenden keine
-    /// laufende Aufnahme. Andere Einstellungen behalten ihren Neuaufbau.
-    private func applySettings(_ newConfig: Config) {
+    /// Verlaufsregeln und Wörterbuch gelten erst für neue Aufträge und beenden
+    /// keine laufende Aufnahme. Andere Einstellungen behalten ihren Neuaufbau.
+    private func applySettings(_ newConfig: Config, expected: Config) throws {
         guard !terminationPending else { return }
-        do {
-            try newConfig.save()
-        } catch {
-            NSSound(named: "Basso")?.play()
-            overlay.show(.failure(L10n.format("app.settings_save_failed", error.localizedDescription)))
-            return
-        }
-        var historyOnly = config
-        historyOnly.history = newConfig.history
-        if historyOnly == newConfig {
+        try newConfig.save(expected: expected)
+        var requestPolicyOnly = config
+        requestPolicyOnly.history = newConfig.history
+        requestPolicyOnly.cleanup.dictionary = newConfig.cleanup.dictionary
+        requestPolicyOnly.cleanup.dictionaryVariants = newConfig.cleanup.dictionaryVariants
+        if requestPolicyOnly == newConfig {
             config = newConfig
             engine.configureHistory(effectiveHistoryPolicy)
+            engine.configureVocabulary(newConfig.cleanup)
+            bridge?.configureVocabulary(newConfig.cleanup)
             updatePrivateHistoryMenu()
             return
         }

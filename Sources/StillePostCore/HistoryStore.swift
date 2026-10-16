@@ -19,6 +19,13 @@ public final class HistoryStore: @unchecked Sendable {
     /// Ein Eintrag im Verlauf.
     public struct Entry: Codable, Identifiable, Equatable, Sendable {
         public enum ResultOrigin: String, Codable, Sendable { case cleanup, rawFallback, manual }
+        public struct ResultMetadata: Codable, Equatable, Sendable {
+            public var date: Date
+            public var origin: ResultOrigin
+            public var generation: Int
+            public var endpoint: String?
+            public var durationSec: Double?
+        }
         public struct Revision: Codable, Equatable, Sendable {
             public var text: String
             public var date: Date
@@ -66,10 +73,11 @@ public final class HistoryStore: @unchecked Sendable {
         public var manualEditDate: Date?
         public var manualEditCount: Int?
         public var previousResults: [Revision]?
+        public var resultMetadata: ResultMetadata?
 
         public var canEdit: Bool { status == "ok" && !isTextPrivate && !isDeletionPending }
         public var originalResultOrigin: ResultOrigin { cleanupFellBack == true ? .rawFallback : .cleanup }
-        public var resultOrigin: ResultOrigin { (manualEditCount ?? 0) > 0 ? .manual : originalResultOrigin }
+        public var resultOrigin: ResultOrigin { resultMetadata?.origin ?? ((manualEditCount ?? 0) > 0 ? .manual : originalResultOrigin) }
 
         public var isAudioExpired: Bool { audioExpiresAt.map { $0 <= Date() } == true }
 
@@ -325,9 +333,9 @@ public final class HistoryStore: @unchecked Sendable {
                 throw PersistenceError.audioRetentionExpired
             }
             var input = entry
-            if (fresh[index].manualEditCount ?? 0) > 0 {
+            if fresh[index].resultMetadata != nil || (fresh[index].manualEditCount ?? 0) > 0 {
                 // Ein verspäteter Pipeline-Snapshot darf nur seinen Audioverweis
-                // fortschreiben. Manuelle Texte und deren Herkunft gehören dem Editor.
+                // fortschreiben. Bestätigte Texte und deren Herkunft gehören dem Editor.
                 guard entry.status == "ok", Self.sameText(entry.rawText, fresh[index].rawText),
                       entry.audioFileName == nil || entry.audioFileName == fresh[index].audioFileName else {
                     throw PersistenceError.correctionConflict
@@ -362,7 +370,7 @@ public final class HistoryStore: @unchecked Sendable {
                 let (count, overflow) = (current.manualEditCount ?? 0).addingReportingOverflow(1)
                 guard !overflow else { throw PersistenceError.correctionConflict }
                 var revisions = current.previousResults ?? []
-                revisions.insert(.init(text: current.cleanText, date: current.manualEditDate ?? current.date,
+                revisions.insert(.init(text: current.cleanText, date: current.resultMetadata?.date ?? current.manualEditDate ?? current.date,
                                        origin: current.resultOrigin), at: 0)
                 if current.originalCleanText == nil { current.originalCleanText = current.cleanText }
                 current.previousResults = Array(revisions.prefix(3))
@@ -371,6 +379,59 @@ public final class HistoryStore: @unchecked Sendable {
                 // JSON verwendet ISO-8601 ohne Sekundenbruchteile. Der Rückgabewert
                 // muss beim nächsten Save denselben Snapshot wie die Platte ergeben.
                 current.manualEditDate = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970))
+                let (generation, generationOverflow) = (current.resultMetadata?.generation ?? 0).addingReportingOverflow(1)
+                guard !generationOverflow else { throw PersistenceError.correctionConflict }
+                current.resultMetadata = .init(date: current.manualEditDate!, origin: .manual, generation: generation)
+                fresh[index] = current
+                try self.saveLocked(fresh)
+                return current
+            }
+        }
+        onChange?()
+        return receipt
+    }
+
+    /// Autorisiert eine Aktion anhand des frischen, noch editierbaren Eintrags.
+    /// Der kurze synchrone Vorgang darf seinerseits nur den Config-Lock nehmen;
+    /// Netzwerk und UI laufen immer außerhalb dieses History-Locks.
+    public func withEditableSnapshotAsync<T: Sendable>(expected: Entry, action: @escaping @Sendable () throws -> T) async throws -> T {
+        try await onQueue {
+            try self.withFileLock {
+                var fresh = try self.loadFromDiskLocked()
+                try self.expireTextLocked(&fresh, now: Date())
+                guard let current = fresh.first(where: { $0.id == expected.id }) else { throw PersistenceError.entryNoLongerExists }
+                guard current.canEdit else { throw PersistenceError.correctionUnavailable }
+                guard Self.sameSnapshot(current, expected) else { throw PersistenceError.correctionConflict }
+                try Task.checkCancellation()
+                return try action()
+            }
+        }
+    }
+
+    public func saveRecleanupAsync(_ result: CleanupService.Result, durationSec: Double, expected: Entry) async throws -> Entry {
+        guard !result.usedFallback, result.endpoint != nil, durationSec.isFinite, durationSec >= 0,
+              !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw PersistenceError.correctionUnavailable
+        }
+        let receipt = try await onQueue {
+            try self.withFileLock {
+                var fresh = try self.loadFromDiskLocked()
+                try self.expireTextLocked(&fresh, now: Date())
+                guard let index = fresh.firstIndex(where: { $0.id == expected.id }) else { throw PersistenceError.entryNoLongerExists }
+                var current = fresh[index]
+                guard current.canEdit else { throw PersistenceError.correctionUnavailable }
+                guard Self.sameSnapshot(current, expected) else { throw PersistenceError.correctionConflict }
+                let (generation, overflow) = (current.resultMetadata?.generation ?? 0).addingReportingOverflow(1)
+                guard !overflow else { throw PersistenceError.correctionConflict }
+                var revisions = current.previousResults ?? []
+                revisions.insert(.init(text: current.cleanText, date: current.resultMetadata?.date ?? current.manualEditDate ?? current.date,
+                                       origin: current.resultOrigin), at: 0)
+                if current.originalCleanText == nil { current.originalCleanText = current.cleanText }
+                current.previousResults = Array(revisions.prefix(3))
+                current.cleanText = result.text
+                current.resultMetadata = .init(date: Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970)),
+                                               origin: .cleanup, generation: generation, endpoint: result.endpoint,
+                                               durationSec: durationSec)
                 fresh[index] = current
                 try self.saveLocked(fresh)
                 return current
@@ -517,6 +578,7 @@ public final class HistoryStore: @unchecked Sendable {
         result.manualEditDate = nil
         result.manualEditCount = nil
         result.previousResults = nil
+        result.resultMetadata = nil
         result.status = "failed"
         result.errorMessage = nil
         return result

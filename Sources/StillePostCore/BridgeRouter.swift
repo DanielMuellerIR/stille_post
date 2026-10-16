@@ -3,6 +3,7 @@ import Foundation
 /// Die Arbeitsschritte, die die Brücke ausführt. Als einspeisbare Funktionen,
 /// damit Tests die ganze Route ohne whisper-server und ohne Ollama prüfen können.
 public struct BridgeHandlers: Sendable {
+    typealias Cleanup = @Sendable (String) async -> CleanupService.Result
     /// Audio-Bytes (WAV, AAC, …) -> Rohtext.
     public var transcribe: @Sendable (Data) async throws -> String
     /// Rohtext -> bereinigter Text.
@@ -11,6 +12,8 @@ public struct BridgeHandlers: Sendable {
     public var cleanupEnabled: Bool
     /// Produktversion für `/v1/health`.
     public var version: String
+    var cleanupForRequest: (@Sendable () -> Cleanup)?
+    var updateVocabulary: (@Sendable (Config.Cleanup) -> Void)?
 
     public init(transcribe: @escaping @Sendable (Data) async throws -> String,
                 cleanup: @escaping @Sendable (String) async -> CleanupService.Result,
@@ -91,10 +94,12 @@ public actor BridgeRouter {
             ])
 
         case ("POST", "/v1/dictate"):
-            return await serialized { await self.dictate(request) }
+            let cleanup = handlers.cleanupForRequest?() ?? handlers.cleanup
+            return await serialized { await self.dictate(request, cleanup: cleanup) }
 
         case ("POST", "/v1/cleanup"):
-            return await serialized { await self.cleanupOnly(request) }
+            let cleanup = handlers.cleanupForRequest?() ?? handlers.cleanup
+            return await serialized { await self.cleanupOnly(request, cleanup: cleanup) }
 
         case (_, "/v1/health"), (_, "/v1/dictate"), (_, "/v1/cleanup"):
             return .error(status: 405, message: L10n.text("core.bridge.method_not_allowed"))
@@ -157,7 +162,7 @@ public actor BridgeRouter {
 
     /// Audio rein, fertiger Text raus. `?raw=1` überspringt die Bereinigung —
     /// gedacht für Diagnose und für den Fall, dass nur die Spracherkennung zählt.
-    private func dictate(_ request: BridgeRequest) async -> BridgeResponse {
+    private func dictate(_ request: BridgeRequest, cleanup: BridgeHandlers.Cleanup) async -> BridgeResponse {
         guard !request.body.isEmpty else {
             return .error(status: 400, message: L10n.text("core.bridge.audio_empty"))
         }
@@ -186,7 +191,7 @@ public actor BridgeRouter {
             ])
         }
         let cleanupStarted = Date()
-        let result = await handlers.cleanup(raw)
+        let result = await cleanup(raw)
         var object = payload(raw: raw, result: result,
                              cleanupSeconds: Date().timeIntervalSince(cleanupStarted))
         object["sttSec"] = rounded(sttSeconds)
@@ -196,7 +201,7 @@ public actor BridgeRouter {
     /// Nur die Bereinigung. Damit kann ein Gerät, das selbst transkribiert
     /// (Apple-Diktat oder später Whisper auf dem iPhone), die Textqualität von
     /// Stille Post nutzen, ohne Audio zu übertragen.
-    private func cleanupOnly(_ request: BridgeRequest) async -> BridgeResponse {
+    private func cleanupOnly(_ request: BridgeRequest, cleanup: BridgeHandlers.Cleanup) async -> BridgeResponse {
         guard let text = String(data: request.body, encoding: .utf8) else {
             return .error(status: 415, message: L10n.text("core.bridge.text_not_utf8"))
         }
@@ -207,7 +212,7 @@ public actor BridgeRouter {
             return .error(status: 503, message: L10n.text("core.bridge.cleanup_off"))
         }
         let started = Date()
-        let result = await handlers.cleanup(text)
+        let result = await cleanup(text)
         return .json(status: 200, object: payload(
             raw: text, result: result, cleanupSeconds: Date().timeIntervalSince(started)
         ))
@@ -290,7 +295,8 @@ public extension BridgeHandlers {
         let whisper = WhisperClient(config: config.whisper)
         let serverManager = WhisperServerManager(config: config.whisper)
         let cleanup = CleanupService(config: config.cleanup)
-        return BridgeHandlers(
+        let vocabulary = BridgeVocabulary(cleanup: cleanup)
+        var handlers = BridgeHandlers(
             transcribe: { data in
                 try Task.checkCancellation()
                 let samples = try AudioDecoder.samples16kMono(from: data)
@@ -302,5 +308,26 @@ public extension BridgeHandlers {
             cleanupEnabled: config.cleanup.enabled,
             version: version
         )
+        handlers.cleanupForRequest = { vocabulary.snapshot() }
+        handlers.updateVocabulary = { vocabulary.update($0) }
+        return handlers
+    }
+}
+
+/// Eine zugelassene Anfrage hält ihren Dienst schon vor dem Warten und vor
+/// Whisper fest. Neue Wörterbuchstände verändern deshalb keine laufende Anfrage.
+final class BridgeVocabulary: @unchecked Sendable {
+    private let lock = NSLock()
+    private var cleanup: CleanupService
+
+    init(cleanup: CleanupService) { self.cleanup = cleanup }
+
+    func update(_ config: Config.Cleanup) {
+        lock.withLock { cleanup = cleanup.replacingVocabulary(with: config) }
+    }
+
+    func snapshot() -> BridgeHandlers.Cleanup {
+        let service = lock.withLock { cleanup }
+        return { text in await service.clean(text) }
     }
 }
