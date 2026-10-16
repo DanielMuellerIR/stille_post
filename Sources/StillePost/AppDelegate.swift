@@ -16,6 +16,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     )
     private var config = Config.load()
     private var engine: DictationEngine!
+    private var retiredEngineShutdowns: [Task<Void, Never>] = []
+    private var terminationPending = false
     private var statusItem: NSStatusItem!
     private var hotkey: HotkeyManager!
     private var lastResultHotkey: HotkeyManager?
@@ -146,6 +148,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             overlay.show(.clipboard(note: L10n.text("app.paste_target_changed")))
         case "clipboard-target-unavailable":
             overlay.show(.clipboard(note: L10n.text("app.paste_target_unavailable")))
+        case "clipboard-changed":
+            overlay.show(.failure(L10n.text("app.paste_clipboard_changed")))
         case .some, .none:
             break
         }
@@ -178,11 +182,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    func applicationWillTerminate(_ notification: Notification) {
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard !terminationPending else { return .terminateLater }
+        guard let engine else { return .terminateNow }
+        terminationPending = true
+        hotkey = nil
+        lastResultHotkey = nil
         bridge?.stop()
+        warmUpTimer?.invalidate()
         historyMaintenanceTimer?.invalidate()
         historyMaintenanceTask?.cancel()
-        engine.shutdown()
+        engine.onStateChange = nil
+        engine.onResult = nil
+        let shutdown = engine.shutdown()
+        let retired = retiredEngineShutdowns
+        let editSave = historyWindow?.pendingSaveTask
+        historyWindow?.close()
+        resultPreview.dismiss()
+        Task { @MainActor in
+            await editSave?.value
+            await shutdown.value
+            for task in retired { await task.value }
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 
     // MARK: - Bausteine aufbauen / Einstellungen anwenden
@@ -384,6 +407,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Reine Verlaufsregeln gelten erst für neue Aufträge und beenden keine
     /// laufende Aufnahme. Andere Einstellungen behalten ihren Neuaufbau.
     private func applySettings(_ newConfig: Config) {
+        guard !terminationPending else { return }
         do {
             try newConfig.save()
         } catch {
@@ -401,8 +425,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         overlay.hide()
         resultPreview.dismiss()
+        if let save = historyWindow.pendingSaveTask { retiredEngineShutdowns.append(save) }
         historyWindow.close()
-        engine.shutdown()
+        retiredEngineShutdowns.append(engine.shutdown())
         config = newConfig
         buildComponents()
         // Menü neu beschriften (zeigt den ggf. geänderten Hotkey an).
@@ -578,6 +603,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        guard !terminationPending else { return false }
         if menuItem.action == #selector(togglePrivateHistory) { return config.history.storeText }
         return menuItem.action != #selector(showLastResult) ||
             ((resultMemory.last != nil || resultPreview.isVisible) && canRecallResult)
@@ -631,6 +657,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             overlay.show(.clipboard(note: L10n.text("app.paste_target_unavailable")))
         case .noPermission:
             overlay.show(.failure(L10n.text("app.paste_permission_missing")))
+        case .clipboardChanged:
+            overlay.show(.failure(L10n.text("app.paste_clipboard_changed")))
         }
     }
 
@@ -641,8 +669,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         engine.cancel()
         overlay.hide()
     }
-    @objc private func showHistory() { historyWindow.show() }
-    @objc private func showSettings() { settingsWindow.show() }
+    @objc private func showHistory() { if !terminationPending { historyWindow.show() } }
+    @objc private func showSettings() { if !terminationPending { settingsWindow.show() } }
     @objc private func openConfig() {
         // Config-Datei existiert nach Config.load() immer.
         NSWorkspace.shared.open(Config.configFile)

@@ -45,3 +45,7 @@ ein eigener Speicher. Die optional konfigurierte Bereinigung kann weiterhin
 Text an ihre Dienste senden. Audio bleibt entsprechend der bestehenden lokalen
 Verarbeitung geschützt. Die Netzwerk-Brücke und CLI-Transkription schreiben
 weiterhin keinen Diktatverlauf; diese Funktion führt dort keine Speicherung ein.
+
+Manuelle Korrekturen, ursprüngliche Ausgabe und Vorfassungen unterliegen denselben
+Fristen und Löschungen wie Rohtext und Ergebnis. Einzelheiten stehen unter
+[Textkorrektur](textkorrektur.md).

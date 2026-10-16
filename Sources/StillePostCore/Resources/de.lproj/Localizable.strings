@@ -397,3 +397,33 @@
 "settings.history.memory_help" = "Ohne Textverlauf bleiben bei Fehlern nur textfreie Audioverweise. Fertiger Text und „Letzter Text“ können bis zum Beenden im RAM bleiben; die Zwischenablage bleibt separat erhalten. Bereinigung kann weiterhin Text an konfigurierte Dienste senden.";
 "settings.history.day" = "1 Tag";
 "core.history.private_audio_expired" = "Kein Text gespeichert. Die abgelaufene Aufnahme bleibt bis zur erfolgreichen Löschung erreichbar.";
+
+"app.paste_clipboard_changed" = "Zwischenablage geändert. Nichts eingefügt. Diktat über „Letzter Text“ abrufen.";
+
+"core.history.correction_conflict" = "Dieser Eintrag wurde inzwischen geändert. Entwurf bei Bedarf kopieren, dann den Editor schließen und erneut öffnen.";
+"core.history.correction_unavailable" = "Dieser Text wurde gelöscht, ist abgelaufen oder kann nicht bearbeitet werden.";
+"editor.title" = "Ergebnis bearbeiten";
+"editor.edit" = "Bearbeiten";
+"editor.text" = "Text";
+"editor.compare" = "Vergleich";
+"editor.versions" = "Fassungen";
+"editor.raw" = "Whisper-Rohtext";
+"editor.original" = "Ursprüngliche Ausgabe";
+"editor.previous" = "Vorfassung %d";
+"editor.origin.cleanup" = "Automatisch bereinigt";
+"editor.origin.rawFallback" = "Ursprüngliche Ausgabe: Rohtext-Rückfall";
+"editor.origin.manual" = "Manuell korrigiert";
+"editor.text_help" = "Nur das Ergebnis wird geändert. Der Whisper-Rohtext bleibt erhalten.";
+"editor.compare_help" = "Unveränderlicher Whisper-Rohtext im Vergleich zum aktuellen Entwurf.";
+"editor.versions_help" = "Rohtext, ursprüngliche Ausgabe und höchstens drei Vorfassungen. Alle folgen der Textaufbewahrung.";
+"editor.version" = "Fassung";
+"editor.removed" = "Entfernt (durchgestrichen)";
+"editor.added" = "Hinzugefügt (unterstrichen)";
+"editor.summary" = "Großer Unterschied: vollständige Fassungen statt einzelner Wortmarkierungen.";
+"editor.draft" = "Aktueller Entwurf";
+"editor.copy_draft" = "Entwurf kopieren";
+"editor.copy_version" = "Diese Fassung kopieren";
+"editor.unsaved" = "Ungespeicherte Änderungen";
+"editor.saved" = "Keine ungespeicherten Änderungen";
+"editor.unavailable_help" = "Die Textkopien dieses Editors wurden entfernt. Den Verlauf aktualisieren und einen verfügbaren Eintrag öffnen.";
+"editor.original_cleaned_via" = "Ursprünglich bereinigt in %.2f s über %@";

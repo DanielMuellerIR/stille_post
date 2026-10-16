@@ -9,7 +9,8 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Optionale Ergebnisvorschau und schnellen Abruf des letzten Textes ergänzen; siehe [Ergebnisvorschau](docs/ergebnisvorschau.md).
 - [x] Lokale Verlaufssuche, Kalender-/Statusfilter und sichere Einzellöschung ergänzen; siehe [Verlauf verwalten](docs/verlauf-verwalten.md).
 - [x] Aufbewahrungsregeln und Diktate ohne dauerhaften Textverlauf ergänzen; siehe [Aufbewahrung](docs/aufbewahrung.md).
-- [ ] Textkorrektur, Änderungsvergleich, Wörterbuchübernahme und ausdrückliche erneute Textbereinigung ergänzen.
+- [x] Textkorrektur und Änderungsvergleich mit nachvollziehbaren Fassungen ergänzen; siehe [Textkorrektur](docs/textkorrektur.md).
+- [ ] Wörterbuchübernahme aus ausdrücklichen Korrekturen und erneute Textbereinigung ergänzen.
 - [ ] Diktierprofile, App-Zuordnung und eine durchgehend lokale Bereinigungsrichtlinie ergänzen.
 - [ ] Gedrückthalten, Pause/Fortsetzen, GUI-Diagnose, Testdiktat und laufende Rohtextvorschau ergänzen.
 - [ ] Audioimport, explizite gesprochene Formatierung und Bereinigung ausgewählten Textes ergänzen.
@@ -19,8 +20,9 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
 [docs/ausgangspruefung-2026-10-16.md](docs/ausgangspruefung-2026-10-16.md) dokumentiert.
-Nächster unabhängiger Entwicklungsschritt: Textkorrektur und Änderungsvergleich ergänzen. Die offenen
-Gerätefälle bleiben bis zu ihrer tatsächlichen Abnahme erhalten.
+Nächster unabhängiger Entwicklungsschritt: Wörterbuchübernahme aus Korrekturen und
+ausdrückliche erneute Textbereinigung ergänzen. Die offenen Gerätefälle bleiben bis
+zu ihrer tatsächlichen Abnahme erhalten.
 
 ## Offene Abnahmen nach dem Review 2026-10-04
 
@@ -30,6 +32,10 @@ Gerätefälle bleiben bis zu ihrer tatsächlichen Abnahme erhalten.
 - [ ] Mit realen Geräten Standardmikrofonwechsel, USB-/Bluetooth-Verlust und
   iPhone-Zugriff über `.local` prüfen. Die bestehenden Sleep-/Firewall-Punkte
   unten bleiben Teil dieser Abnahme. Technische Tests ersetzen diese Fälle nicht.
+- [ ] Eine reale Mikrofonaufnahme mit Audiolöschfehler, normalem App-Beenden und
+  erneutem Löschen des erhaltenen Verweises nach dem Neustart prüfen. Diese Probe
+  wurde am 2026-10-16 wegen fehlenden Audioeingangs ausdrücklich verschoben;
+  Prozess-, GUI- und End-to-End-Prüfungen sind bestanden.
 
 Am 2026-10-16 am notarisierten Bundle 0.9.21 geprüft: Wörterbuchpflege DE/EN
 einschließlich Speichern, erneutem Öffnen und Abbrechen; außerdem die Brücke

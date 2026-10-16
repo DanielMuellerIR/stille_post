@@ -14,6 +14,7 @@ final class HistoryWindowController {
     }
 
     func reportError(_ message: String) { model.errorMessage = message }
+    var pendingSaveTask: Task<Void, Never>? { model.editor?.saveTask }
 
     /// Öffnet das Fenster (oder holt es nach vorn) und lädt die Einträge neu.
     func show() {
@@ -54,6 +55,7 @@ final class HistoryViewModel: ObservableObject {
     @Published var retrying: Set<UUID> = []
     @Published var errorMessage: String?
     @Published var deletingAll = false
+    @Published var editor: HistoryEditorModel?
     /// Nur das Ergebnis des neuesten Leseauftrags darf die Liste ersetzen.
     /// Zwei schnell aufeinanderfolgende Reloads können off-main andersherum
     /// fertig werden, obwohl beide korrekt gelesen haben.
@@ -86,6 +88,7 @@ final class HistoryViewModel: ObservableObject {
             switch result {
             case .success(let entries):
                 self.entries = entries
+                self.editor?.reconcile(entries)
                 self.filterEntries()
             case .failure(let error):
                 self.errorMessage = error.localizedDescription
@@ -113,6 +116,11 @@ final class HistoryViewModel: ObservableObject {
     func copyToClipboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    func edit(_ entry: HistoryStore.Entry) {
+        guard entry.canEdit, !deletingAll, !deleting.contains(entry.id), !retrying.contains(entry.id) else { return }
+        editor = HistoryEditorModel(entry: entry, history: engine.history)
     }
 
     func retry(_ entry: HistoryStore.Entry) {
@@ -279,6 +287,7 @@ struct HistoryView: View {
             .padding(10)
         }
         .frame(minWidth: 640, minHeight: 400)
+        .sheet(item: $model.editor) { editor in HistoryEditorView(model: editor) }
         .onChange(of: model.visibleEntries.map(\.id)) { ids in
             if let selection, !ids.contains(selection) { self.selection = nil }
         }
@@ -322,7 +331,13 @@ struct EntryRow: View {
                 Text(L10n.format("history.duration", entry.durationSec))
                     .font(.caption)
                     .foregroundColor(.secondary)
-                if entry.cleanupFellBack == true {
+                if entry.resultOrigin == .manual {
+                    Text(L10n.text("editor.origin.manual"))
+                        .font(.caption2)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Color.blue.opacity(0.15))
+                        .cornerRadius(4)
+                } else if entry.cleanupFellBack == true {
                     // Kennzeichnung: Die LLM-Bereinigung wurde verworfen (Plausibilitäts-
                     // prüfung) — es wurde der rohe Whisper-Text verwendet. Der
                     // gespeicherte Grund beantwortet als Tooltip "warum eigentlich?".
@@ -354,8 +369,11 @@ struct EntryRow: View {
                         }
                     }
                 } else {
+                    Button(L10n.text("editor.edit")) { model.edit(entry) }
+                        .font(.caption)
+                        .disabled(!entry.canEdit || model.deletingAll || model.retrying.contains(entry.id) || model.deleting.contains(entry.id))
                     Button {
-                        model.copyToClipboard(showRaw ? entry.rawText : entry.cleanText)
+                        model.copyToClipboard(entry.cleanText)
                     } label: {
                         Label(L10n.text("history.copy"), systemImage: "doc.on.doc")
                     }
@@ -366,7 +384,7 @@ struct EntryRow: View {
             // Diagnose-Zeile: welcher Bereinigungs-Endpoint, wie lange? Beantwortet
             // "warum war dieses Diktat lahm?" direkt im Verlauf (Fallback sichtbar).
             if let endpoint = entry.cleanupEndpoint, let sec = entry.cleanupSec {
-                Text(L10n.format("history.cleaned_via", sec, endpoint))
+                Text(L10n.format(entry.resultOrigin == .manual ? "editor.original_cleaned_via" : "history.cleaned_via", sec, endpoint))
                     .font(.caption2)
                     .foregroundColor(.secondary)
                     .lineLimit(1)

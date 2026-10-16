@@ -397,3 +397,33 @@
 "settings.history.memory_help" = "Without text history, errors leave only text-free audio references. Completed text and “Last text” may remain in RAM until the app quits; clipboard contents remain separate. Cleanup can still send text to configured services.";
 "settings.history.day" = "1 day";
 "core.history.private_audio_expired" = "No text saved. The expired recording remains accessible until it can be deleted successfully.";
+
+"app.paste_clipboard_changed" = "Clipboard changed. Nothing inserted. Recall the dictation using “Last Text”.";
+
+"core.history.correction_conflict" = "This entry has changed. Copy your draft if needed, then close and reopen the editor.";
+"core.history.correction_unavailable" = "This text was deleted, expired, or cannot be edited.";
+"editor.title" = "Edit Result";
+"editor.edit" = "Edit";
+"editor.text" = "Text";
+"editor.compare" = "Compare";
+"editor.versions" = "Versions";
+"editor.raw" = "Whisper Raw Text";
+"editor.original" = "Original Output";
+"editor.previous" = "Previous Version %d";
+"editor.origin.cleanup" = "Automatically cleaned";
+"editor.origin.rawFallback" = "Original output: raw-text fallback";
+"editor.origin.manual" = "Manually corrected";
+"editor.text_help" = "Only the result changes. The Whisper raw text is preserved.";
+"editor.compare_help" = "Unchanged Whisper raw text compared with the current draft.";
+"editor.versions_help" = "Raw text, original output, and up to three previous versions. Text retention applies to all versions.";
+"editor.version" = "Version";
+"editor.removed" = "Removed (strikethrough)";
+"editor.added" = "Added (underlined)";
+"editor.summary" = "Large difference: full versions shown instead of individual word highlights.";
+"editor.draft" = "Current Draft";
+"editor.copy_draft" = "Copy Draft";
+"editor.copy_version" = "Copy This Version";
+"editor.unsaved" = "Unsaved changes";
+"editor.saved" = "No unsaved changes";
+"editor.unavailable_help" = "Text copies in this editor were removed. Refresh the history and open an available entry.";
+"editor.original_cleaned_via" = "Originally cleaned in %.2f s via %@";

@@ -99,6 +99,7 @@ public final class DictationEngine {
     private var wavWriter: (any DictationWavWriter)?
     private var recordingStart: Date?
     private var sessionTask: Task<Void, Never>?
+    private var historyTasks: [UUID: Task<Void, Never>] = [:]
     /// Jede Start-/Abbruchfolge bekommt eine neue Generation. Ein alter Task darf
     /// nach einem Await nur weiterarbeiten, wenn seine Generation noch aktiv ist.
     private var sessionGeneration: UInt64 = 0
@@ -360,7 +361,7 @@ public final class DictationEngine {
         ))
         // Auch bei neuer Aufnahme bleibt der alte Fehlereintrag notwendig. Nur
         // seine verspätete UI-Meldung darf nicht den neuen Zustand überschreiben.
-        Task { @MainActor in
+        trackHistoryWork { @MainActor in
             do {
                 try await self.history.appendAsync(entry)
             } catch {
@@ -784,7 +785,7 @@ public final class DictationEngine {
                     audioFileName: pending.lastPathComponent, durationSec: duration
                 ))
                 let generation = sessionGeneration
-                Task { @MainActor in
+                trackHistoryWork { @MainActor in
                     do {
                         try await self.history.discardAsync(retained)
                         guard self.isCurrentSession(generation),
@@ -898,10 +899,26 @@ public final class DictationEngine {
         cleanup.warmUp()
     }
 
-    /// Beim App-Ende: selbst gestarteten whisper-server mit beenden.
-    public func shutdown() {
+    private func trackHistoryWork(_ work: @escaping @MainActor () async -> Void) {
+        let id = UUID()
+        historyTasks[id] = Task { @MainActor in
+            await work()
+            self.historyTasks[id] = nil
+        }
+    }
+
+    /// Der Rückgabewert endet erst nach allen notwendigen Verlaufs-Schreibvorgängen.
+    /// Die App muss ihn vor dem geregelten Prozessende abwarten.
+    @discardableResult
+    public func shutdown() -> Task<Void, Never> {
+        let processing = sessionTask
         cancel()
         serverManager.stop()
+        let pending = Array(historyTasks.values)
+        return Task { @MainActor in
+            await processing?.value
+            for task in pending { await task.value }
+        }
     }
 
     // MARK: - Hilfsfunktionen

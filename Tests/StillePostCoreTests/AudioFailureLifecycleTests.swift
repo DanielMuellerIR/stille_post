@@ -429,6 +429,50 @@ final class AudioFailureLifecycleTests: XCTestCase {
     }
 
     @MainActor
+    func testShutdownPersistsUndeletableRecordingBeforeProcessExit() async throws {
+        let variable = "STILLEPOST_SHUTDOWN_CHILD"
+        if let path = ProcessInfo.processInfo.environment[variable] {
+            let fixture = try LossFixture(directory: URL(fileURLWithPath: path))
+            await start(fixture)
+            fixture.recorder.onSamples?([0.1])
+            try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: fixture.history.recordingsDir.path)
+            await fixture.engine.shutdown().value
+            // Die Prozessgrenze ist Teil der Regression: keine weitere Runloop,
+            // kein späterer XCTest-Abschluss darf den fehlenden Write nachholen.
+            exit(0)
+        }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("sp-shutdown-\(UUID())")
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.appendingPathComponent("recordings").path)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        let child = Process()
+        child.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        child.arguments = ["xctest", "-XCTest", "StillePostCoreTests.AudioFailureLifecycleTests/testShutdownPersistsUndeletableRecordingBeforeProcessExit", Bundle(for: Self.self).bundleURL.path]
+        var environment = ProcessInfo.processInfo.environment
+        environment[variable] = directory.path
+        child.environment = environment
+        child.standardOutput = FileHandle.nullDevice
+        child.standardError = FileHandle.nullDevice
+        try child.run()
+        let deadline = Date().addingTimeInterval(10)
+        while child.isRunning && Date() < deadline { try await Task.sleep(nanoseconds: 20_000_000) }
+        if child.isRunning { child.terminate(); XCTFail("Kindprozess beendet sich nicht"); return }
+        XCTAssertEqual(child.terminationReason, .exit)
+        XCTAssertEqual(child.terminationStatus, 0)
+        let store = HistoryStore(baseDir: directory)
+        let retained = try XCTUnwrap(store.list().first)
+        XCTAssertTrue(retained.isDeletionPending)
+        XCTAssertTrue(retained.rawText.isEmpty)
+        XCTAssertTrue(retained.cleanText.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(store.audioURL(for: retained)).path))
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: store.recordingsDir.path)
+        try store.deleteAll()
+        XCTAssertTrue(try store.list().isEmpty)
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: store.recordingsDir.path).isEmpty)
+    }
+
+    @MainActor
     func testOldSilentWriteCannotClearNewProcessingWav() async throws {
         let entered = expectation(description: "Alter Fehler-Write läuft")
         let release = DispatchSemaphore(value: 0)
@@ -551,9 +595,9 @@ private final class LossFixture {
     var deliveries = 0
 
     init(writerFailure: LossWriter.Failure? = nil, historyFailure: Bool = false,
-         atomicWrite: ((Data, URL) throws -> Void)? = nil, config: Config = Config()) throws {
-        directory = FileManager.default.temporaryDirectory.appendingPathComponent("sp-audio-loss-\(UUID())")
-        history = HistoryStore(baseDir: directory) { data, url in
+         atomicWrite: ((Data, URL) throws -> Void)? = nil, config: Config = Config(), directory: URL? = nil) throws {
+        self.directory = directory ?? FileManager.default.temporaryDirectory.appendingPathComponent("sp-audio-loss-\(UUID())")
+        history = HistoryStore(baseDir: self.directory) { data, url in
             if historyFailure { throw NSError(domain: "LossTest", code: 2, userInfo: [NSLocalizedDescriptionKey: "Künstlicher Verlaufsfehler"]) }
             if let atomicWrite { try atomicWrite(data, url) }
             else { try data.write(to: url, options: .atomic) }

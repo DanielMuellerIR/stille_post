@@ -14,8 +14,12 @@ Bildschirmfreigabe bleibt ebenfalls ein Fall für manuelles Einfügen.
 
 Nach automatischem Einfügen wird die frühere Zwischenablage einschließlich ihrer
 Datentypen wiederhergestellt. Hat der Nutzer inzwischen etwas Neues kopiert,
-bleibt dieser neuere Inhalt erhalten. In allen manuellen Fällen bleibt der
-Diktattext bereit; eine automatische Wiederherstellung findet dann nicht statt.
+bleibt dieser neuere Inhalt erhalten. Ändert sich die Zwischenablage bereits während der Zielprüfung, wird nichts
+automatisch eingefügt. Der neuere Inhalt bleibt erhalten. Ein roter Hinweis
+erklärt, dass sich das Diktat über den letzten Text erneut abrufen lässt; er
+verspricht keinen Diktattext in der Zwischenablage. In den übrigen manuellen
+Fällen bleibt der Diktattext bereit; eine automatische Wiederherstellung findet
+dann nicht statt.
 
 ## Grenzen
 
@@ -27,8 +31,11 @@ in diesem Fall wird ausschließlich kopiert.
 
 macOS bietet keine atomare Operation aus Fokusprüfung und synthetischem ⌘V.
 Ein Fokuswechsel genau während der Eventzustellung lässt sich deshalb nicht
-vollständig ausschließen. Nach den Bedienungshilfen-Abfragen wird die aktive
-App unmittelbar vor dem Senden nochmals geprüft.
+vollständig ausschließen. Nach den Metadaten-Abfragen werden Fenster- und Feldfokus erneut mit dem
+ursprünglichen Ziel verglichen. App, Berechtigung und eigener
+Clipboard-Änderungszähler werden unmittelbar vor dem Senden ebenfalls geprüft.
+Alle AX-Abfragen teilen ein Zeitbudget von 250 ms; eine fehlende Zuordnung oder
+ein ausgeschöpftes Budget erlaubt kein automatisches Einfügen.
 
 ## Prüfung am 2026-10-16
 

@@ -10,6 +10,25 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.26] — 2026-10-16
+
+### Neu
+
+- Ergebnisse lassen sich im Verlauf ausdrücklich korrigieren, als Entwurf
+  kopieren und mit dem unveränderten Rohtext vergleichen. Die ursprüngliche
+  Ausgabe und bis zu drei Vorfassungen bleiben nachvollziehbar.
+- Gleichzeitige Änderungen werden vor dem Speichern erkannt. Gelöschte,
+  abgelaufene oder private Texte lassen sich durch einen offenen Editor nicht
+  wiederherstellen; ihre Aufbewahrungsregeln gelten auch für alle Fassungen.
+
+### Behoben
+
+- Automatisches Einfügen prüft das ursprüngliche Fenster und Textfeld unmittelbar
+  vor dem Tastaturereignis erneut. Eine zwischenzeitliche Kopieraktion bleibt
+  erhalten und wird im Hinweis korrekt beschrieben.
+- Beim Beenden wartet die App auf laufende Verlaufsschreibvorgänge. Auch nach
+  einem Audiolöschfehler bleibt der textfreie Aufnahmeverweis dauerhaft erhalten.
+
 ## [0.9.25] — 2026-10-16
 
 ### Neu

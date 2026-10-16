@@ -22,6 +22,8 @@ History supports local search across raw and cleaned text, date and status filte
 
 Text retention and a temporary mode without text history are available under **Settings → History**. Error recordings have a separate explicit policy; existing entries retain their previous policy. [Retention details](docs/aufbewahrung.md).
 
+**Edit** in history opens text correction, word comparison, and previous versions. Raw text and the original output are preserved; up to three previous versions follow the same retention policy. [Text correction details](docs/textkorrektur.md).
+
 ## Ready in five minutes
 
 The signed app package runs on **Apple Silicon Macs with macOS 13 or later**.

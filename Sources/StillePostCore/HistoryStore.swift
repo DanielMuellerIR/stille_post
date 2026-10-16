@@ -18,6 +18,18 @@ public final class HistoryStore: @unchecked Sendable {
 
     /// Ein Eintrag im Verlauf.
     public struct Entry: Codable, Identifiable, Equatable, Sendable {
+        public enum ResultOrigin: String, Codable, Sendable { case cleanup, rawFallback, manual }
+        public struct Revision: Codable, Equatable, Sendable {
+            public var text: String
+            public var date: Date
+            public var origin: ResultOrigin
+
+            public init(text: String, date: Date, origin: ResultOrigin) {
+                self.text = text
+                self.date = date
+                self.origin = origin
+            }
+        }
         public var id: UUID
         /// Zeitpunkt des Diktats (ISO-8601 beim Anzeigen formatiert).
         public var date: Date
@@ -50,6 +62,14 @@ public final class HistoryStore: @unchecked Sendable {
         public var storesText: Bool?
         public var textExpiresAt: Date?
         public var audioExpiresAt: Date?
+        public var originalCleanText: String?
+        public var manualEditDate: Date?
+        public var manualEditCount: Int?
+        public var previousResults: [Revision]?
+
+        public var canEdit: Bool { status == "ok" && !isTextPrivate && !isDeletionPending }
+        public var originalResultOrigin: ResultOrigin { cleanupFellBack == true ? .rawFallback : .cleanup }
+        public var resultOrigin: ResultOrigin { (manualEditCount ?? 0) > 0 ? .manual : originalResultOrigin }
 
         public var isAudioExpired: Bool { audioExpiresAt.map { $0 <= Date() } == true }
 
@@ -86,7 +106,9 @@ public final class HistoryStore: @unchecked Sendable {
                     cleanupFallbackReason: String? = nil,
                     cleanupEndpoint: String? = nil, cleanupSec: Double? = nil,
                     deletionPending: Bool? = nil, storesText: Bool? = nil,
-                    textExpiresAt: Date? = nil, audioExpiresAt: Date? = nil) {
+                    textExpiresAt: Date? = nil, audioExpiresAt: Date? = nil,
+                    originalCleanText: String? = nil, manualEditDate: Date? = nil,
+                    manualEditCount: Int? = nil, previousResults: [Revision]? = nil) {
             self.id = id
             self.date = date
             self.rawText = rawText
@@ -103,6 +125,10 @@ public final class HistoryStore: @unchecked Sendable {
             self.storesText = storesText
             self.textExpiresAt = textExpiresAt
             self.audioExpiresAt = audioExpiresAt
+            self.originalCleanText = originalCleanText
+            self.manualEditDate = manualEditDate
+            self.manualEditCount = manualEditCount
+            self.previousResults = previousResults
         }
     }
 
@@ -288,6 +314,7 @@ public final class HistoryStore: @unchecked Sendable {
     private func updateOnQueue(_ entry: Entry) throws -> Entry {
         try withFileLock {
             var fresh = try loadFromDiskLocked()
+            try expireTextLocked(&fresh, now: Date())
             guard let index = fresh.firstIndex(where: { $0.id == entry.id }) else {
                 throw PersistenceError.entryNoLongerExists
             }
@@ -297,12 +324,70 @@ public final class HistoryStore: @unchecked Sendable {
             if fresh[index].isAudioExpired, entry.audioFileName != nil {
                 throw PersistenceError.audioRetentionExpired
             }
-            let receipt = Self.effectiveEntry(entry, stored: fresh[index], now: Date())
+            var input = entry
+            if (fresh[index].manualEditCount ?? 0) > 0 {
+                // Ein verspäteter Pipeline-Snapshot darf nur seinen Audioverweis
+                // fortschreiben. Manuelle Texte und deren Herkunft gehören dem Editor.
+                guard entry.status == "ok", Self.sameText(entry.rawText, fresh[index].rawText),
+                      entry.audioFileName == nil || entry.audioFileName == fresh[index].audioFileName else {
+                    throw PersistenceError.correctionConflict
+                }
+                input = fresh[index]
+                input.audioFileName = entry.audioFileName
+                input = Self.effectiveEntry(input, stored: entry, now: Date())
+            }
+            let receipt = Self.effectiveEntry(input, stored: fresh[index], now: Date())
             if let persisted = Self.persistableEntry(receipt) { fresh[index] = persisted }
             else { fresh.remove(at: index) }
             try saveLocked(fresh)
             return receipt
         }
+    }
+
+    /// Optimistisches Speichern: ein veralteter Editor überschreibt weder eine
+    /// jüngere Korrektur noch eine Löschung oder inzwischen abgelaufenen Text.
+    /// `expected` stammt aus `list` oder einem vorherigen Korrektur-Save.
+    public func saveCorrectionAsync(_ text: String, expected: Entry) async throws -> Entry {
+        let receipt = try await onQueue {
+            try self.withFileLock {
+                var fresh = try self.loadFromDiskLocked()
+                try self.expireTextLocked(&fresh, now: Date())
+                guard let index = fresh.firstIndex(where: { $0.id == expected.id }) else {
+                    throw PersistenceError.entryNoLongerExists
+                }
+                var current = fresh[index]
+                guard current.canEdit else { throw PersistenceError.correctionUnavailable }
+                guard Self.sameSnapshot(current, expected) else { throw PersistenceError.correctionConflict }
+                guard !Self.sameText(current.cleanText, text) else { return current }
+                let (count, overflow) = (current.manualEditCount ?? 0).addingReportingOverflow(1)
+                guard !overflow else { throw PersistenceError.correctionConflict }
+                var revisions = current.previousResults ?? []
+                revisions.insert(.init(text: current.cleanText, date: current.manualEditDate ?? current.date,
+                                       origin: current.resultOrigin), at: 0)
+                if current.originalCleanText == nil { current.originalCleanText = current.cleanText }
+                current.previousResults = Array(revisions.prefix(3))
+                current.cleanText = text
+                current.manualEditCount = count
+                // JSON verwendet ISO-8601 ohne Sekundenbruchteile. Der Rückgabewert
+                // muss beim nächsten Save denselben Snapshot wie die Platte ergeben.
+                current.manualEditDate = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970))
+                fresh[index] = current
+                try self.saveLocked(fresh)
+                return current
+            }
+        }
+        onChange?()
+        return receipt
+    }
+
+    public static func sameText(_ first: String, _ second: String) -> Bool {
+        first.utf8.elementsEqual(second.utf8)
+    }
+
+    private static func sameSnapshot(_ first: Entry, _ second: Entry) -> Bool {
+        guard first == second, sameText(first.rawText, second.rawText), sameText(first.cleanText, second.cleanText),
+              sameText(first.originalCleanText ?? "", second.originalCleanText ?? "") else { return false }
+        return zip(first.previousResults ?? [], second.previousResults ?? []).allSatisfy { sameText($0.text, $1.text) }
     }
 
     /// Löscht nur den aktuellen Plattenstand dieser ID. Parallele Änderungen an
@@ -415,7 +500,11 @@ public final class HistoryStore: @unchecked Sendable {
     }
 
     private static func persistableEntry(_ entry: Entry) -> Entry? {
-        guard entry.storesText == false else { return entry }
+        guard entry.storesText == false else {
+            var bounded = entry
+            if let revisions = entry.previousResults { bounded.previousResults = Array(revisions.prefix(3)) }
+            return bounded
+        }
         guard entry.audioFileName != nil else { return nil }
         var result = entry
         result.rawText = ""
@@ -424,6 +513,10 @@ public final class HistoryStore: @unchecked Sendable {
         result.cleanupFallbackReason = nil
         result.cleanupEndpoint = nil
         result.cleanupSec = nil
+        result.originalCleanText = nil
+        result.manualEditDate = nil
+        result.manualEditCount = nil
+        result.previousResults = nil
         result.status = "failed"
         result.errorMessage = nil
         return result
@@ -588,12 +681,16 @@ public final class HistoryStore: @unchecked Sendable {
     }
 
     public enum PersistenceError: Error, LocalizedError {
+        case correctionConflict
+        case correctionUnavailable
         case audioRetentionExpired
         case entryNoLongerExists
         case unsafeAudioFileName
 
         public var errorDescription: String? {
             switch self {
+            case .correctionConflict: return L10n.text("core.history.correction_conflict")
+            case .correctionUnavailable: return L10n.text("core.history.correction_unavailable")
             case .audioRetentionExpired: return L10n.text("core.history.audio_expired")
             case .entryNoLongerExists:
                 return L10n.text("core.history.entry_missing")

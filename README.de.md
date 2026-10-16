@@ -22,6 +22,8 @@ Der [Verlauf](docs/verlauf-verwalten.md) lässt sich lokal nach Rohtext und Erge
 
 Textaufbewahrung und ein vorübergehender Modus ohne Textverlauf sind unter **Einstellungen → Verlauf** konfigurierbar. Fehleraufnahmen haben eine getrennte ausdrückliche Regel; vorhandene Einträge behalten ihre bisherige Regel. [Details zur Aufbewahrung](docs/aufbewahrung.md).
 
+**Bearbeiten** im Verlauf öffnet Textkorrektur, Wortvergleich und frühere Fassungen. Der Rohtext und die ursprüngliche Ausgabe bleiben erhalten; höchstens drei Vorfassungen folgen denselben Aufbewahrungsregeln. [Details zur Textkorrektur](docs/textkorrektur.md).
+
 ## In fünf Minuten startklar
 
 Das fertige, signierte App-Paket läuft auf **Apple-Silicon-Macs ab macOS 13**.

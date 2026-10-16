@@ -12,6 +12,15 @@ import StillePostCore
 /// (Systemeinstellungen → Datenschutz & Sicherheit → Bedienungshilfen).
 enum PasteService {
 
+    /// Enge Systemgrenze für zeitliche Regressionen ohne fremde Fenster oder Clipboard.
+    struct Access {
+        var pasteboard: NSPasteboard = .general
+        var trusted: () -> Bool = { AXIsProcessTrusted() }
+        var frontmost: () -> NSRunningApplication? = { NSWorkspace.shared.frontmostApplication }
+        var read: (String, AXUIElement, TimeInterval) -> CFTypeRef? = attribute
+        var sendPaste: () -> Void = postCmdV
+    }
+
     struct Target {
         fileprivate let application: NSRunningApplication
         fileprivate let identity: PasteTargetPolicy.ApplicationIdentity
@@ -21,18 +30,21 @@ enum PasteService {
 
     /// Liest nur Zielidentitäten, niemals den Inhalt eines fremden Textfelds.
     /// Eine hängende Ziel-App darf den Aufnahmebeginn nicht lange blockieren.
-    static func captureTarget() -> Target? {
-        guard AXIsProcessTrusted(),
-              let application = NSWorkspace.shared.frontmostApplication,
+    static func captureTarget(access: Access = Access()) -> Target? {
+        captureTarget(access: access, deadline: ProcessInfo.processInfo.systemUptime + 0.25)
+    }
+
+    private static func captureTarget(access: Access, deadline: TimeInterval) -> Target? {
+        guard access.trusted(),
+              let application = access.frontmost(),
               let identity = identity(of: application) else { return nil }
-        let deadline = ProcessInfo.processInfo.systemUptime + 0.25
         let app = AXUIElementCreateApplication(application.processIdentifier)
-        let window = element(kAXFocusedWindowAttribute, of: app, deadline: deadline)
-        var field = element(kAXFocusedUIElementAttribute, of: app, deadline: deadline)
+        let window = element(kAXFocusedWindowAttribute, of: app, deadline: deadline, access: access)
+        var field = element(kAXFocusedUIElementAttribute, of: app, deadline: deadline, access: access)
         if let candidate = field {
-            let role = attribute(kAXRoleAttribute, of: candidate, deadline: deadline) as? String
+            let role = access.read(kAXRoleAttribute, candidate, deadline) as? String
             let supportedRoles = [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole]
-            let fieldWindow = element(kAXWindowAttribute, of: candidate, deadline: deadline)
+            let fieldWindow = element(kAXWindowAttribute, of: candidate, deadline: deadline, access: access)
             if !supportedRoles.contains(role ?? "") || compare(window, fieldWindow) != .same {
                 field = nil
             }
@@ -55,7 +67,7 @@ enum PasteService {
     ]
 
     /// Ergebnis eines Einfüge-Versuchs (die App wählt danach den Overlay-Hinweis).
-    enum Outcome {
+    enum Outcome: Equatable {
         /// Text wurde per synthetischem ⌘V eingefügt.
         case pasted
         /// Bildschirmfreigabe ist vorn: NICHT getippt — der Text liegt in der
@@ -70,13 +82,15 @@ enum PasteService {
         case clipboardOnlyTargetUnavailable
         /// Bedienungshilfen-Berechtigung fehlt; Text liegt in der Zwischenablage.
         case noPermission
+        /// Eine neuere Kopieraktion hat Vorrang; das Diktat liegt dort nicht mehr bereit.
+        case clipboardChanged
     }
 
     /// Fügt Text im unveränderten Ziel ein. Bei fehlender Zuordnung oder einem
     /// Zielwechsel bleibt der Text zum manuellen Einfügen in der Zwischenablage.
     @discardableResult
-    static func paste(_ text: String, target: Target?) -> Outcome {
-        let pasteboard = NSPasteboard.general
+    static func paste(_ text: String, target: Target?, access: Access = Access()) -> Outcome {
+        let pasteboard = access.pasteboard
 
         // Alle Items und Typen tief kopieren. Bilder, Dateien und Rich Text dürfen
         // durch ein Diktat ebenso wenig verlorengehen wie einfacher Text.
@@ -86,10 +100,11 @@ enum PasteService {
         pasteboard.setString(text, forType: .string)
         let ownChangeCount = pasteboard.changeCount
 
-        let permission = AXIsProcessTrusted()
-        let frontmost = NSWorkspace.shared.frontmostApplication
+        let deadline = ProcessInfo.processInfo.systemUptime + 0.25
+        let permission = access.trusted()
+        let frontmost = access.frontmost()
         let screenSharing = screenSharingBundleIDs.contains(frontmost?.bundleIdentifier ?? "")
-        let current = permission && !screenSharing ? captureTarget() : nil
+        let current = permission && !screenSharing ? captureTarget(access: access, deadline: deadline) : nil
         let original = target.flatMap { $0.application.isTerminated ? nil : $0.identity }
         let decision = PasteTargetPolicy.decide(
             originalApplication: original,
@@ -99,6 +114,7 @@ enum PasteService {
             accessibilityGranted: permission,
             screenSharingActive: screenSharing
         )
+        guard pasteboard.changeCount == ownChangeCount else { return .clipboardChanged }
         switch decision {
         case .noPermission:
             return .noPermission
@@ -117,13 +133,27 @@ enum PasteService {
             break
         }
 
-        // Die AX-Abfrage kann auf eine langsame App warten. Einen währenddessen
-        // erfolgten App-Wechsel noch vor dem Senden der Tastendrücke abfangen.
-        guard identity(of: NSWorkspace.shared.frontmostApplication) == original else {
+        // Rollen-/Fenster-Metadaten können veralten, während AX auf die Ziel-App
+        // wartet. Danach nur die tatsächlichen Fokusidentitäten erneut lesen.
+        guard let target else { return .clipboardOnlyTargetUnavailable }
+        let app = AXUIElementCreateApplication(target.identity.processIdentifier)
+        let window = element(kAXFocusedWindowAttribute, of: app, deadline: deadline, access: access)
+        let field = element(kAXFocusedUIElementAttribute, of: app, deadline: deadline, access: access)
+        guard pasteboard.changeCount == ownChangeCount else { return .clipboardChanged }
+        guard identity(of: access.frontmost()) == original else {
             return .clipboardOnlyTargetChanged
         }
+        if compare(target.window, window) == .different || compare(target.field, field) == .different {
+            return .clipboardOnlyTargetChanged
+        }
+        guard access.trusted(), compare(target.window, window) == .same,
+              compare(target.field, field) == .same,
+              ProcessInfo.processInfo.systemUptime < deadline else {
+            return .clipboardOnlyTargetUnavailable
+        }
+        guard pasteboard.changeCount == ownChangeCount else { return .clipboardChanged }
 
-        postCmdV()
+        access.sendPaste()
 
         // Zwischenablage nach kurzer Zeit wiederherstellen — aber nur, wenn sie
         // noch unseren Text enthält. Eine neue Kopieraktion hat Vorrang.
@@ -152,8 +182,9 @@ enum PasteService {
         return value
     }
 
-    private static func element(_ name: String, of parent: AXUIElement, deadline: TimeInterval) -> AXUIElement? {
-        guard let value = attribute(name, of: parent, deadline: deadline),
+    private static func element(_ name: String, of parent: AXUIElement, deadline: TimeInterval, access: Access) -> AXUIElement? {
+        guard ProcessInfo.processInfo.systemUptime < deadline,
+              let value = access.read(name, parent, deadline),
               CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
         return (value as! AXUIElement)
     }
