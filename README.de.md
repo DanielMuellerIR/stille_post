@@ -72,6 +72,16 @@ Einfügen in der Zwischenablage liegt. Die App wechselt nie selbst zum früheren
 Fenster zurück. Wird der Cursor innerhalb desselben Textfelds verschoben, gilt
 seine aktuelle Position; die ursprüngliche Cursor-Position wird nicht gespeichert.
 
+Die optionale Einstellung **„Ergebnis vor dem Einfügen prüfen“** öffnet eine
+Vorschau mit Einfügen, Kopieren und Verwerfen. Sie übernimmt beim Erscheinen
+keinen Tastaturfokus. **⌘⌥R** fokussiert eine offene Vorschau oder ruft den letzten
+bestätigten Text erneut auf; der Hotkey ist in den Einstellungen änderbar.
+**⌘↩** fügt aus der fokussierten Vorschau ein, **⌘⇧C** kopiert den vollständigen
+Text und **⌘.** verwirft die Vorschau. Einfügen prüft weiterhin das Ziel.
+Verwerfen, Stille und Fehler überschreiben kein vorheriges Ergebnis. Dieser
+zusätzliche Ergebnisspeicher lebt nur bis zum Beenden der App; der normale
+Diktatverlauf ist davon unabhängig.
+
 Stille Post sucht höchstens täglich nach signierten Updates und installiert nichts
 ungefragt. Eine sofortige Prüfung ist jederzeit im Menü unter **„Nach Updates
 suchen …“** möglich; Download, Austausch der App und Neustart übernimmt Sparkle

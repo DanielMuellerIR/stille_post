@@ -10,6 +10,18 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.23] — 2026-10-16
+
+### Neu
+
+- Optional lässt sich jedes Diktatergebnis vor dem Einfügen prüfen, kopieren oder
+  verwerfen. Die Vorschau erhält die Prüfung des ursprünglichen Einfügeziels.
+- Der letzte bestätigte Text lässt sich per Menü oder konfigurierbarem Hotkey
+  (standardmäßig ⌘⌥R) erneut anzeigen. Der Abruf startet keine Aufnahme oder
+  Bereinigung; dieser zusätzliche Ergebnisspeicher bleibt ausschließlich im RAM.
+- Aufnahme- und Abruf-Hotkey sind getrennt registriert. Gleiche oder unsichere
+  Belegungen werden vor dem Speichern abgewiesen.
+
 ## [0.9.22] — 2026-10-16
 
 ### Neu

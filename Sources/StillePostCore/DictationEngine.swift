@@ -15,6 +15,11 @@ public struct DictationResult {
     public let text: String
     /// Der zugehörige Verlaufs-Eintrag (nil, wenn nur Stille aufgenommen wurde).
     public let entry: HistoryStore.Entry?
+
+    public init(text: String, entry: HistoryStore.Entry?) {
+        self.text = text
+        self.entry = entry
+    }
 }
 
 /// Die zentrale Diktier-Maschine: verbindet Aufnahme, Stille-Erkennung,

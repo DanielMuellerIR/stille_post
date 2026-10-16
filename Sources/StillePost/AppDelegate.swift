@@ -4,7 +4,7 @@ import StillePostCore
 
 /// Verdrahtet alle Bausteine: Menüleisten-Symbol, Hotkey, Overlay, Sounds,
 /// Diktier-Maschine, Verlaufsfenster.
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Sparkle verwaltet Suche, Download, Signaturprüfung, Austausch der App und
     /// Neustart. Als langlebiges Feld bleibt der Controller während der gesamten
@@ -18,9 +18,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var engine: DictationEngine!
     private var statusItem: NSStatusItem!
     private var hotkey: HotkeyManager!
+    private var lastResultHotkey: HotkeyManager?
+    private var isCapturingHotkey = false
     private var overlay: OverlayController!
     private var historyWindow: HistoryWindowController!
     private var pasteTarget: PasteService.Target?
+    private let resultPreview = ResultPreviewController()
+    private var resultMemory = TransientResultStore()
     private var settingsWindow: SettingsWindowController!
     /// Netzwerkzugang für eigene Geräte im Heimnetz; nil = ausgeschaltet.
     private var bridge: BridgeServer?
@@ -57,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.applySettings(newConfig)
             },
             onHotkeyRecording: { [weak self] recording in
-                self?.suspendHotkey(recording)
+                self?.setHotkeyCaptureActive(recording)
             }
         )
 
@@ -114,6 +118,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             overlay.show(.clipboard(note: L10n.text("app.paste_target_unavailable")))
         case .some, .none:
             break
+        }
+        // Künstlicher Ergebnisweg für Bundle-Abnahmen, nur mit isolierten Daten.
+        // Keine Aufnahme, Bereinigung oder Speicherung persönlicher Testtexte.
+        let environment = ProcessInfo.processInfo.environment
+        if environment["STILLEPOST_APP_SUPPORT"] != nil,
+           environment["STILLEPOST_CONFIG"] != nil,
+           let test = environment["STILLEPOST_RESULT_TEST"],
+           ["seed", "success", "raw", "empty", "failed", "long"].contains(test) {
+            let synthetic = "Dies ist ein künstlicher Ergebnistext. Zahlen: 128 Euro."
+            let text = test == "long"
+                ? (1...80).map { "Absatz \($0): \(synthetic)" }.joined(separator: "\n\n")
+                : synthetic
+            if environment["STILLEPOST_RESULT_TEST_PREVIOUS"] == "1" {
+                resultMemory.accept(text: "Zuvor bestätigter Testtext.", rawFallback: false)
+            }
+            if test == "seed" {
+                resultMemory.accept(text: text, rawFallback: false)
+            } else {
+                engine.onStateChange?(.starting)
+                engine.onStateChange?(.idle)
+                let failed = test == "failed"
+                let delivered = test == "empty" || failed ? "" : text
+                let entry = HistoryStore.Entry(rawText: delivered, cleanText: delivered,
+                    status: failed ? "failed" : "ok", durationSec: 1,
+                    cleanupFellBack: test == "raw")
+                engine.onResult?(DictationResult(text: delivered, entry: entry))
+            }
         }
     }
 
@@ -223,35 +254,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// deinit den alten abmelden — übrig bliebe gar keiner.
     private func registerHotkey() {
         hotkey = nil
-        do {
-            hotkey = try HotkeyManager(config: config.hotkey) { [weak self] in
-                self?.engine.toggle()
+        lastResultHotkey = nil
+        func register(_ combination: Config.Hotkey, identifier: UInt32,
+                      action: @escaping () -> Void) -> HotkeyManager? {
+            do {
+                return try HotkeyManager(config: combination, identifier: identifier, onPress: action)
+            } catch {
+                let status = (error as? HotkeyManager.RegistrationError)?.status ?? -1
+                overlay.show(.failure(L10n.format("app.hotkey_registration_failed",
+                    HotkeyManager.describe(combination), status)))
+                return nil
             }
-        } catch let error as HotkeyManager.RegistrationError {
-            overlay.show(.failure(L10n.format(
-                "app.hotkey_registration_failed",
-                HotkeyManager.describe(config.hotkey),
-                error.status
-            )))
-        } catch {
-            overlay.show(.failure(L10n.format(
-                "app.hotkey_registration_failed",
-                HotkeyManager.describe(config.hotkey),
-                -1
-            )))
+        }
+        let dictationCombination = config.hotkey
+        let recallCombination = config.lastResultHotkey
+        hotkey = register(dictationCombination, identifier: 1) { [weak self] in
+            guard let self else { return }
+            self.routeHotkey(dictationCombination) { self.engine.toggle() }
+        }
+        lastResultHotkey = register(recallCombination, identifier: 2) { [weak self] in
+            guard let self else { return }
+            self.routeHotkey(recallCombination) { self.showLastResult() }
         }
     }
 
-    /// Meldet den globalen Hotkey vorübergehend ab, solange der Einstellungsdialog
-    /// eine neue Kombination aufnimmt. Ohne das würde Carbon den bisherigen Hotkey
-    /// abfangen: Wer ⌘⌥D aufnehmen will, startet sonst ein Diktat, statt die
-    /// Kombination zu setzen. Danach wieder anmelden — mit der GESPEICHERTEN Config,
-    /// denn der Dialog arbeitet auf einer Kopie, die erst „Speichern“ übernimmt.
-    private func suspendHotkey(_ suspended: Bool) {
-        if suspended {
-            hotkey = nil
+    /// Bereits registrierte Kombinationen kommen als Carbon-Ereignis an. Während
+    /// der Aufnahme gehen sie an den Recorder; nach einem Abmelden könnte das
+    /// System sie abfangen, bevor der lokale NSEvent-Monitor sie erhält.
+    private func setHotkeyCaptureActive(_ active: Bool) {
+        isCapturingHotkey = active
+    }
+
+    private func routeHotkey(_ combination: Config.Hotkey, perform action: () -> Void) {
+        if isCapturingHotkey {
+            NotificationCenter.default.post(name: HotkeyManager.captureNotification, object: combination)
         } else {
-            registerHotkey()
+            action()
         }
     }
 
@@ -269,6 +307,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         overlay.hide()
+        resultPreview.dismiss()
         historyWindow.close()
         engine.shutdown()
         config = newConfig
@@ -301,6 +340,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         cancelItem.target = self
         menu.addItem(cancelItem)
         menu.addItem(.separator())
+        let lastResultItem = NSMenuItem(title: L10n.format("menu.last_result",
+            HotkeyManager.describe(config.lastResultHotkey)), action: #selector(showLastResult), keyEquivalent: "")
+        lastResultItem.target = self
+        menu.addItem(lastResultItem)
         let historyItem = NSMenuItem(title: L10n.text("menu.history"),
                                      action: #selector(showHistory), keyEquivalent: "")
         historyItem.target = self
@@ -372,6 +415,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self.updateStatusIcon(for: state)
             switch state {
             case .starting:
+                self.resultPreview.dismiss()
                 self.pasteTarget = PasteService.captureTarget()
             case .recording:
                 self.overlay.show(.recording)
@@ -390,29 +434,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.onResult = { [weak self] result in
             guard let self else { return }
             defer { self.pasteTarget = nil }
-            if let entry = result.entry, !entry.isFailed, !result.text.isEmpty {
-                let outcome = PasteService.paste(result.text, target: self.pasteTarget)
-                // Transparenz: Wurde die LLM-Bereinigung verworfen (Rohtext benutzt),
-                // soll man das SOFORT sehen — nicht erst später im Verlauf rätseln.
-                let note = entry.cleanupFellBack == true
-                    ? L10n.text("app.raw_fallback_note") : nil
-                switch outcome {
-                case .pasted:
-                    self.overlay.show(.success(note: note))
-                case .clipboardOnlyScreenSharing:
-                    // Bildschirmfreigabe: Wir tippen bewusst nicht (käme drüben als
-                    // nacktes "v" an) — der Sync trägt den Text rüber, der Nutzer
-                    // fügt am entfernten Mac selbst ein.
-                    self.overlay.show(.clipboard(note: L10n.text("app.screen_sharing_note")))
-                case .clipboardOnlyTargetChanged:
-                    self.overlay.show(.clipboard(note: L10n.text("app.paste_target_changed")))
-                case .clipboardOnlyTargetUnavailable:
-                    self.overlay.show(.clipboard(note: L10n.text("app.paste_target_unavailable")))
-                case .noPermission:
-                    // Ohne Bedienungshilfen-Recht liegt der Text in der Zwischenablage.
-                    self.overlay.show(.failure(L10n.text("app.paste_permission_missing")))
+            if let entry = result.entry,
+               let usable = TransientResultStore.Result(text: result.text,
+                    rawFallback: entry.cleanupFellBack == true, failed: entry.isFailed) {
+                if self.config.ui.previewBeforePaste {
+                    self.overlay.hide()
+                    self.showPreview(usable, target: self.pasteTarget)
+                } else {
+                    self.remember(usable)
+                    self.insert(usable, target: self.pasteTarget)
                 }
-            } else if result.entry == nil, result.text.isEmpty {
+            } else if result.entry?.isFailed != true,
+                      result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 // Nur Stille aufgenommen.
                 self.overlay.show(.silence)
             }
@@ -433,9 +466,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Menü-Aktionen
 
+    private var canRecallResult: Bool {
+        if case .idle = engine.state { return true }
+        if case .error = engine.state { return true }
+        return false
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        menuItem.action != #selector(showLastResult) ||
+            ((resultMemory.last != nil || resultPreview.isVisible) && canRecallResult)
+    }
+
+    @objc private func showLastResult() {
+        guard canRecallResult else { return }
+        if resultPreview.isVisible {
+            resultPreview.focus()
+            return
+        }
+        guard let result = resultMemory.last else {
+            overlay.show(.failure(L10n.text("result.empty")))
+            return
+        }
+        overlay.hide()
+        showPreview(result, target: PasteService.captureTarget(), focus: true)
+    }
+
+    private func remember(_ result: TransientResultStore.Result) {
+        resultMemory.accept(text: result.text, rawFallback: result.rawFallback)
+    }
+
+    private func showPreview(_ result: TransientResultStore.Result, target: PasteService.Target?, focus: Bool = false) {
+        resultPreview.show(result, focus: focus) { [weak self] action in
+            guard let self else { return }
+            switch action {
+            case .discard: break
+            case .copy:
+                self.remember(result)
+                let board = NSPasteboard.general
+                board.clearContents()
+                board.setString(result.text, forType: .string)
+                self.overlay.show(.clipboard(note: L10n.text("result.copied")))
+            case .insert:
+                self.remember(result)
+                self.insert(result, target: target)
+            }
+        }
+    }
+
+    private func insert(_ result: TransientResultStore.Result, target: PasteService.Target?) {
+        switch PasteService.paste(result.text, target: target) {
+        case .pasted:
+            overlay.show(.success(note: result.rawFallback ? L10n.text("app.raw_fallback_note") : nil))
+        case .clipboardOnlyScreenSharing:
+            overlay.show(.clipboard(note: L10n.text("app.screen_sharing_note")))
+        case .clipboardOnlyTargetChanged:
+            overlay.show(.clipboard(note: L10n.text("app.paste_target_changed")))
+        case .clipboardOnlyTargetUnavailable:
+            overlay.show(.clipboard(note: L10n.text("app.paste_target_unavailable")))
+        case .noPermission:
+            overlay.show(.failure(L10n.text("app.paste_permission_missing")))
+        }
+    }
+
     @objc private func toggleDictation() { engine.toggle() }
     @objc private func cancelDictation() {
         pasteTarget = nil
+        resultPreview.dismiss()
         engine.cancel()
         overlay.hide()
     }

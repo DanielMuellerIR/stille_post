@@ -2,17 +2,23 @@ import AppKit
 import Carbon.HIToolbox
 import StillePostCore
 
-/// Registriert den globalen Hotkey (Aufnahme ein/aus) über die Carbon-API
+/// Registriert eine globale Tastenkombination über die Carbon-API
 /// `RegisterEventHotKey`. Vorteil gegenüber Event-Taps: funktioniert OHNE
 /// Bedienungshilfen-Berechtigung und ist über Jahrzehnte stabil.
 final class HotkeyManager {
+    static let captureNotification = Notification.Name("StillePost.hotkeyCaptured")
 
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
     private let onPress: () -> Void
+    private let identifier: UInt32
 
-    init(config: Config.Hotkey, onPress: @escaping () -> Void) throws {
+    init(config: Config.Hotkey, identifier: UInt32 = 1, onPress: @escaping () -> Void) throws {
         self.onPress = onPress
+        self.identifier = identifier
+        guard config.isUsableGlobally, (0...127).contains(config.keyCode) else {
+            throw RegistrationError.hotKey(OSStatus(paramErr))
+        }
 
         // Modifier-Strings aus der Config in Carbon-Bitmaske übersetzen.
         var modifiers: UInt32 = 0
@@ -30,9 +36,15 @@ final class HotkeyManager {
         // `self` als rohen Zeiger durchgereicht (übliches Carbon-Muster).
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let selfPointer = Unmanaged.passUnretained(self).toOpaque()
-        let handlerStatus = InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
-            guard let userData else { return noErr }
+        let handlerStatus = InstallEventHandler(GetApplicationEventTarget(), { _, event, userData in
+            guard let event, let userData else { return OSStatus(eventNotHandledErr) }
             let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
+            var hotkeyID = EventHotKeyID()
+            guard GetEventParameter(event, EventParamName(kEventParamDirectObject),
+                                    EventParamType(typeEventHotKeyID), nil,
+                                    MemoryLayout<EventHotKeyID>.size, nil, &hotkeyID) == noErr,
+                  hotkeyID.signature == OSType(0x5350_4F53),
+                  hotkeyID.id == manager.identifier else { return OSStatus(eventNotHandledErr) }
             DispatchQueue.main.async { manager.onPress() }
             return noErr
         }, 1, &eventType, selfPointer, &eventHandler)
@@ -40,7 +52,7 @@ final class HotkeyManager {
             throw RegistrationError.eventHandler(handlerStatus)
         }
 
-        let hotKeyID = EventHotKeyID(signature: OSType(0x5350_4F53) /* "SPOS" */, id: 1)
+        let hotKeyID = EventHotKeyID(signature: OSType(0x5350_4F53) /* "SPOS" */, id: identifier)
         let registrationStatus = RegisterEventHotKey(
             UInt32(config.keyCode), modifiers, hotKeyID,
             GetApplicationEventTarget(), 0, &hotKeyRef

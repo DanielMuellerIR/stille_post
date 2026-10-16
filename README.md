@@ -70,6 +70,15 @@ confirms that the text is in the clipboard for manual pasting. The app never
 switches back to an earlier window. Moving the cursor within the same text field
 uses its current position; the original cursor position is not saved.
 
+The optional **“Review the result before inserting”** setting opens a preview
+with Insert, Copy and Discard. It does not take keyboard focus when it appears.
+**⌘⌥R** focuses an open preview or recalls the last accepted text; the shortcut
+can be changed in Settings. **⌘↩** inserts from the focused preview,
+**⌘⇧C** copies the entire text, and **⌘.** discards the preview. Inserting
+still checks the target. Discarding, silence and errors do not replace a previous
+result. This additional result buffer lasts only until the app quits; the normal
+dictation history is independent of it.
+
 Stille Post checks for signed updates at most once per day and never installs one
 without permission. Use **“Check for Updates …”** in the menu to check immediately;
 after confirmation, Sparkle handles download, replacement, and relaunch.

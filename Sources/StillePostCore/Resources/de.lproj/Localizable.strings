@@ -326,3 +326,21 @@
 "core.audio.recording_interrupted" = "Die Aufnahme wurde unterbrochen, weil das Mikrofon oder die Audio-Konfiguration geändert wurde. Das bisherige Audio bleibt zur Diagnose erhalten.";
 "core.dictation.failure_history_write_failed" = "Die Fehleraufnahme bleibt unter %@ erhalten. Der Verlauf konnte nicht gespeichert werden: %@";
 "core.dictation.recording_start_failed_retained" = "Die Aufnahme konnte nicht gestartet werden. Die Diagnose-Datei bleibt unter %@ erhalten: %@";
+
+/* Ergebnisvorschau und Abruf */
+"menu.last_result" = "Letzten Text anzeigen (%@)";
+"result.title" = "Stille Post — Ergebnis";
+"result.heading" = "Diktat prüfen";
+"result.help" = "Einfügen prüft das ursprüngliche Textfeld. Bei einem Zielwechsel bleibt der Text in der Zwischenablage.";
+"result.insert" = "Einfügen";
+"result.copy" = "Kopieren";
+"result.discard" = "Verwerfen";
+"result.copied" = "Text ist zum manuellen Einfügen mit ⌘V bereit.";
+"result.empty" = "Noch kein verwendbares Ergebnis in dieser Sitzung.";
+"settings.result.section" = "Ergebnis und letzter Text";
+"settings.result.preview" = "Ergebnis vor dem Einfügen prüfen";
+"settings.result.help" = "Der Abruf nutzt Arbeitsspeicher bis zum Beenden der App. Der normale Diktatverlauf bleibt davon unabhängig.";
+"core.config.invalid_hotkeys" = "Die beiden Hotkeys müssen verschieden sein und ⌘, ⌥ oder ⌃ enthalten; gültige Keycodes sind 0 bis 127.";
+"result.copy_shortcut" = "Kopieren (⌘⇧C)";
+
+"result.keyboard_help" = "⌘↩ Einfügen · ⌘⇧C Kopieren · ⌘. Verwerfen";

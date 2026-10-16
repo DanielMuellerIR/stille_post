@@ -11,8 +11,7 @@ final class SettingsWindowController {
     private var window: NSWindow?
     /// Wird beim Speichern mit der neuen Config aufgerufen (App wendet sie an).
     private let onApply: (Config) -> Void
-    /// true = der Hotkey-Recorder nimmt gerade auf, die App muss den globalen
-    /// Hotkey solange abmelden (sonst fängt Carbon die Kombination ab).
+    /// true = registrierte Hotkeys an den aktiven Recorder statt an das Diktat leiten.
     private let onHotkeyRecording: (Bool) -> Void
 
     init(onApply: @escaping (Config) -> Void, onHotkeyRecording: @escaping (Bool) -> Void) {
@@ -30,6 +29,7 @@ final class SettingsWindowController {
             window.title = L10n.text("window.settings.title")
             window.center()
             window.isReleasedWhenClosed = false
+            window.contentMinSize = NSSize(width: 600, height: 640)
             self.window = window
         }
         // Bei jedem Öffnen frisch von Platte laden — die Datei kann inzwischen
@@ -134,11 +134,35 @@ private struct GeneralTab: View {
     @Binding var config: Config
     /// Meldet der App, dass gerade eine Kombination aufgenommen wird (siehe HotkeyRecorder).
     let onHotkeyRecording: (Bool) -> Void
+    @State private var activeRecorder: String?
+
+    private func recordingChanged(_ recording: Bool, identifier: String) {
+        if recording {
+            activeRecorder = identifier
+            onHotkeyRecording(true)
+        } else if activeRecorder == identifier {
+            activeRecorder = nil
+            onHotkeyRecording(false)
+        }
+    }
 
     var body: some View {
         Form {
             Section(L10n.text("settings.hotkey.section")) {
-                HotkeyRecorder(hotkey: $config.hotkey, onRecordingChanged: onHotkeyRecording)
+                HotkeyRecorder(hotkey: $config.hotkey) {
+                    recordingChanged($0, identifier: "dictationHotkey")
+                }
+                .disabled(activeRecorder != nil && activeRecorder != "dictationHotkey")
+            }
+            Section(L10n.text("settings.result.section")) {
+                Toggle(L10n.text("settings.result.preview"), isOn: $config.ui.previewBeforePaste)
+                Text(L10n.text("settings.result.help"))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HotkeyRecorder(hotkey: $config.lastResultHotkey, identifier: "lastResultHotkey",
+                               onRecordingChanged: { recordingChanged($0, identifier: "lastResultHotkey") })
+                    .disabled(activeRecorder != nil && activeRecorder != "lastResultHotkey")
             }
             Section(L10n.text("settings.start.section")) {
                 LoginItemToggle()
@@ -200,11 +224,12 @@ private struct LoginItemToggle: View {
 /// Nimmt eine echte Tastenkombination auf, statt sie aus Zahlen zusammensetzen zu
 /// lassen (vorher musste man den Carbon-Keycode kennen — das weiß niemand auswendig).
 ///
-/// Während der Aufnahme meldet die View das der App: Die muss den globalen Hotkey
-/// kurz abmelden, sonst fängt Carbon genau die Kombination ab, die aufgenommen
-/// werden soll — ⌘⌥D würde ein Diktat starten statt hier anzukommen.
+/// Neue Kombinationen kommen über den lokalen Monitor. Schon registrierte
+/// Kombinationen leitet die App aus Carbon hierher weiter, ohne ein Diktat oder
+/// einen Ergebnisabruf auszulösen.
 private struct HotkeyRecorder: View {
     @Binding var hotkey: Config.Hotkey
+    var identifier: String = "dictationHotkey"
     let onRecordingChanged: (Bool) -> Void
 
     @State private var recording = false
@@ -221,13 +246,17 @@ private struct HotkeyRecorder: View {
                 Button(recording ? L10n.text("common.cancel") : L10n.text("settings.hotkey.record")) {
                     if recording { cancel() } else { start() }
                 }
+                .accessibilityIdentifier(identifier)
             }
         }
         Text(hint ?? L10n.text("settings.hotkey.instructions"))
             .font(.caption)
             .foregroundColor(.secondary)
-        // Fenster zu, während die Aufnahme läuft: Monitor abräumen und den globalen
-        // Hotkey wieder anmelden — sonst bliebe die App ohne Hotkey zurück.
+        .onReceive(NotificationCenter.default.publisher(for: HotkeyManager.captureNotification)) { notification in
+            guard recording, let combination = notification.object as? Config.Hotkey else { return }
+            accept(combination)
+        }
+        // Beim Schließen auch die Umleitung registrierter Hotkeys beenden.
         .onDisappear { if recording { cancel() } }
     }
 
@@ -241,7 +270,7 @@ private struct HotkeyRecorder: View {
         }
     }
 
-    /// Beendet die Aufnahme (Monitor weg, App meldet den globalen Hotkey wieder an).
+    /// Beendet Monitor und Umleitung, sodass die normalen Hotkey-Aktionen wieder gelten.
     private func stopRecording() {
         if let monitor { NSEvent.removeMonitor(monitor) }
         monitor = nil
@@ -264,6 +293,10 @@ private struct HotkeyRecorder: View {
         var candidate = Config.Hotkey()
         candidate.keyCode = Int(event.keyCode)
         candidate.modifiers = modifiers
+        accept(candidate)
+    }
+
+    private func accept(_ candidate: Config.Hotkey) {
         // Zu schwache Kombination: NICHT übernehmen, aber weiter aufnehmen — der
         // Nutzer soll einfach noch mal drücken, ohne den Knopf erneut zu suchen.
         guard candidate.isUsableGlobally else {

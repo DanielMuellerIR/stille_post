@@ -326,3 +326,21 @@
 "core.audio.recording_interrupted" = "Recording was interrupted because the microphone or audio configuration changed. Audio recorded so far is retained for diagnosis.";
 "core.dictation.failure_history_write_failed" = "The failed recording remains at %@. History could not be saved: %@";
 "core.dictation.recording_start_failed_retained" = "Recording could not be started. The diagnostic file remains at %@: %@";
+
+/* Ergebnisvorschau und Abruf */
+"menu.last_result" = "Show last text (%@)";
+"result.title" = "Stille Post — Result";
+"result.heading" = "Review dictation";
+"result.help" = "Insert checks the original text field. If the target changed, the text stays in the clipboard.";
+"result.insert" = "Insert";
+"result.copy" = "Copy";
+"result.discard" = "Discard";
+"result.copied" = "Text is ready to paste manually with ⌘V.";
+"result.empty" = "No usable result in this session yet.";
+"settings.result.section" = "Result and last text";
+"settings.result.preview" = "Review the result before inserting";
+"settings.result.help" = "Recall uses memory until the app quits. The normal dictation history is independent of this.";
+"core.config.invalid_hotkeys" = "The two shortcuts must differ and include ⌘, ⌥ or ⌃; valid key codes range from 0 to 127.";
+"result.copy_shortcut" = "Copy (⌘⇧C)";
+
+"result.keyboard_help" = "⌘↩ Insert · ⌘⇧C Copy · ⌘. Discard";

@@ -220,6 +220,8 @@ public struct Config: Codable, Equatable {
         public var overlayPosition: String = "mouse"
         /// Deutliche Start-/Stopp-/Fehler-Sounds abspielen (zoom-unabhängiges Feedback).
         public var sounds: Bool = true
+        /// Ergebnis vor dem Einfügen ausdrücklich bestätigen.
+        public var previewBeforePaste: Bool = false
 
         public init() {}
     }
@@ -241,6 +243,27 @@ public struct Config: Codable, Equatable {
             return modifiers.contains { strong.contains($0.lowercased()) }
         }
 
+        public func matches(_ other: Hotkey) -> Bool {
+            func canonical(_ names: [String]) -> Set<String> {
+                Set(names.compactMap { name -> String? in
+                    switch name.lowercased() {
+                    case "cmd", "command": return "cmd"
+                    case "opt", "option", "alt": return "opt"
+                    case "ctrl", "control": return "ctrl"
+                    case "shift": return "shift"
+                    default: return nil
+                    }
+                })
+            }
+            return keyCode == other.keyCode && canonical(modifiers) == canonical(other.modifiers)
+        }
+
+        public static var lastResultDefault: Hotkey {
+            var value = Hotkey()
+            value.keyCode = 15
+            return value
+        }
+
         public init() {}
     }
 
@@ -253,6 +276,7 @@ public struct Config: Codable, Equatable {
     public var audio: Audio = Audio()
     public var ui: UI = UI()
     public var hotkey: Hotkey = Hotkey()
+    public var lastResultHotkey: Hotkey = .lastResultDefault
 
     public init() {}
 
@@ -318,11 +342,17 @@ public struct Config: Codable, Equatable {
         if let detail = bridge.validationFailure {
             throw ValidationError.invalidBridge(detail)
         }
+        guard [hotkey, lastResultHotkey].allSatisfy({
+            $0.isUsableGlobally && (0...127).contains($0.keyCode)
+        }), !hotkey.matches(lastResultHotkey) else {
+            throw ValidationError.invalidHotkeys
+        }
     }
 
     public enum ValidationError: Error, LocalizedError {
         case invalidVad(String)
         case invalidBridge(String)
+        case invalidHotkeys
 
         public var errorDescription: String? {
             switch self {
@@ -330,6 +360,8 @@ public struct Config: Codable, Equatable {
                 return L10n.format("core.config.invalid_vad", detail)
             case .invalidBridge(let detail):
                 return L10n.format("core.config.invalid_bridge", detail)
+            case .invalidHotkeys:
+                return L10n.text("core.config.invalid_hotkeys")
             }
         }
     }
@@ -341,7 +373,7 @@ public struct Config: Codable, Equatable {
 
     // MARK: - Tolerantes Dekodieren (fehlende Felder -> Defaults)
 
-    private enum CodingKeys: String, CodingKey { case whisper, cleanup, bridge, vad, audio, ui, hotkey }
+    private enum CodingKeys: String, CodingKey { case whisper, cleanup, bridge, vad, audio, ui, hotkey, lastResultHotkey }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -362,6 +394,12 @@ public struct Config: Codable, Equatable {
         audio = c.decodeOrDefault(Audio.self, forKey: .audio, default: Audio())
         ui = c.decodeOrDefault(UI.self, forKey: .ui, default: UI())
         hotkey = c.decodeOrDefault(Hotkey.self, forKey: .hotkey, default: Hotkey())
+        lastResultHotkey = c.decodeOrDefault(Hotkey.self, forKey: .lastResultHotkey,
+                                              default: .lastResultDefault)
+        // Eine alte Belegung mit ⌘⌥R darf nach dem Update nicht kollidieren.
+        if !c.contains(.lastResultHotkey), hotkey.matches(lastResultHotkey) {
+            lastResultHotkey.modifiers.append("shift")
+        }
     }
 }
 
@@ -516,13 +554,15 @@ extension Config.Audio {
 }
 
 extension Config.UI {
-    private enum CodingKeys: String, CodingKey { case overlayPosition, sounds }
+    private enum CodingKeys: String, CodingKey { case overlayPosition, sounds, previewBeforePaste }
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
         overlayPosition = c.decodeOrDefault(String.self, forKey: .overlayPosition,
                                             default: overlayPosition)
         sounds = c.decodeOrDefault(Bool.self, forKey: .sounds, default: sounds)
+        previewBeforePaste = c.decodeOrDefault(Bool.self, forKey: .previewBeforePaste,
+                                                default: previewBeforePaste)
     }
 }
 
