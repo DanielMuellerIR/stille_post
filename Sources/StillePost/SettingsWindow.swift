@@ -55,9 +55,10 @@ struct SettingsView: View {
     /// Die Einstellungs-Bereiche (eigener Umschalter statt TabView — der
     /// rendert als Fenster-Toolbar und ließ die Tabs ins Overflow-Menü rutschen).
     enum Tab: String, CaseIterable {
-        case allgemein, profile, bereinigung, spracherkennung, aufnahme, verlauf
+        case allgemein, profile, apps, bereinigung, spracherkennung, aufnahme, verlauf
         var title: String {
             switch self {
+            case .apps: return L10n.text("app_profiles.title")
             case .profile: return L10n.text("profiles.title")
             case .allgemein: return L10n.text("settings.tab.general")
             case .bereinigung: return L10n.text("settings.tab.cleanup")
@@ -107,6 +108,7 @@ struct SettingsView: View {
             .padding(12)
 
             switch tab {
+            case .apps: AppProfilesTab(config: $config)
             case .profile: ProfilesTab(config: $config)
             case .allgemein: GeneralTab(config: $config, onHotkeyRecording: onHotkeyRecording)
             case .bereinigung: CleanupTab(cleanup: $config.cleanup)
@@ -373,6 +375,10 @@ struct CleanupTab: View {
         Form {
             Section {
                 Toggle(L10n.text("settings.cleanup.enabled"), isOn: $cleanup.enabled)
+                Toggle(L10n.text("profiles.local_only"), isOn: $cleanup.localOnly)
+                    .accessibilityIdentifier("cleanupLocalOnly")
+                Text(L10n.text("profiles.local_only_help")).font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(L10n.text("settings.cleanup.description"))
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -417,8 +423,12 @@ struct CleanupTab: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Section(L10n.text("settings.cleanup.api_key_section")) {
-                APIKeyRow(envVar: cleanup.remote.apiKeyEnvVar)
+            if !cleanup.localOnly {
+                Section(L10n.text("settings.cleanup.api_key_section")) {
+                    APIKeyRow(envVar: cleanup.remote.apiKeyEnvVar)
+                }
+            } else {
+                Text(L10n.text("profiles.local_no_key")).font(.caption).foregroundColor(.secondary)
             }
         }
         .formStyle(.grouped)

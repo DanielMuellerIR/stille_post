@@ -275,6 +275,10 @@ case "doctor":
         let cleanupService = CleanupService(config: config.cleanup)
         /// Prüft einen einzelnen Bereinigungs-Endpoint; true = benutzbar.
         func checkEndpoint(_ endpoint: Config.Cleanup.Endpoint, name: String) -> Bool {
+            guard CleanupService.endpointAllowed(endpoint, localOnly: config.cleanup.localOnly) else {
+                print(L10n.text("core.cleanup.local_unavailable"))
+                return false
+            }
             if endpoint.provider == "openai" {
                 let remote = endpoint.remote
                 // Dieselbe Prüfung, die auch die Bereinigung fährt: Sie baut die
@@ -285,11 +289,11 @@ case "doctor":
                     print(L10n.format("cli.doctor.cleanup_remote_config", name))
                     return false
                 }
-                if CleanupService.remoteAPIKey(envVar: remote.apiKeyEnvVar) == nil {
+                if !config.cleanup.localOnly && CleanupService.remoteAPIKey(envVar: remote.apiKeyEnvVar) == nil {
                     print(L10n.format("cli.doctor.cleanup_no_key", name, remote.apiKeyEnvVar))
                     return false
                 }
-                print(L10n.format("cli.doctor.cleanup_cloud_ok", name, endpoint.label))
+                print(config.cleanup.localOnly ? L10n.text("profiles.local_only") : L10n.format("cli.doctor.cleanup_cloud_ok", name, endpoint.label))
                 return true
             }
             // Ollama erreichbar + Modell vorhanden? Die Prüfung liegt im Kern:

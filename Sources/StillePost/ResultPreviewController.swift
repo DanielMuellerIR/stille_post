@@ -101,7 +101,7 @@ private struct ResultPreviewView: View {
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if result.rawFallback {
-                Text(L10n.text("app.raw_fallback_note"))
+                Text(result.note ?? L10n.text("app.raw_fallback_note"))
                     .font(.caption)
                     .foregroundColor(.orange)
                     .fixedSize(horizontal: false, vertical: true)

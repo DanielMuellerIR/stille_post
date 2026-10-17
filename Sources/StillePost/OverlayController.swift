@@ -30,6 +30,7 @@ final class OverlayController {
     private var hideTimer: Timer?
     private let config: Config.UI
     var recordingContext: String = "" { didSet { model.recordingContext = recordingContext } }
+    var recordingReason: String = "" { didSet { model.recordingReason = recordingReason } }
     var onClickStop: (() -> Void)?
 
     init(config: Config.UI) {
@@ -193,6 +194,7 @@ final class OverlayModel: ObservableObject {
     @Published var mode: Mode = .recording
     @Published var levelDb: Double = -120
     @Published var recordingContext = ""
+    @Published var recordingReason = ""
     @Published var duration: TimeInterval = 0
 }
 
@@ -227,6 +229,11 @@ struct OverlayView: View {
                             .foregroundColor(.white.opacity(0.95))
                             .lineLimit(1).truncationMode(.middle)
                             .accessibilityIdentifier("recordingProfile")
+                        if !model.recordingReason.isEmpty {
+                            Text(model.recordingReason).font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.85)).lineLimit(1).truncationMode(.middle)
+                                .accessibilityIdentifier("recordingProfileReason")
+                        }
                         Text(timeString)
                             .font(.system(size: 14, weight: .medium).monospacedDigit())
                             .foregroundColor(.white.opacity(0.85))

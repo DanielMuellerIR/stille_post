@@ -1,4 +1,5 @@
 import Foundation
+import CFNetwork
 
 /// Schmale HTTP-Grenze der Textbereinigung. Sie hält Netzwerkdetails aus der
 /// Fallback-Logik heraus und erlaubt vollständige Stream-Fehlerpfade ohne echten
@@ -11,37 +12,52 @@ protocol CleanupTransport: AnyObject {
 }
 
 final class URLSessionCleanupTransport: CleanupTransport {
+    private let localOnly: Bool
+    private let redirectGuard: CleanupRedirectGuard
     private let session: URLSession
     private let probeSession: URLSession
     private let streamSession: URLSession
 
-    init() {
+    init(localOnly: Bool = false) {
+        self.localOnly = localOnly
+        redirectGuard = CleanupRedirectGuard(localOnly: localOnly)
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.timeoutIntervalForRequest = 120
-        session = URLSession(configuration: sessionConfig)
+        Self.configure(sessionConfig, localOnly: localOnly)
+        session = URLSession(configuration: sessionConfig, delegate: redirectGuard, delegateQueue: nil)
 
         let probeConfig = URLSessionConfiguration.ephemeral
         probeConfig.timeoutIntervalForRequest = 2
         probeConfig.timeoutIntervalForResource = 2
-        probeSession = URLSession(configuration: probeConfig)
-        streamSession = Self.makeStreamSession()
+        Self.configure(probeConfig, localOnly: localOnly)
+        probeSession = URLSession(configuration: probeConfig, delegate: redirectGuard, delegateQueue: nil)
+        streamSession = Self.makeStreamSession(localOnly: localOnly)
     }
 
-    static func makeStreamSession() -> URLSession {
+    deinit {
+        session.invalidateAndCancel()
+        probeSession.invalidateAndCancel()
+        streamSession.invalidateAndCancel()
+    }
+
+    static func makeStreamSession(localOnly: Bool = false) -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         // Leerlauf-Timeout: Solange Häppchen fließen, darf die Antwort weiterlaufen.
         config.timeoutIntervalForRequest = 10
         config.timeoutIntervalForResource = 600
-        return URLSession(configuration: config)
+        configure(config, localOnly: localOnly)
+        return URLSession(configuration: config, delegate: CleanupRedirectGuard(localOnly: localOnly), delegateQueue: nil)
     }
 
     func data(for request: URLRequest, probing: Bool) async throws -> (Data, URLResponse) {
-        try await (probing ? probeSession : session).data(for: request)
+        try check(request)
+        return try await (probing ? probeSession : session).data(for: request)
     }
 
     func streamLines(for request: URLRequest, freshConnection: Bool) async throws
         -> (AsyncThrowingStream<String, Error>, URLResponse) {
-        let selectedSession = freshConnection ? Self.makeStreamSession() : streamSession
+        try check(request)
+        let selectedSession = freshConnection ? Self.makeStreamSession(localOnly: localOnly) : streamSession
         let bytes: URLSession.AsyncBytes
         let response: URLResponse
         do {
@@ -65,7 +81,36 @@ final class URLSessionCleanupTransport: CleanupTransport {
         return (lines, response)
     }
 
+    private func check(_ request: URLRequest) throws {
+        if localOnly && !CleanupNetworkPolicy.allows(request.url) { throw CleanupNetworkPolicy.Denied() }
+    }
+
+    private static func configure(_ config: URLSessionConfiguration, localOnly: Bool) {
+        guard localOnly else { return }
+        // Auch ein Systemproxy/PAC darf lokale Diktate nicht ausleiten.
+        config.connectionProxyDictionary = [
+            kCFNetworkProxiesHTTPEnable as String: 0, kCFNetworkProxiesHTTPSEnable as String: 0,
+            kCFNetworkProxiesSOCKSEnable as String: 0, kCFNetworkProxiesProxyAutoConfigEnable as String: 0,
+            kCFNetworkProxiesProxyAutoDiscoveryEnable as String: 0,
+        ]
+        config.urlCredentialStorage = nil
+        config.httpShouldSetCookies = false
+    }
+
     func sendWarmUp(_ request: URLRequest) {
+        guard (try? check(request)) != nil else { return }
         session.dataTask(with: request).resume()
+    }
+}
+
+private final class CleanupRedirectGuard: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    let localOnly: Bool
+    init(localOnly: Bool) { self.localOnly = localOnly }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(!localOnly || CleanupNetworkPolicy.allows(request.url) ? request : nil)
     }
 }

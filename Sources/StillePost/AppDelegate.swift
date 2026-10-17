@@ -47,6 +47,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// "dauerhaft geladen" (siehe buildComponents); bei befristetem keep_alive nil.
     private var warmUpTimer: Timer?
     private var temporaryPrivateHistory = false
+    private var lastExternalAppBundleID: String?
+    private var appActivationObserver: NSObjectProtocol?
     private var historyMaintenanceTimer: Timer?
     private var historyMaintenanceTask: Task<Void, Never>?
     private var historyGeneration: UInt64 = 0
@@ -113,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 self?.statusItem.button?.performClick(nil)
             }
         }
+        observeTargetApplication()
         buildComponents()
 
         // Bedienungshilfen-Berechtigung früh anstoßen (System-Dialog), damit das
@@ -145,8 +148,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // (das Overlay erscheint sonst nur mitten in einem echten Diktat).
         switch ProcessInfo.processInfo.environment["STILLEPOST_OVERLAY_PREVIEW"] {
         case "recording":
-            overlay.recordingContext = L10n.format("profiles.recording", engine.sessionConfiguration.profileLabel,
-                engine.sessionConfiguration.whisper.language)
+            overlay.recordingContext = L10n.format("profiles.recording", prospectiveConfiguration.profileLabel,
+                prospectiveConfiguration.whisper.language)
+            overlay.recordingReason = prospectiveConfiguration.requestProfileSelection?.label ?? ""
             overlay.show(.recording)
         case "processing-fallback":
             overlay.show(.processing(detail: L10n.format(
@@ -165,12 +169,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             break
         }
         // Künstlicher Ergebnisweg für Bundle-Abnahmen, nur mit isolierten Daten.
-        // Keine Aufnahme, Bereinigung oder Speicherung persönlicher Testtexte.
+        // Ausschließlich künstlicher Text; der lokale Prüfweg verwendet den echten Bereinigungsdienst.
         let environment = ProcessInfo.processInfo.environment
         if environment["STILLEPOST_APP_SUPPORT"] != nil,
            environment["STILLEPOST_CONFIG"] != nil,
            let test = environment["STILLEPOST_RESULT_TEST"],
-           ["seed", "success", "raw", "empty", "failed", "long", "concurrent-private"].contains(test) {
+           ["seed", "success", "raw", "empty", "failed", "long", "concurrent-private", "local-policy"].contains(test) {
             let synthetic = "Dies ist ein künstlicher Ergebnistext. Zahlen: 128 Euro."
             let text = test == "long"
                 ? (1...80).map { "Absatz \($0): \(synthetic)" }.joined(separator: "\n\n")
@@ -178,7 +182,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             if environment["STILLEPOST_RESULT_TEST_PREVIOUS"] == "1" {
                 resultMemory.accept(text: "Zuvor bestätigter Testtext.", rawFallback: false)
             }
-            if test == "seed" {
+            if test == "local-policy" {
+                let cleanup = prospectiveConfiguration.cleanup
+                Task { @MainActor [weak self] in
+                    let raw = "Die Zahl bleibt 128 und Version 2.4 wird nicht geändert."
+                    let result = await CleanupService(config: cleanup).clean(raw)
+                    var entry = HistoryStore.Entry(rawText: raw, cleanText: result.text, status: "ok", durationSec: 1,
+                        cleanupFellBack: result.usedFallback, cleanupFallbackReason: result.fallbackReason)
+                    entry.storesText = false
+                    self?.engine.onResult?(DictationResult(text: result.text, entry: entry))
+                }
+            } else if test == "seed" {
                 resultMemory.accept(text: text, rawFallback: false)
             } else {
                 engine.onStateChange?(.starting)
@@ -208,6 +222,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         lastResultHotkey = nil
         bridge?.stop()
         warmUpTimer?.invalidate()
+        if let appActivationObserver { NSWorkspace.shared.notificationCenter.removeObserver(appActivationObserver) }
         historyMaintenanceTimer?.invalidate()
         historyMaintenanceTask?.cancel()
         engine.onStateChange = nil
@@ -234,6 +249,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         pasteTarget = nil
         let engineConfig = requestConfiguration
         engine = DictationEngine(config: engineConfig)
+        engine.requestAppBundleID = { [weak self] in self?.targetAppBundleID }
         overlay = OverlayController(config: config.ui)
         historyWindow = HistoryWindowController(engine: engine, onVocabularySaved: { [weak self] saved in
             guard let self else { return }
@@ -258,7 +274,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         // Bereinigungs-Modell einmal beim Start vorwärmen, damit schon das erste
         // Diktat ohne Kaltstart auskommt.
-        engine.keepCleanupModelWarm()
+        if config.appProfiles.isEmpty || config.selectedProfileID != nil || targetAppBundleID != nil {
+            engine.keepCleanupModelWarm()
+        }
         warmUpTimer?.invalidate()
         warmUpTimer = nil
 
@@ -271,10 +289,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Ohne diesen Timer bleibt das Vorwärmen beim Aufnahme-Start die Absicherung
         // gegen Kaltstarts (DictationEngine.start()): Es lädt das Modell, während man
         // noch spricht, und schiebt die Frist bei jedem Diktat neu an.
-        guard CleanupService.pinsForever(config.resolvedForRequest().cleanup.keepAlive) else { return }
-        warmUpTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            self?.engine.keepCleanupModelWarm()
-        }
+        refreshWarmUpTimer()
     }
 
     /// Öffnet den Netzwerkzugang für eigene Geräte im Heimnetz, wenn er in den
@@ -424,6 +439,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
+    private var targetAppBundleID: String? {
+        if let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+           front != Bundle.main.bundleIdentifier { return front }
+        return lastExternalAppBundleID
+    }
+
+    private var prospectiveConfiguration: Config {
+        requestConfiguration.resolvedForRequest(appBundleID: targetAppBundleID)
+    }
+
+    private func observeTargetApplication() {
+        lastExternalAppBundleID = targetAppBundleID
+        appActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] notification in
+            guard let self, let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let id = app.bundleIdentifier, id != Bundle.main.bundleIdentifier else { return }
+            self.lastExternalAppBundleID = id
+            self.statusItem.menu = self.buildMenu()
+            self.updateStatusIcon(for: self.engine.state)
+            self.refreshWarmUpTimer()
+        }
+    }
+
+    private func refreshWarmUpTimer() {
+        warmUpTimer?.invalidate()
+        warmUpTimer = nil
+        let cleanup = prospectiveConfiguration.cleanup
+        guard cleanup.enabled,
+              let endpoint = cleanup.chain.first(where: { CleanupService.endpointAllowed($0, localOnly: cleanup.localOnly) }),
+              CleanupService.pinsForever(endpoint.keepAlive) else { return }
+        warmUpTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.engine.keepCleanupModelWarm()
+        }
+    }
+
     private var requestConfiguration: Config {
         var result = config
         if temporaryPrivateHistory {
@@ -437,6 +488,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private func adoptRequestSettings(_ saved: Config) {
+        config.appProfiles = saved.appProfiles
         config.profiles = saved.profiles
         config.defaultProfileID = saved.defaultProfileID
         config.selectedProfileID = saved.selectedProfileID
@@ -450,13 +502,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         bridge?.configure(requestConfiguration)
         statusItem.menu = buildMenu()
         updateStatusIcon(for: engine.state)
-        warmUpTimer?.invalidate()
-        warmUpTimer = nil
-        if CleanupService.pinsForever(config.resolvedForRequest().cleanup.keepAlive) {
-            warmUpTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-                self?.engine.keepCleanupModelWarm()
-            }
-        }
+        refreshWarmUpTimer()
     }
 
     /// Profilfelder aktualisieren nur kommende Aufträge. Änderungen an Hardware
@@ -467,6 +513,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         requestOnly.history = newConfig.history
         requestOnly.cleanup = newConfig.cleanup
         requestOnly.whisper.language = newConfig.whisper.language
+        requestOnly.appProfiles = newConfig.appProfiles
         requestOnly.profiles = newConfig.profiles
         requestOnly.defaultProfileID = newConfig.defaultProfileID
         requestOnly.selectedProfileID = newConfig.selectedProfileID
@@ -522,8 +569,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         cancelItem.target = self
         menu.addItem(cancelItem)
         menu.addItem(.separator())
-        let profileItem = NSMenuItem(title: L10n.format("profiles.active", config.profileLabel,
-            config.resolvedForRequest().whisper.language), action: nil, keyEquivalent: "")
+        let profileItem = NSMenuItem(title: L10n.format("profiles.active", prospectiveConfiguration.profileLabel,
+            prospectiveConfiguration.whisper.language), action: nil, keyEquivalent: "")
         let profileMenu = NSMenu()
         let standard = NSMenuItem(title: L10n.text("profiles.use_default"), action: #selector(selectProfile(_:)), keyEquivalent: "")
         standard.target = self
@@ -535,6 +582,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             item.representedObject = profile.id.uuidString
             item.state = config.selectedProfileID == profile.id ? .on : .off
             profileMenu.addItem(item)
+        }
+        let reason = NSMenuItem(title: prospectiveConfiguration.requestProfileSelection?.label ?? "", action: nil, keyEquivalent: "")
+        profileMenu.insertItem(reason, at: 0)
+        if prospectiveConfiguration.cleanup.localOnly {
+            profileMenu.insertItem(NSMenuItem(title: L10n.text("profiles.local_only"), action: nil, keyEquivalent: ""), at: 1)
         }
         profileItem.submenu = profileMenu
         menu.addItem(profileItem)
@@ -603,8 +655,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         button.image = image
         let effective = (state == .starting || state == .recording || state == .processing)
-            ? (engine?.sessionConfiguration ?? config.resolvedForRequest()) : config.resolvedForRequest()
+            ? (engine?.sessionConfiguration ?? prospectiveConfiguration) : prospectiveConfiguration
         button.toolTip = description + " · " + effective.profileLabel + " · " + effective.whisper.language
+            + " · " + (effective.requestProfileSelection?.label ?? "")
     }
 
     // MARK: - Engine-Callbacks (Zustand -> Oberfläche)
@@ -627,6 +680,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             case .recording:
                 self.overlay.recordingContext = L10n.format("profiles.recording", self.engine.sessionConfiguration.profileLabel,
                     self.engine.sessionConfiguration.whisper.language)
+                self.overlay.recordingReason = self.engine.sessionConfiguration.requestProfileSelection?.label ?? ""
                 self.overlay.show(.recording)
             case .processing:
                 // Tieferer Whoosh/Ding: deutlich ANDERES "Aufnahme beendet"-Signal.
@@ -645,7 +699,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             defer { self.pasteTarget = nil }
             if let entry = result.entry,
                let usable = TransientResultStore.Result(text: result.text,
-                    rawFallback: entry.cleanupFellBack == true, failed: entry.isFailed) {
+                    rawFallback: entry.cleanupFellBack == true, failed: entry.isFailed, note: self.engine.sessionConfiguration.cleanup.localOnly ? entry.cleanupFallbackReason : nil) {
                 if self.engine.sessionConfiguration.ui.previewBeforePaste || !self.pendingResults.isEmpty {
                     self.overlay.hide()
                     self.showPreview(usable, target: self.pasteTarget)
@@ -663,7 +717,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         engine.onPrivateRetryResult = { [weak self, weak source] entry in
             guard let self, self.engine === source, let result = TransientResultStore.Result(text: entry.cleanText,
-                rawFallback: entry.cleanupFellBack == true) else { return }
+                rawFallback: entry.cleanupFellBack == true, note: entry.cleanupFallbackReason) else { return }
             self.showPreview(result, target: PasteService.captureTarget(), focus: self.canRecallResult, floating: false)
         }
 
@@ -711,7 +765,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private func remember(_ result: TransientResultStore.Result) {
-        resultMemory.accept(text: result.text, rawFallback: result.rawFallback)
+        resultMemory.accept(text: result.text, rawFallback: result.rawFallback, note: result.note)
     }
 
     private func showPreview(_ result: TransientResultStore.Result, target: PasteService.Target?, focus: Bool = false, floating: Bool = true) {
@@ -742,7 +796,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func insert(_ result: TransientResultStore.Result, target: PasteService.Target?) {
         switch PasteService.paste(result.text, target: target) {
         case .pasted:
-            overlay.show(.success(note: result.rawFallback ? L10n.text("app.raw_fallback_note") : nil))
+            overlay.show(.success(note: result.rawFallback ? (result.note ?? L10n.text("app.raw_fallback_note")) : nil))
         case .clipboardOnlyScreenSharing:
             overlay.show(.clipboard(note: L10n.text("app.screen_sharing_note")))
         case .clipboardOnlyTargetChanged:

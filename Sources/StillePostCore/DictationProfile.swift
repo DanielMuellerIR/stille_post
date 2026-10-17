@@ -42,18 +42,30 @@ public extension Config {
     /// Wörterbuch und Dienstwahl vererben unabhängig voneinander.
     struct CleanupOptions: Codable, Equatable {
         public var enabled: Bool
+        public var localOnly: Bool?
         public var primary: Cleanup.Endpoint
         public var fallbacks: [Cleanup.Endpoint]
 
         public init(_ cleanup: Cleanup) {
             enabled = cleanup.enabled
+            localOnly = cleanup.localOnly
             primary = cleanup.chain[0]
             fallbacks = cleanup.fallbacks
+        }
+
+        private enum CodingKeys: String, CodingKey { case enabled, localOnly, primary, fallbacks }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            enabled = try c.decode(Bool.self, forKey: .enabled)
+            primary = try c.decode(Cleanup.Endpoint.self, forKey: .primary)
+            fallbacks = try c.decode([Cleanup.Endpoint].self, forKey: .fallbacks)
+            localOnly = c.contains(.localOnly) ? ((try? c.decode(Bool.self, forKey: .localOnly)) ?? true) : nil
         }
 
         public func applying(to cleanup: Cleanup) -> Cleanup {
             var result = cleanup
             result.enabled = enabled
+            result.localOnly = localOnly ?? cleanup.localOnly
             result.provider = primary.provider
             result.ollamaURL = primary.ollamaURL
             result.model = primary.model
@@ -66,9 +78,8 @@ public extension Config {
     }
 
     var activeProfile: Profile? {
-        if let id = selectedProfileID, let profile = profiles.first(where: { $0.id == id }) { return profile }
-        if let id = defaultProfileID { return profiles.first { $0.id == id } }
-        return nil
+        let id = requestProfileSelection?.profileID ?? (requestProfileSelection == nil ? profileSelection().profileID : nil)
+        return profiles.first { $0.id == id }
     }
 
     var profileLabel: String {
@@ -76,9 +87,11 @@ public extension Config {
     }
 
     /// Wertkopie am Auftragsstart; nachfolgende Auswahländerungen erreichen sie nicht.
-    func resolvedForRequest() -> Config {
+    func resolvedForRequest(appBundleID: String? = nil) -> Config {
+        if requestProfileSelection != nil { return self }
         var result = self
-        if let profile = activeProfile {
+        result.requestProfileSelection = profileSelection(appBundleID: appBundleID)
+        if let profile = result.activeProfile {
             result.whisper.language = profile.language ?? whisper.language
             result.cleanup = profile.cleanup?.applying(to: cleanup) ?? cleanup
             result.cleanup = profile.vocabulary?.applying(to: result.cleanup) ?? result.cleanup
@@ -89,6 +102,7 @@ public extension Config {
 
     mutating func removeProfile(id: UUID) {
         profiles.removeAll { $0.id == id }
+        appProfiles = appProfiles.filter { $0.value != id }
         if selectedProfileID == id { selectedProfileID = nil }
         if defaultProfileID == id { defaultProfileID = nil }
     }
@@ -99,7 +113,8 @@ public extension Config {
     }
 
     func validateProfiles() throws {
-        guard profiles.count <= 50, Set(profiles.map(\.id)).count == profiles.count else {
+        guard appProfiles.count <= 200, appProfiles.keys.allSatisfy(Self.validAppBundleID),
+              profiles.count <= 50, Set(profiles.map(\.id)).count == profiles.count else {
             throw ProfileFailure.invalid
         }
         for profile in profiles {

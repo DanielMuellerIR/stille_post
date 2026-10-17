@@ -67,7 +67,7 @@ public final class CleanupService {
     private let transport: CleanupTransport
 
     public convenience init(config: Config.Cleanup) {
-        self.init(config: config, transport: URLSessionCleanupTransport())
+        self.init(config: config, transport: URLSessionCleanupTransport(localOnly: config.localOnly))
     }
 
     init(config: Config.Cleanup, transport: CleanupTransport) {
@@ -88,15 +88,33 @@ public final class CleanupService {
 
     public func replacingConfiguration(with next: Config.Cleanup) -> CleanupService {
         if next == config { return self }
-        let service = CleanupService(config: next, transport: transport)
+        let nextTransport: CleanupTransport = transport is URLSessionCleanupTransport && next.localOnly != config.localOnly
+            ? URLSessionCleanupTransport(localOnly: next.localOnly) : transport
+        let service = CleanupService(config: next, transport: nextTransport)
         service.onFallbackEndpoint = onFallbackEndpoint
         service.onPrimaryRetry = onPrimaryRetry
-        if next.chain == config.chain {
+        if next.chain == config.chain && next.localOnly == config.localOnly {
             stateLock.lock()
             service.lastPrimarySuccess = lastPrimarySuccess
             stateLock.unlock()
         }
         return service
+    }
+
+    public static func endpointAllowed(_ endpoint: Config.Cleanup.Endpoint, localOnly: Bool) -> Bool {
+        guard localOnly else { return true }
+        let raw = endpoint.provider == "openai" ? endpoint.remote.baseURL : endpoint.ollamaURL
+        guard let c = URLComponents(string: raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let host = c.host, CleanupNetworkPolicy.loopbackHost(host) else { return false }
+        return CleanupNetworkPolicy.allows(c.url)
+    }
+
+    private func allowed(_ request: URLRequest) -> Bool {
+        !config.localOnly || CleanupNetworkPolicy.allows(request.url)
+    }
+
+    private func requireAllowed(_ request: URLRequest) throws {
+        if !allowed(request) { throw CleanupNetworkPolicy.Denied() }
     }
 
     // MARK: - Öffentliche API
@@ -126,6 +144,7 @@ public final class CleanupService {
         var failures: [String] = []
         for (index, endpoint) in config.chain.enumerated() {
             guard !Task.isCancelled else { return cancelled }
+            guard Self.endpointAllowed(endpoint, localOnly: config.localOnly) else { continue }
             if index > 0 { onFallbackEndpoint?(endpoint.label) }
             do {
                 let cleaned: String
@@ -222,7 +241,8 @@ public final class CleanupService {
             }
         }
         return Result(text: TranscriptPolish.repairPunctuation(trimmed), usedFallback: true,
-                      fallbackReason: L10n.format("core.cleanup.failed", failures.joined(separator: " · ")),
+                      fallbackReason: config.localOnly ? L10n.text("core.cleanup.local_unavailable")
+                        : L10n.format("core.cleanup.failed", failures.joined(separator: " · ")),
                       endpoint: nil)
     }
 
@@ -256,6 +276,7 @@ public final class CleanupService {
         let chain = config.chain
         Task {
             for (index, endpoint) in chain.enumerated() where endpoint.provider != "openai" {
+                guard Self.endpointAllowed(endpoint, localOnly: config.localOnly) else { continue }
                 guard (try? await isReachable(ollamaURL: endpoint.ollamaURL)) == true else {
                     if Task.isCancelled { return }
                     continue
@@ -286,6 +307,7 @@ public final class CleanupService {
             "keep_alive": Self.keepAliveValue(endpoint.keepAlive),
             "options": ["num_ctx": endpoint.numCtx],
         ] as [String: Any])
+        guard allowed(request) else { return }
         transport.sendWarmUp(request)  // Antwort ist egal, reines Vorwärmen
     }
 
@@ -326,6 +348,7 @@ public final class CleanupService {
         guard let url = Self.endpointURL(baseURL: ollamaURL,
                                          path: ["api", "version"]) else { return false }
         let request = URLRequest(url: url)
+        guard allowed(request) else { return false }
         for _ in 0..<2 {
             try Task.checkCancellation()
             do {
@@ -360,6 +383,7 @@ public final class CleanupService {
     /// Zwei Versuche wie bei `isReachable` — ein einzelner Aussetzer im WLAN soll
     /// keinen laufenden Rechner als tot melden.
     public func checkOllamaEndpoint(_ endpoint: Config.Cleanup.Endpoint) async -> EndpointCheck {
+        guard Self.endpointAllowed(endpoint, localOnly: config.localOnly) else { return .unreachable }
         guard let url = Self.endpointURL(baseURL: endpoint.ollamaURL,
                                          path: ["api", "tags"]) else { return .unreachable }
         let request = URLRequest(url: url)
@@ -1049,6 +1073,7 @@ public final class CleanupService {
             ],
         ] as [String: Any])
 
+        try requireAllowed(request)
         if streaming {
             // Streaming: Ollama liefert NDJSON — ein JSON-Objekt pro Zeile mit dem
             // nächsten Text-Häppchen; die letzte Zeile trägt "done": true.
@@ -1151,16 +1176,16 @@ public final class CleanupService {
         guard let url = Self.remoteChatURL(endpoint.remote) else {
             throw CleanupError.badConfig(L10n.text("core.cleanup.remote_config_missing"))
         }
-        guard let apiKey = Self.remoteAPIKey(envVar: endpoint.remote.apiKeyEnvVar) else {
-            throw CleanupError.badConfig(L10n.format(
-                "core.cleanup.api_key_missing",
-                endpoint.remote.apiKeyEnvVar
-            ))
-        }
         var request = URLRequest(url: url)
+        try requireAllowed(request)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        if !config.localOnly {
+            guard let apiKey = Self.remoteAPIKey(envVar: endpoint.remote.apiKeyEnvVar) else {
+                throw CleanupError.badConfig(L10n.format("core.cleanup.api_key_missing", endpoint.remote.apiKeyEnvVar))
+            }
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: [
             "model": endpoint.remote.model,
             "temperature": 0,

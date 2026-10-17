@@ -39,6 +39,8 @@ public final class DictationEngine {
 
     // MARK: - Öffentliche Schnittstelle
 
+    /// Liest beim Auftragsstart ausschließlich die Identität der Ziel-App.
+    public var requestAppBundleID: (() -> String?)?
     /// Zustands-Änderungen (App aktualisiert Menüleiste/Overlay). Auf Main-Thread.
     public var onStateChange: ((DictationState) -> Void)?
     /// Akustisches Startsignal unmittelbar vor dem Öffnen des Mikrofons. Die App
@@ -130,7 +132,7 @@ public final class DictationEngine {
         let requests = DictationRequestStore(config: config, transcriber: dependencies.transcriber,
             cleanup: dependencies.cleanup, makeTranscriber: dependencies.makeTranscriber)
         self.requests = requests
-        self.sessionRequest = requests.snapshot()
+        self.sessionRequest = requests.snapshot(appBundleID: requestAppBundleID?())
         self.history = history ?? HistoryStore()
         self.serverManager = dependencies.server
         let cleanup = dependencies.cleanup
@@ -171,7 +173,7 @@ public final class DictationEngine {
         sessionTask = nil
         sessionGeneration &+= 1
         let generation = sessionGeneration
-        sessionRequest = requests.snapshot()
+        sessionRequest = requests.snapshot(appBundleID: requestAppBundleID?())
         setState(.starting)
 
         Task { @MainActor in
@@ -814,7 +816,7 @@ public final class DictationEngine {
     /// Bei Erfolg wird der Eintrag aktualisiert und die Audio-Datei gelöscht.
     public func retry(entry: HistoryStore.Entry) async throws -> HistoryStore.Entry {
         let id = UUID()
-        let request = requests.snapshot()
+        let request = requests.snapshot(appBundleID: requestAppBundleID?())
         let task: Task<HistoryStore.Entry, Error> = try retryLock.withLock {
             guard !shuttingDown else { throw CancellationError() }
             let task = Task { try await self.performRetry(entry: entry, request: request) }
@@ -916,7 +918,7 @@ public final class DictationEngine {
     /// ist der nicht erreichbar, wird stattdessen der Fallback vorgewärmt, damit
     /// sein Kaltstart nicht ins nächste Diktat fällt.
     public func keepCleanupModelWarm() {
-        requests.snapshot().cleanup.warmUp()
+        requests.snapshot(appBundleID: requestAppBundleID?()).cleanup.warmUp()
     }
 
     private func trackHistoryWork(_ work: @escaping @MainActor () async -> Void) {
@@ -1002,7 +1004,7 @@ public final class DictationEngine {
         sessionTask?.cancel()
         sessionGeneration &+= 1
         let generation = sessionGeneration
-        sessionRequest = requests.snapshot()
+        sessionRequest = requests.snapshot(appBundleID: requestAppBundleID?())
         // Wie in `stop()`: Bis die Aufnahme nachweislich gelöscht oder im Verlauf
         // vermerkt ist, gehört sie der Engine.
         processingWavURL = wavURL

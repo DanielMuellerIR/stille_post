@@ -29,12 +29,15 @@ final class HistoryEditorModel: ObservableObject, Identifiable {
     private var comparisonWorker: Task<TextDifference.Result, Error>?
     private(set) var saveTask: Task<Void, Never>?
 
-    init(entry: HistoryStore.Entry, history: HistoryStore, onVocabularySaved: @escaping (Config) -> Void = { _ in }) {
+    private let appBundleIDProvider: () -> String?
+
+    init(entry: HistoryStore.Entry, history: HistoryStore, appBundleIDProvider: @escaping () -> String? = { nil }, onVocabularySaved: @escaping (Config) -> Void = { _ in }) {
         id = entry.id
         snapshot = entry
         draft = entry.cleanText
         self.history = history
-        let config = Config.load()
+        self.appBundleIDProvider = appBundleIDProvider
+        let config = Config.load().resolvedForRequest(appBundleID: appBundleIDProvider())
         self.vocabularyProfileID = config.vocabularyProfileID
         self.vocabularyScopeLabel = config.vocabularyProfileID == nil ? L10n.text("profiles.global") : config.profileLabel
         self.onVocabularySaved = onVocabularySaved
@@ -125,9 +128,10 @@ final class HistoryEditorModel: ObservableObject, Identifiable {
         let generation = recleanupGeneration
         recleaning = true
         errorMessage = nil
+        let appBundleID = appBundleIDProvider()
         recleanupTask = Task { @MainActor in
             do {
-                let result = try await HistoryRecleanup.run(expected: expected, history: history)
+                let result = try await HistoryRecleanup.run(expected: expected, history: history, appBundleID: appBundleID)
                 guard generation == recleanupGeneration, snapshot != nil else { return }
                 candidate = result
             } catch {

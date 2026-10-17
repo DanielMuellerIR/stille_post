@@ -9,6 +9,16 @@ import Foundation
 /// bekommt automatisch die Defaults für die neuen Felder (kein Crash nach Updates).
 public struct Config: Codable, Equatable {
 
+    // Die aufgelöste Auswahl ist flüchtig; optimistische Speicherung vergleicht
+    // ausschließlich den dauerhaft gespeicherten Konfigurationsstand.
+    public static func == (lhs: Config, rhs: Config) -> Bool {
+        lhs.whisper == rhs.whisper && lhs.cleanup == rhs.cleanup && lhs.bridge == rhs.bridge
+            && lhs.vad == rhs.vad && lhs.audio == rhs.audio && lhs.ui == rhs.ui && lhs.history == rhs.history
+            && lhs.hotkey == rhs.hotkey && lhs.lastResultHotkey == rhs.lastResultHotkey
+            && lhs.profiles == rhs.profiles && lhs.defaultProfileID == rhs.defaultProfileID
+            && lhs.selectedProfileID == rhs.selectedProfileID && lhs.appProfiles == rhs.appProfiles
+    }
+
     // MARK: - Unterbereiche
 
     /// Einstellungen für die Spracherkennung (whisper.cpp-Server).
@@ -46,6 +56,7 @@ public struct Config: Codable, Equatable {
     public struct Cleanup: Codable, Equatable {
         /// Textbereinigung überhaupt durchführen? (false = nur rohe Transkription)
         public var enabled: Bool = true
+        public var localOnly: Bool = false
         /// "ollama" (lokal) oder "openai" (OpenAI-kompatibler Endpoint, z. B. MiniMax).
         public var provider: String = "ollama"
         /// Ollama-Endpoint (wir nutzen die native /api/chat-API).
@@ -271,6 +282,8 @@ public struct Config: Codable, Equatable {
     // MARK: - Felder
 
     public var profiles: [Profile] = []
+    public var appProfiles: [String: UUID] = [:]
+    public var requestProfileSelection: ProfileSelection?
     public var defaultProfileID: UUID?
     public var selectedProfileID: UUID?
     public var whisper: Whisper = Whisper()
@@ -380,15 +393,18 @@ public struct Config: Codable, Equatable {
 
     // MARK: - Tolerantes Dekodieren (fehlende Felder -> Defaults)
 
-    private enum CodingKeys: String, CodingKey { case whisper, cleanup, bridge, vad, audio, ui, history, hotkey, lastResultHotkey, profiles, defaultProfileID, selectedProfileID }
+    private enum CodingKeys: String, CodingKey { case whisper, cleanup, bridge, vad, audio, ui, history, hotkey, lastResultHotkey, profiles, defaultProfileID, selectedProfileID, appProfiles }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         profiles = c.decodeOrDefault(ProfileCollection.self, forKey: .profiles, default: ProfileCollection()).profiles
+        appProfiles = c.decodeOrDefault(AppProfileRules.self, forKey: .appProfiles, default: AppProfileRules()).values
         defaultProfileID = try? c.decodeIfPresent(UUID.self, forKey: .defaultProfileID)
         selectedProfileID = try? c.decodeIfPresent(UUID.self, forKey: .selectedProfileID)
         whisper = c.decodeOrDefault(Whisper.self, forKey: .whisper, default: Whisper())
-        cleanup = c.decodeOrDefault(Cleanup.self, forKey: .cleanup, default: Cleanup())
+        var cleanupFallback = Cleanup()
+        cleanupFallback.localOnly = c.contains(.cleanup)
+        cleanup = c.decodeOrDefault(Cleanup.self, forKey: .cleanup, default: cleanupFallback)
         let decodedBridge = c.decodeOrDefault(Bridge.self, forKey: .bridge, default: Bridge())
         if let detail = decodedBridge.validationFailure {
             let message = L10n.format("core.config.invalid_field", "bridge", detail)
@@ -456,11 +472,12 @@ extension Config.Whisper {
 }
 
 extension Config.Cleanup {
-    private enum CodingKeys: String, CodingKey { case enabled, provider, ollamaURL, model, numCtx, keepAlive, remote, fallbacks, dictionary, dictionaryVariants }
+    private enum CodingKeys: String, CodingKey { case enabled, localOnly, provider, ollamaURL, model, numCtx, keepAlive, remote, fallbacks, dictionary, dictionaryVariants }
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
         enabled = c.decodeOrDefault(Bool.self, forKey: .enabled, default: enabled)
+        if c.contains(.localOnly) { localOnly = (try? c.decode(Bool.self, forKey: .localOnly)) ?? true }
         provider = c.decodeOrDefault(String.self, forKey: .provider, default: provider)
         ollamaURL = c.decodeOrDefault(String.self, forKey: .ollamaURL, default: ollamaURL)
         model = c.decodeOrDefault(String.self, forKey: .model, default: model)

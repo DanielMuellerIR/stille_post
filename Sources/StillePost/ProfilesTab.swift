@@ -99,7 +99,13 @@ struct ProfilesTab: View {
                 .padding(.horizontal, 20)
             CleanupTab(cleanup: Binding(get: {
                 profile.wrappedValue.cleanup?.applying(to: config.cleanup) ?? config.cleanup
-            }, set: { profile.wrappedValue.cleanup = Config.CleanupOptions($0) }), showsVocabulary: false)
+            }, set: { updated in
+                var options = Config.CleanupOptions(updated)
+                if profile.wrappedValue.cleanup?.localOnly == nil && updated.localOnly == config.cleanup.localOnly {
+                    options.localOnly = nil
+                }
+                profile.wrappedValue.cleanup = options
+            }), showsVocabulary: false)
                 .disabled(profile.wrappedValue.cleanup == nil)
         case .history:
             Toggle(L10n.text("profiles.inherit"), isOn: inherited(profile.history, initial: config.history))

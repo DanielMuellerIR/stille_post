@@ -122,7 +122,7 @@ final class HistoryViewModel: ObservableObject {
 
     func edit(_ entry: HistoryStore.Entry) {
         guard entry.canEdit, !deletingAll, !deleting.contains(entry.id), !retrying.contains(entry.id) else { return }
-        editor = HistoryEditorModel(entry: entry, history: engine.history, onVocabularySaved: onVocabularySaved)
+        editor = HistoryEditorModel(entry: entry, history: engine.history, appBundleIDProvider: engine.requestAppBundleID ?? { nil }, onVocabularySaved: onVocabularySaved)
     }
 
     func retry(_ entry: HistoryStore.Entry) {

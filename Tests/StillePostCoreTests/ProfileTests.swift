@@ -293,6 +293,66 @@ final class ProfileTests: XCTestCase {
         XCTAssertEqual(saved.cleanText, "Whisper bleibt bei 128.")
     }
 
+    @MainActor
+    func testAppFocusBeforeRecordingAndDuringCleanupKeepsInitialPolicy() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("sp-app-focus-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var config = config()
+        config.profiles[1].cleanup = Config.CleanupOptions(config.cleanup)
+        config.profiles[1].cleanup?.localOnly = true
+        config.appProfiles = ["com.example.Editor": config.profiles[1].id]
+        var target = "com.example.Editor"
+        let recorder = ProfileRecorder(), segmenter = ProfileSegmenter(), server = ProfileServer()
+        let transport = ProfileTransport(), languageLog = ProfileLanguageLog()
+        let cleanupGate = ProfileGate(), startGate = ProfileGate()
+        let cleanupEntered = expectation(description: "App-Bereinigung gestartet")
+        transport.beforeClean = { cleanupEntered.fulfill(); await cleanupGate.wait() }
+        let engine = DictationEngine(config: config, history: HistoryStore(baseDir: directory), dependencies: .init(
+            transcriber: ProfileTranscriber(language: "de", log: languageLog), server: server,
+            cleanup: CleanupService(config: config.cleanup, transport: transport),
+            makeRecorder: { _ in recorder }, makeSegmenter: { _ in segmenter }, makeWavWriter: { try WavFileWriter(url: $0) },
+            makeTranscriber: { ProfileTranscriber(language: $0.language, log: languageLog) }, requestMicrophoneAccess: { true }))
+        engine.requestAppBundleID = { target }
+        let starting = expectation(description: "Auswahl vor erstem Await eingefroren")
+        engine.onBeforeRecordingStart = { starting.fulfill(); await startGate.wait() }
+        let recording = expectation(description: "App-Aufnahme")
+        engine.onStateChange = { if $0 == .recording { recording.fulfill() } }
+        let completed = expectation(description: "Ursprüngliche lokale EN-Auswahl fertig")
+        engine.onResult = { result in
+            XCTAssertEqual(result.entry?.storesText, false)
+            XCTAssertEqual(result.text, "The number stays 128.")
+            completed.fulfill()
+        }
+        engine.start()
+        await fulfillment(of: [starting], timeout: 2)
+        target = "com.example.Unknown"
+        config.appProfiles["com.example.Editor"] = config.profiles[2].id
+        engine.configure(config)
+        XCTAssertEqual(engine.sessionConfiguration.whisper.language, "en")
+        XCTAssertEqual(engine.sessionConfiguration.requestProfileSelection?.reason, .application)
+        await startGate.release()
+        await fulfillment(of: [recording], timeout: 2)
+        segmenter.emit()
+        target = "com.example.Editor"
+        engine.stop()
+        await fulfillment(of: [cleanupEntered], timeout: 2)
+        XCTAssertTrue(engine.sessionConfiguration.cleanup.localOnly)
+        XCTAssertEqual(engine.sessionConfiguration.activeProfile?.name, "English")
+        await cleanupGate.release()
+        await fulfillment(of: [completed], timeout: 2)
+        XCTAssertEqual(languageLog.values, ["en"])
+        XCTAssertEqual(transport.inputs.count, 1)
+        XCTAssertEqual(server.stops, 0)
+        XCTAssertFalse(try String(contentsOf: directory.appendingPathComponent("history.json")).contains("The number stays"))
+        transport.beforeClean = nil
+        let next = expectation(description: "Neue App-Regel gilt erst beim nächsten Auftrag")
+        engine.onResult = { result in XCTAssertEqual(result.text, "Whisper bleibt bei 128."); next.fulfill() }
+        engine.processForTesting(rawText: "Whis per bleibt bei 128.")
+        await fulfillment(of: [next], timeout: 2)
+        XCTAssertEqual(engine.sessionConfiguration.activeProfile?.name, "Technik")
+        await engine.shutdown().value
+    }
+
     func testPendingPrivateResultsKeepBothCompletionOrders() {
         for values in [["Neues Diktat", "Alter Retry"], ["Alter Retry", "Neues Diktat"]] {
             var pending = PendingResults<String>()

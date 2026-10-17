@@ -10,6 +10,20 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.29] — 2026-10-18
+
+### Neu
+
+- App-Regeln ordnen Bundle-IDs Diktierprofile zu. Manuelle Auswahl hat Vorrang,
+  danach folgen App-Regel, Standardprofil und globale Einstellungen. Aufnahme
+  und Menü zeigen den Auswahlgrund; laufende Aufträge behalten ihren Startstand.
+- Die lokale Bereinigungsrichtlinie begrenzt Probe, Warm-up, Chat, Wiederholung
+  und Fallbacks auf numerische Loopback-Adressen. Nicht lokale Redirects und
+  Systemproxies sind gesperrt. Ohne lokalen Dienst wird der Rohtext mit einem
+  verständlichen Grund ausgegeben. Lokale OpenAI-Dienste benötigen keinen API-Key.
+- Alte Konfigurationen behalten ihre bisherige Auswahl. Alte eigene
+  Bereinigungsbereiche erben eine später global aktivierte lokale Richtlinie.
+
 ## [0.9.28] — 2026-10-18
 
 ### Neu

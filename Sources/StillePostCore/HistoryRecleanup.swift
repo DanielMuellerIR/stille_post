@@ -8,21 +8,21 @@ public enum HistoryRecleanup {
     }
 
     public enum Failure: Error, LocalizedError {
-        case disabled, unsuccessful
+        case disabled, unsuccessful, localUnavailable
         public var errorDescription: String? {
-            L10n.text(self == .disabled ? "core.history.recleanup_disabled" : "core.history.recleanup_failed")
+            L10n.text(self == .disabled ? "core.history.recleanup_disabled" : (self == .localUnavailable ? "core.history.recleanup_local_unavailable" : "core.history.recleanup_failed"))
         }
     }
 
     /// Ein vollständiger Textlauf ohne Audio und ohne Speicherung. Erst eine
     /// spätere ausdrückliche Übernahme darf das bisherige Ergebnis ersetzen.
     public static func run(expected: HistoryStore.Entry, history: HistoryStore,
-                           configFile: ConfigFile = ConfigFile(),
+                           configFile: ConfigFile = ConfigFile(), appBundleID: String? = nil,
                            clean: ((Config.Cleanup, String) async -> CleanupService.Result)? = nil) async throws -> Candidate {
         try Task.checkCancellation()
         // Vor dem ersten Await auflösen: Selbst ein langsamer Verlaufszugriff
         // darf eine danach geänderte Profilauswahl nicht in diesen Auftrag holen.
-        let config = try configFile.load().resolvedForRequest()
+        let config = try configFile.load().resolvedForRequest(appBundleID: appBundleID)
         _ = try await history.withEditableSnapshotAsync(expected: expected) { true }
         guard config.cleanup.enabled else { throw Failure.disabled }
         try config.validate()
@@ -33,6 +33,7 @@ public enum HistoryRecleanup {
         if let clean { result = await clean(config.cleanup, expected.rawText) }
         else { result = await CleanupService(config: config.cleanup).clean(expected.rawText) }
         try Task.checkCancellation()
+        if result.usedFallback && config.cleanup.localOnly && result.endpoint == nil { throw Failure.localUnavailable }
         guard !result.usedFallback, result.endpoint != nil,
               !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw Failure.unsuccessful }
         _ = try await history.withEditableSnapshotAsync(expected: expected) { true }

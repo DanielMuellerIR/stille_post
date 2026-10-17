@@ -12,7 +12,7 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Textkorrektur und Änderungsvergleich mit nachvollziehbaren Fassungen ergänzen; siehe [Textkorrektur](docs/textkorrektur.md).
 - [x] Wörterbuchübernahme aus ausdrücklichen Korrekturen und erneute Textbereinigung ergänzen; siehe [Textkorrektur](docs/textkorrektur.md).
 - [x] Manuell wechselbare Diktierprofile mit globaler Vererbung und eingefrorenen Aufträgen ergänzen; siehe [Diktierprofile](docs/diktierprofile.md).
-- [ ] App-Zuordnung und eine durchgehend lokale Bereinigungsrichtlinie ergänzen.
+- [x] App-Zuordnung und eine durchgehend lokale Bereinigungsrichtlinie ergänzen; siehe [Diktierprofile](docs/diktierprofile.md).
 - [ ] Gedrückthalten, Pause/Fortsetzen, GUI-Diagnose, Testdiktat und laufende Rohtextvorschau ergänzen.
 - [ ] Audioimport, explizite gesprochene Formatierung und Bereinigung ausgewählten Textes ergänzen.
 - [ ] Parakeet und Silero gegen den bestehenden Weg messen und geeignete Kandidaten evidenzbasiert integrieren.
@@ -21,7 +21,7 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
 [docs/ausgangspruefung-2026-10-16.md](docs/ausgangspruefung-2026-10-16.md) dokumentiert.
-Nächster Schritt: App-Zuordnung und ausschließlich lokale Bereinigung. Die offenen
+Nächster Schritt: Gedrückthalten zum Sprechen. Die offenen
 Gerätefälle bleiben bis zu ihrer tatsächlichen Abnahme erhalten.
 
 ## Offene Abnahmen nach dem Review 2026-10-04

@@ -12,34 +12,48 @@ final class DictationRequestStore: @unchecked Sendable {
 
     private let lock = NSLock()
     private var value: Snapshot
+    private var configuration: Config
+    private var lastAppBundleID: String?
     private let makeTranscriber: ((Config.Whisper) -> any DictationTranscriber)?
 
     init(config: Config, transcriber: any DictationTranscriber, cleanup: any DictationCleanup,
          makeTranscriber: ((Config.Whisper) -> any DictationTranscriber)? = nil) {
+        configuration = config
         value = Snapshot(config: config.resolvedForRequest(), transcriber: transcriber, cleanup: cleanup)
         self.makeTranscriber = makeTranscriber
     }
 
-    func snapshot() -> Snapshot { lock.withLock { value } }
+    func snapshot(appBundleID: String? = nil) -> Snapshot {
+        lock.withLock {
+            lastAppBundleID = appBundleID
+            replace(configuration.resolvedForRequest(appBundleID: appBundleID))
+            return value
+        }
+    }
 
     func configure(_ config: Config) {
-        lock.withLock { replace(config.resolvedForRequest()) }
+        lock.withLock {
+            configuration = config
+            replace(config.resolvedForRequest(appBundleID: lastAppBundleID))
+        }
     }
 
     func configureHistory(_ history: Config.History) {
         lock.withLock {
-            var config = value.config
+            var config = configuration
             config.history = history
-            replace(config)
+            configuration = config
+            replace(config.resolvedForRequest(appBundleID: lastAppBundleID))
         }
     }
 
     func configureVocabulary(_ vocabulary: Config.Cleanup) {
         lock.withLock {
-            var config = value.config
+            var config = configuration
             config.cleanup.dictionary = vocabulary.dictionary
             config.cleanup.dictionaryVariants = vocabulary.dictionaryVariants
-            replace(config)
+            configuration = config
+            replace(config.resolvedForRequest(appBundleID: lastAppBundleID))
         }
     }
 
