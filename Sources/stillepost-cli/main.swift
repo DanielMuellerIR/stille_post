@@ -166,7 +166,7 @@ func argumentsAreValid(_ arguments: [String]) -> Bool {
 
 guard argumentsAreValid(arguments) else { fail(usage, code: 2) }
 
-let config = Config.load()
+let config = Config.load().resolvedForRequest()
 
 /// Blockierender Brücken-Helfer: führt async-Code in einem synchronen CLI-Programm aus.
 func runBlocking<T>(_ work: @escaping () async throws -> T) throws -> T {

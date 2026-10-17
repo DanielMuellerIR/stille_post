@@ -270,6 +270,9 @@ public struct Config: Codable, Equatable {
 
     // MARK: - Felder
 
+    public var profiles: [Profile] = []
+    public var defaultProfileID: UUID?
+    public var selectedProfileID: UUID?
     public var whisper: Whisper = Whisper()
     public var cleanup: Cleanup = Cleanup()
     public var bridge: Bridge = Bridge()
@@ -336,6 +339,7 @@ public struct Config: Codable, Equatable {
         _ = try WhisperEndpoint(serverURL: whisper.serverURL)
         guard history.isValid else { throw ValidationError.invalidHistory }
         try VocabularyRules.validate(cleanup)
+        try validateProfiles()
         if let detail = vad.validationFailure {
             throw ValidationError.invalidVad(detail)
         }
@@ -376,10 +380,13 @@ public struct Config: Codable, Equatable {
 
     // MARK: - Tolerantes Dekodieren (fehlende Felder -> Defaults)
 
-    private enum CodingKeys: String, CodingKey { case whisper, cleanup, bridge, vad, audio, ui, history, hotkey, lastResultHotkey }
+    private enum CodingKeys: String, CodingKey { case whisper, cleanup, bridge, vad, audio, ui, history, hotkey, lastResultHotkey, profiles, defaultProfileID, selectedProfileID }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        profiles = c.decodeOrDefault(ProfileCollection.self, forKey: .profiles, default: ProfileCollection()).profiles
+        defaultProfileID = try? c.decodeIfPresent(UUID.self, forKey: .defaultProfileID)
+        selectedProfileID = try? c.decodeIfPresent(UUID.self, forKey: .selectedProfileID)
         whisper = c.decodeOrDefault(Whisper.self, forKey: .whisper, default: Whisper())
         cleanup = c.decodeOrDefault(Cleanup.self, forKey: .cleanup, default: Cleanup())
         let decodedBridge = c.decodeOrDefault(Bridge.self, forKey: .bridge, default: Bridge())
@@ -402,6 +409,8 @@ public struct Config: Codable, Equatable {
         hotkey = c.decodeOrDefault(Hotkey.self, forKey: .hotkey, default: Hotkey())
         lastResultHotkey = c.decodeOrDefault(Hotkey.self, forKey: .lastResultHotkey,
                                               default: .lastResultDefault)
+        if let id = defaultProfileID, !profiles.contains(where: { $0.id == id }) { defaultProfileID = nil }
+        if let id = selectedProfileID, !profiles.contains(where: { $0.id == id }) { selectedProfileID = nil }
         // Eine alte Belegung mit ⌘⌥R darf nach dem Update nicht kollidieren.
         if !c.contains(.lastResultHotkey), hotkey.matches(lastResultHotkey) {
             lastResultHotkey.modifiers.append("shift")

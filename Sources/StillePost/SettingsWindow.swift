@@ -3,8 +3,8 @@ import SwiftUI
 import StillePostCore
 
 /// Fenster mit den App-Einstellungen: bearbeitet eine Kopie der Config und gibt
-/// sie beim Speichern an die App zurück (die schreibt config.json und baut die
-/// Bausteine neu auf). Die Datei bleibt weiterhin von Hand editierbar — das
+/// sie beim Speichern an die App zurück (die schreibt config.json und aktualisiert die
+/// betroffenen Bausteine). Die Datei bleibt weiterhin von Hand editierbar — das
 /// Fenster liest bei jedem Öffnen frisch von Platte.
 final class SettingsWindowController {
 
@@ -22,14 +22,14 @@ final class SettingsWindowController {
     func show() {
         if window == nil {
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 620, height: 680),
+                contentRect: NSRect(x: 0, y: 0, width: 720, height: 720),
                 styleMask: [.titled, .closable, .resizable],
                 backing: .buffered, defer: false
             )
             window.title = L10n.text("window.settings.title")
             window.center()
             window.isReleasedWhenClosed = false
-            window.contentMinSize = NSSize(width: 600, height: 640)
+            window.contentMinSize = NSSize(width: 700, height: 680)
             self.window = window
         }
         // Bei jedem Öffnen frisch von Platte laden — die Datei kann inzwischen
@@ -55,9 +55,10 @@ struct SettingsView: View {
     /// Die Einstellungs-Bereiche (eigener Umschalter statt TabView — der
     /// rendert als Fenster-Toolbar und ließ die Tabs ins Overflow-Menü rutschen).
     enum Tab: String, CaseIterable {
-        case allgemein, bereinigung, spracherkennung, aufnahme, verlauf
+        case allgemein, profile, bereinigung, spracherkennung, aufnahme, verlauf
         var title: String {
             switch self {
+            case .profile: return L10n.text("profiles.title")
             case .allgemein: return L10n.text("settings.tab.general")
             case .bereinigung: return L10n.text("settings.tab.cleanup")
             case .spracherkennung: return L10n.text("settings.tab.speech")
@@ -106,6 +107,7 @@ struct SettingsView: View {
             .padding(12)
 
             switch tab {
+            case .profile: ProfilesTab(config: $config)
             case .allgemein: GeneralTab(config: $config, onHotkeyRecording: onHotkeyRecording)
             case .bereinigung: CleanupTab(cleanup: $config.cleanup)
             case .spracherkennung: WhisperTab(whisper: $config.whisper)
@@ -130,12 +132,12 @@ struct SettingsView: View {
             }
             .padding(12)
         }
-        .frame(minWidth: 600, minHeight: 640)
+        .frame(minWidth: 700, minHeight: 680)
         .environment(\.locale, Locale(identifier: L10n.languageCode))
     }
 }
 
-private struct HistorySettingsTab: View {
+struct HistorySettingsTab: View {
     @Binding var history: Config.History
 
     var body: some View {
@@ -358,13 +360,13 @@ private struct HotkeyRecorder: View {
 
 // MARK: - Tab: Bereinigung (Endpoint-Kette + API-Key)
 
-private struct CleanupTab: View {
+struct CleanupTab: View {
     @Binding var cleanup: Config.Cleanup
-    @State private var dictionaryText: String
+    var showsVocabulary = true
 
-    init(cleanup: Binding<Config.Cleanup>) {
+    init(cleanup: Binding<Config.Cleanup>, showsVocabulary: Bool = true) {
         self._cleanup = cleanup
-        self._dictionaryText = State(initialValue: cleanup.wrappedValue.dictionary.joined(separator: "\n"))
+        self.showsVocabulary = showsVocabulary
     }
 
     var body: some View {
@@ -378,34 +380,7 @@ private struct CleanupTab: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Section(L10n.text("settings.cleanup.dictionary")) {
-                TextEditor(text: $dictionaryText)
-                    .font(.body.monospaced())
-                    .frame(minHeight: 100)
-                    .accessibilityLabel(L10n.text("settings.cleanup.dictionary"))
-                    .onChange(of: dictionaryText) { text in
-                        cleanup.dictionary = text.components(separatedBy: .newlines)
-                            .map { $0.trimmingCharacters(in: .whitespaces) }
-                            .filter { !$0.isEmpty }
-                    }
-                Text(L10n.text("settings.cleanup.dictionary_help"))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                ForEach(cleanup.dictionaryVariants.indices, id: \.self) { index in
-                    HStack {
-                        Text(verbatim: cleanup.dictionaryVariants[index].source + " → " + cleanup.dictionaryVariants[index].target)
-                            .textSelection(.enabled)
-                        Spacer()
-                        Button(L10n.text("common.delete")) { cleanup.dictionaryVariants.remove(at: index) }
-                            .accessibilityLabel(L10n.format("settings.cleanup.remove_variant", cleanup.dictionaryVariants[index].source))
-                    }
-                }
-                if !cleanup.dictionaryVariants.isEmpty {
-                    Text(L10n.text("settings.cleanup.variants_help"))
-                        .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-            }
+            if showsVocabulary { VocabularyEditor(cleanup: $cleanup) }
 
             Section(L10n.text("settings.cleanup.primary")) {
                 EndpointEditor(endpoint: primaryBinding)
@@ -824,6 +799,46 @@ private struct AudioInputPicker: View {
         defaultDeviceName = AudioInputDeviceCatalog.defaultDevice()?.name
         if let selected = devices.first(where: { $0.uid == audio.inputDeviceUID }) {
             audio.inputDeviceName = selected.name
+        }
+    }
+}
+
+struct VocabularyEditor: View {
+    @Binding var cleanup: Config.Cleanup
+    @State private var dictionaryText: String
+
+    init(cleanup: Binding<Config.Cleanup>) {
+        _cleanup = cleanup
+        _dictionaryText = State(initialValue: cleanup.wrappedValue.dictionary.joined(separator: "\n"))
+    }
+
+    var body: some View {
+        Section(L10n.text("settings.cleanup.dictionary")) {
+            TextEditor(text: $dictionaryText)
+                .font(.body.monospaced())
+                .frame(minHeight: 100)
+                .accessibilityLabel(L10n.text("settings.cleanup.dictionary"))
+                .accessibilityIdentifier("dictionaryTerms")
+                .onChange(of: dictionaryText) { text in
+                    cleanup.dictionary = text.components(separatedBy: .newlines)
+                        .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                }
+            Text(L10n.text("settings.cleanup.dictionary_help"))
+                .font(.caption).foregroundColor(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            ForEach(cleanup.dictionaryVariants.indices, id: \.self) { index in
+                HStack {
+                    Text(verbatim: cleanup.dictionaryVariants[index].source + " → " + cleanup.dictionaryVariants[index].target)
+                        .textSelection(.enabled)
+                    Spacer()
+                    Button(L10n.text("common.delete")) { cleanup.dictionaryVariants.remove(at: index) }
+                        .accessibilityLabel(L10n.format("settings.cleanup.remove_variant", cleanup.dictionaryVariants[index].source))
+                }
+            }
+            if !cleanup.dictionaryVariants.isEmpty {
+                Text(L10n.text("settings.cleanup.variants_help"))
+                    .font(.caption).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 }

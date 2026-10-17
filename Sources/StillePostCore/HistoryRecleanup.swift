@@ -20,7 +20,10 @@ public enum HistoryRecleanup {
                            configFile: ConfigFile = ConfigFile(),
                            clean: ((Config.Cleanup, String) async -> CleanupService.Result)? = nil) async throws -> Candidate {
         try Task.checkCancellation()
-        let config = try await history.withEditableSnapshotAsync(expected: expected) { try configFile.load() }
+        // Vor dem ersten Await auflösen: Selbst ein langsamer Verlaufszugriff
+        // darf eine danach geänderte Profilauswahl nicht in diesen Auftrag holen.
+        let config = try configFile.load().resolvedForRequest()
+        _ = try await history.withEditableSnapshotAsync(expected: expected) { true }
         guard config.cleanup.enabled else { throw Failure.disabled }
         try config.validate()
         guard !expected.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw Failure.unsuccessful }

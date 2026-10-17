@@ -440,11 +440,11 @@
 "editor.vocabulary.term" = "Bevorzugte Schreibweise";
 "editor.vocabulary.variant" = "Verhörvariante (optional), z. B. Whis per";
 "editor.vocabulary.variant_help" = "Optional: 2–3 Teile mit je mindestens drei Buchstaben, zusammen höchstens ein abweichender Buchstabe. Ziel: vorbelegter Fachbegriff oder Binnen-Großschreibung, z. B. Whis per → Whisper oder Git hub → GitHub. Exakte Wortgrenzen; Varianten in den Einstellungen löschbar.";
-"editor.vocabulary.confirm" = "Diese Schreibweise und optionale Variante für alle künftigen Bereinigungen verwenden.";
+"editor.vocabulary.confirm" = "Diese Schreibweise und optionale Variante im angezeigten Wörterbuch verwenden.";
 "editor.vocabulary.save" = "Wörterbucheintrag speichern";
 "editor.vocabulary.saved" = "Gespeichert. Gilt ab dem nächsten Auftrag und ist in den Einstellungen sichtbar.";
 "editor.recleanup.title" = "Neu bereinigen";
-"editor.recleanup.help" = "Den gesamten gespeicherten Whisper-Rohtext einmal mit der aktuellen Konfiguration bereinigen. Dabei kann Text an die dort eingestellten Dienste gehen. Es wird kein Audio benötigt und nichts eingefügt. Die bisherige Fassung bleibt bis zur Übernahme erhalten.";
+"editor.recleanup.help" = "Den gesamten gespeicherten Whisper-Rohtext einmal mit dem beim Start aktiven Profil bereinigen. Dabei kann Text an die dort eingestellten Dienste gehen. Es wird kein Audio benötigt und nichts eingefügt. Die bisherige Fassung bleibt bis zur Übernahme erhalten.";
 "editor.recleanup.start" = "Rohtext jetzt neu bereinigen";
 "editor.recleanup.running" = "Neue Fassung wird erstellt …";
 "editor.recleanup.replace_help" = "Übernehmen ersetzt die gespeicherte Fassung und den aktuellen Entwurf. Die ursprüngliche Ausgabe und höchstens drei Vorfassungen bleiben erhalten.";
@@ -455,3 +455,28 @@
 "settings.cleanup.variants_help" = "Bestätigte Verhörvarianten gelten global. Vor dem Entfernen einer Zielschreibweise zuerst ihre Varianten löschen.";
 "common.copy" = "Kopieren";
 "common.delete" = "Löschen";
+
+// Manuelle Diktierprofile
+"profiles.title" = "Profile";
+"profiles.global" = "Globale Einstellungen";
+"profiles.help" = "Profile ändern nur folgende Aufträge. Nicht überschriebene Bereiche übernehmen die globalen Einstellungen aus den übrigen Tabs.";
+"profiles.default" = "Standardprofil";
+"profiles.edit" = "Profil bearbeiten";
+"profiles.choose" = "Profil wählen";
+"profiles.new" = "Neues Profil";
+"profiles.new_name" = "Neues Profil";
+"profiles.name" = "Profilname";
+"profiles.choose_help" = "Lege ein Profil an oder wähle eines zum Bearbeiten.";
+"profiles.inherit" = "Globale Einstellungen übernehmen";
+"profiles.language" = "Sprache";
+"profiles.vocabulary" = "Wörterbuch";
+"profiles.cleanup" = "Bereinigung";
+"profiles.history" = "Aufbewahrung";
+"profiles.vocabulary_help" = "Ein eigenes Wörterbuch ersetzt globale Begriffe und bestätigte Varianten gemeinsam. Neue Varianten bestätigst du im Verlaufseditor.";
+"profiles.active" = "Profil: %@ · %@";
+"profiles.recording" = "%@ · %@";
+"profiles.use_default" = "Standard verwenden";
+"profiles.invalid" = "Profile benötigen eindeutige IDs, Namen bis 40 Zeichen, gültige Sprachcodes (z. B. de, en, auto) und gültige Aufbewahrungsregeln.";
+"profiles.missing" = "Das Profil oder sein eigenes Wörterbuch ist inzwischen nicht mehr vorhanden. Lade die Einstellungen neu.";
+"profiles.busy_settings" = "Diese Geräte- oder Bedienungseinstellungen können erst nach laufenden Aufträgen und offenen Ergebnisvorschauen gespeichert werden. Profiländerungen sind sofort möglich.";
+"profiles.vocabulary_scope" = "Wörterbuch: %@";

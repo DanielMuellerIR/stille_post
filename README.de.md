@@ -26,6 +26,8 @@ Textaufbewahrung und ein vorübergehender Modus ohne Textverlauf sind unter **Ei
 
 Im Editor übernimmt **Ins Wörterbuch …** ausdrücklich bestätigte Schreibweisen für künftige Bereinigungen. **Neu bereinigen** erstellt aus dem vollständigen Rohtext eine neue Fassung mit der aktuellen Konfiguration; sie wird erst nach **Neue Fassung übernehmen** gespeichert und nie automatisch eingefügt.
 
+Profile für Sprache, Wörterbuch, Bereinigung und Aufbewahrung lassen sich in den Einstellungen verwalten und im Menü manuell wechseln. Geerbte Bereiche verwenden globale Einstellungen; laufende Aufträge behalten ihren Startstand. Siehe [Diktierprofile](docs/diktierprofile.md).
+
 ## In fünf Minuten startklar
 
 Das fertige, signierte App-Paket läuft auf **Apple-Silicon-Macs ab macOS 13**.

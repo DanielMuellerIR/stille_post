@@ -28,10 +28,27 @@ public final class ConfigFile: @unchecked Sendable {
         }
     }
 
-    public func addVocabulary(term: String, variant: String?) throws -> Config {
+    public func addVocabulary(term: String, variant: String?, profileID: UUID? = nil) throws -> Config {
         try locked {
             var config = try read()
-            config.cleanup = try VocabularyRules.adding(term: term, variant: variant, to: config.cleanup)
+            if let profileID {
+                guard let index = config.profiles.firstIndex(where: { $0.id == profileID }),
+                      let vocabulary = config.profiles[index].vocabulary else { throw Config.ProfileFailure.missing }
+                let updated = try VocabularyRules.adding(term: term, variant: variant, to: vocabulary.applying(to: config.cleanup))
+                config.profiles[index].vocabulary = Config.Vocabulary(updated)
+            } else {
+                config.cleanup = try VocabularyRules.adding(term: term, variant: variant, to: config.cleanup)
+            }
+            try write(config)
+            return config
+        }
+    }
+
+    public func selectProfile(_ id: UUID?) throws -> Config {
+        try locked {
+            var config = try read()
+            if let id, !config.profiles.contains(where: { $0.id == id }) { throw Config.ProfileFailure.missing }
+            config.selectedProfileID = id
             try write(config)
             return config
         }

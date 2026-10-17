@@ -440,11 +440,11 @@
 "editor.vocabulary.term" = "Preferred spelling";
 "editor.vocabulary.variant" = "Mishearing (optional), e.g. Whis per";
 "editor.vocabulary.variant_help" = "Optional: 2–3 parts of at least three letters each, at most one differing letter when joined. Target: a built-in technical term or internal capitals, e.g. Whis per → Whisper or Git hub → GitHub. Exact word boundaries; variants can be removed in Settings.";
-"editor.vocabulary.confirm" = "Use this spelling and optional mishearing for all future cleanup.";
+"editor.vocabulary.confirm" = "Use this spelling and optional mishearing in the dictionary shown above.";
 "editor.vocabulary.save" = "Save dictionary entry";
 "editor.vocabulary.saved" = "Saved. Applies to the next request and is visible in Settings.";
 "editor.recleanup.title" = "Clean up again";
-"editor.recleanup.help" = "Clean up the entire saved Whisper transcript once with the current configuration. Text may be sent to the configured services. No audio is needed and nothing is pasted. The previous version is preserved until you accept the new one.";
+"editor.recleanup.help" = "Clean up the entire saved Whisper transcript once with the profile active when this request starts. Text may be sent to the configured services. No audio is needed and nothing is pasted. The previous version is preserved until you accept the new one.";
 "editor.recleanup.start" = "Clean up raw transcript now";
 "editor.recleanup.running" = "Creating a new version …";
 "editor.recleanup.replace_help" = "Accepting replaces the saved version and the current draft. The original output and up to three previous versions are preserved.";
@@ -455,3 +455,28 @@
 "settings.cleanup.variants_help" = "Confirmed mishearings apply globally. Delete their variants before removing a target spelling.";
 "common.copy" = "Copy";
 "common.delete" = "Delete";
+
+// Manuelle Diktierprofile
+"profiles.title" = "Profiles";
+"profiles.global" = "Global settings";
+"profiles.help" = "Profiles affect subsequent requests. Areas without overrides inherit the global settings from the other tabs.";
+"profiles.default" = "Default profile";
+"profiles.edit" = "Edit profile";
+"profiles.choose" = "Choose a profile";
+"profiles.new" = "New profile";
+"profiles.new_name" = "New profile";
+"profiles.name" = "Profile name";
+"profiles.choose_help" = "Create a profile or select one to edit.";
+"profiles.inherit" = "Inherit global settings";
+"profiles.language" = "Language";
+"profiles.vocabulary" = "Dictionary";
+"profiles.cleanup" = "Cleanup";
+"profiles.history" = "Retention";
+"profiles.vocabulary_help" = "A custom dictionary replaces global terms and confirmed variants together. Confirm new variants in the history editor.";
+"profiles.active" = "Profile: %@ · %@";
+"profiles.recording" = "%@ · %@";
+"profiles.use_default" = "Use default";
+"profiles.invalid" = "Profiles need unique IDs, names up to 40 characters, valid language codes (e.g. de, en, auto) and valid retention settings.";
+"profiles.missing" = "The profile or its custom dictionary no longer exists. Reload settings.";
+"profiles.busy_settings" = "These device or interface settings can be saved after running requests and pending result previews finish. Profile changes can be saved immediately.";
+"profiles.vocabulary_scope" = "Dictionary: %@";

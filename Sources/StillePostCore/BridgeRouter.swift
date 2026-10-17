@@ -13,6 +13,13 @@ public struct BridgeHandlers: Sendable {
     /// Produktversion für `/v1/health`.
     public var version: String
     var cleanupForRequest: (@Sendable () -> Cleanup)?
+    struct Request {
+        let transcribe: @Sendable (Data) async throws -> String
+        let cleanup: Cleanup
+        let cleanupEnabled: Bool
+    }
+    var requestSnapshot: (@Sendable () -> Request)?
+    var updateConfiguration: (@Sendable (Config) -> Void)?
     var updateVocabulary: (@Sendable (Config.Cleanup) -> Void)?
 
     public init(transcribe: @escaping @Sendable (Data) async throws -> String,
@@ -90,16 +97,16 @@ public actor BridgeRouter {
             return .json(status: 200, object: [
                 "ok": true,
                 "version": handlers.version,
-                "cleanup": handlers.cleanupEnabled,
+                "cleanup": snapshot().cleanupEnabled,
             ])
 
         case ("POST", "/v1/dictate"):
-            let cleanup = handlers.cleanupForRequest?() ?? handlers.cleanup
-            return await serialized { await self.dictate(request, cleanup: cleanup) }
+            let configuration = snapshot()
+            return await serialized { await self.dictate(request, configuration: configuration) }
 
         case ("POST", "/v1/cleanup"):
-            let cleanup = handlers.cleanupForRequest?() ?? handlers.cleanup
-            return await serialized { await self.cleanupOnly(request, cleanup: cleanup) }
+            let configuration = snapshot()
+            return await serialized { await self.cleanupOnly(request, configuration: configuration) }
 
         case (_, "/v1/health"), (_, "/v1/dictate"), (_, "/v1/cleanup"):
             return .error(status: 405, message: L10n.text("core.bridge.method_not_allowed"))
@@ -107,6 +114,11 @@ public actor BridgeRouter {
         default:
             return .error(status: 404, message: L10n.text("core.bridge.unknown_route"))
         }
+    }
+
+    private func snapshot() -> BridgeHandlers.Request {
+        handlers.requestSnapshot?() ?? BridgeHandlers.Request(transcribe: handlers.transcribe,
+            cleanup: handlers.cleanupForRequest?() ?? handlers.cleanup, cleanupEnabled: handlers.cleanupEnabled)
     }
 
     /// Reiht eine schwere Anfrage ans Ende der Warteschlange ein: Sie startet
@@ -162,7 +174,7 @@ public actor BridgeRouter {
 
     /// Audio rein, fertiger Text raus. `?raw=1` überspringt die Bereinigung —
     /// gedacht für Diagnose und für den Fall, dass nur die Spracherkennung zählt.
-    private func dictate(_ request: BridgeRequest, cleanup: BridgeHandlers.Cleanup) async -> BridgeResponse {
+    private func dictate(_ request: BridgeRequest, configuration: BridgeHandlers.Request) async -> BridgeResponse {
         guard !request.body.isEmpty else {
             return .error(status: 400, message: L10n.text("core.bridge.audio_empty"))
         }
@@ -170,7 +182,7 @@ public actor BridgeRouter {
         let raw: String
         do {
             try Task.checkCancellation()
-            raw = TranscriptPolish.flattenLineBreaks(try await handlers.transcribe(request.body))
+            raw = TranscriptPolish.flattenLineBreaks(try await configuration.transcribe(request.body))
             try Task.checkCancellation()
         } catch {
             return .error(status: 500, message: error.localizedDescription)
@@ -185,13 +197,13 @@ public actor BridgeRouter {
         }
 
         let wantsRaw = request.query["raw"] == "1"
-        guard !wantsRaw, handlers.cleanupEnabled else {
+        guard !wantsRaw, configuration.cleanupEnabled else {
             return .json(status: 200, object: [
                 "text": raw, "raw": raw, "sttSec": rounded(sttSeconds),
             ])
         }
         let cleanupStarted = Date()
-        let result = await cleanup(raw)
+        let result = await configuration.cleanup(raw)
         var object = payload(raw: raw, result: result,
                              cleanupSeconds: Date().timeIntervalSince(cleanupStarted))
         object["sttSec"] = rounded(sttSeconds)
@@ -201,18 +213,18 @@ public actor BridgeRouter {
     /// Nur die Bereinigung. Damit kann ein Gerät, das selbst transkribiert
     /// (Apple-Diktat oder später Whisper auf dem iPhone), die Textqualität von
     /// Stille Post nutzen, ohne Audio zu übertragen.
-    private func cleanupOnly(_ request: BridgeRequest, cleanup: BridgeHandlers.Cleanup) async -> BridgeResponse {
+    private func cleanupOnly(_ request: BridgeRequest, configuration: BridgeHandlers.Request) async -> BridgeResponse {
         guard let text = String(data: request.body, encoding: .utf8) else {
             return .error(status: 415, message: L10n.text("core.bridge.text_not_utf8"))
         }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .error(status: 400, message: L10n.text("core.bridge.text_empty"))
         }
-        guard handlers.cleanupEnabled else {
+        guard configuration.cleanupEnabled else {
             return .error(status: 503, message: L10n.text("core.bridge.cleanup_off"))
         }
         let started = Date()
-        let result = await cleanup(text)
+        let result = await configuration.cleanup(text)
         return .json(status: 200, object: payload(
             raw: text, result: result, cleanupSeconds: Date().timeIntervalSince(started)
         ))
@@ -292,24 +304,27 @@ public extension BridgeHandlers {
     ///
     /// Der whisper-server wird bei Bedarf gestartet, genau wie beim Diktat am Mac.
     static func live(config: Config, version: String) -> BridgeHandlers {
-        let whisper = WhisperClient(config: config.whisper)
-        let serverManager = WhisperServerManager(config: config.whisper)
-        let cleanup = CleanupService(config: config.cleanup)
-        let vocabulary = BridgeVocabulary(cleanup: cleanup)
-        var handlers = BridgeHandlers(
-            transcribe: { data in
+        let effective = config.resolvedForRequest()
+        let whisper = WhisperClient(config: effective.whisper)
+        let serverManager = WhisperServerManager(config: effective.whisper)
+        let cleanup = CleanupService(config: effective.cleanup)
+        let requests = DictationRequestStore(config: config, transcriber: whisper, cleanup: cleanup)
+        @Sendable func snapshot() -> BridgeHandlers.Request {
+            let request = requests.snapshot()
+            return BridgeHandlers.Request(transcribe: { data in
                 try Task.checkCancellation()
                 let samples = try AudioDecoder.samples16kMono(from: data)
                 try Task.checkCancellation()
-                try await serverManager.ensureRunning(client: whisper)
-                return try await whisper.transcribe(samples: samples)
-            },
-            cleanup: { text in await cleanup.clean(text) },
-            cleanupEnabled: config.cleanup.enabled,
-            version: version
-        )
-        handlers.cleanupForRequest = { vocabulary.snapshot() }
-        handlers.updateVocabulary = { vocabulary.update($0) }
+                try await serverManager.ensureRunning(reachability: request.transcriber)
+                return try await request.transcriber.transcribe(samples: samples)
+            }, cleanup: { text in await request.cleanup.clean(text) }, cleanupEnabled: request.config.cleanup.enabled)
+        }
+        let initial = snapshot()
+        var handlers = BridgeHandlers(transcribe: initial.transcribe, cleanup: initial.cleanup,
+            cleanupEnabled: initial.cleanupEnabled, version: version)
+        handlers.requestSnapshot = { snapshot() }
+        handlers.updateConfiguration = { requests.configure($0) }
+        handlers.updateVocabulary = { requests.configureVocabulary($0) }
         return handlers
     }
 }

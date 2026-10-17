@@ -27,6 +27,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var pasteTarget: PasteService.Target?
     private let resultPreview = ResultPreviewController()
     private var resultMemory = TransientResultStore()
+    private struct PreviewDelivery {
+        let result: TransientResultStore.Result
+        let target: PasteService.Target?
+        let focus: Bool
+        let floating: Bool
+    }
+    private var pendingResults = PendingResults<PreviewDelivery>()
     private var settingsWindow: SettingsWindowController!
     /// Netzwerkzugang für eigene Geräte im Heimnetz; nil = ausgeschaltet.
     private var bridge: BridgeServer?
@@ -137,6 +144,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Ebenfalls für GUI-Checks: Overlay in einem bestimmten Zustand zeigen
         // (das Overlay erscheint sonst nur mitten in einem echten Diktat).
         switch ProcessInfo.processInfo.environment["STILLEPOST_OVERLAY_PREVIEW"] {
+        case "recording":
+            overlay.recordingContext = L10n.format("profiles.recording", engine.sessionConfiguration.profileLabel,
+                engine.sessionConfiguration.whisper.language)
+            overlay.show(.recording)
         case "processing-fallback":
             overlay.show(.processing(detail: L10n.format(
                 "app.cleanup_fallback",
@@ -159,7 +170,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if environment["STILLEPOST_APP_SUPPORT"] != nil,
            environment["STILLEPOST_CONFIG"] != nil,
            let test = environment["STILLEPOST_RESULT_TEST"],
-           ["seed", "success", "raw", "empty", "failed", "long"].contains(test) {
+           ["seed", "success", "raw", "empty", "failed", "long", "concurrent-private"].contains(test) {
             let synthetic = "Dies ist ein künstlicher Ergebnistext. Zahlen: 128 Euro."
             let text = test == "long"
                 ? (1...80).map { "Absatz \($0): \(synthetic)" }.joined(separator: "\n\n")
@@ -178,6 +189,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                     status: failed ? "failed" : "ok", durationSec: 1,
                     cleanupFellBack: test == "raw")
                 engine.onResult?(DictationResult(text: delivered, entry: entry))
+                if test == "concurrent-private" {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
+                        var retry = HistoryStore.Entry(rawText: "", cleanText: "Älteres privates Wiederholungsergebnis 256.", status: "ok", durationSec: 1)
+                        retry.storesText = false
+                        self?.engine.onPrivateRetryResult?(retry)
+                    }
+                }
             }
         }
     }
@@ -211,19 +229,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // MARK: - Bausteine aufbauen / Einstellungen anwenden
 
     /// Baut Engine, Overlay, Verlaufsfenster und Hotkey aus der aktuellen Config auf.
-    /// Läuft beim Start und nach jedem Speichern der Einstellungen.
+    /// Läuft beim Start und nach Änderungen an globalen Komponenten.
     private func buildComponents() {
         pasteTarget = nil
-        var engineConfig = config
-        engineConfig.history = effectiveHistoryPolicy
+        let engineConfig = requestConfiguration
         engine = DictationEngine(config: engineConfig)
         overlay = OverlayController(config: config.ui)
         historyWindow = HistoryWindowController(engine: engine, onVocabularySaved: { [weak self] saved in
             guard let self else { return }
-            self.config.cleanup.dictionary = saved.cleanup.dictionary
-            self.config.cleanup.dictionaryVariants = saved.cleanup.dictionaryVariants
-            self.engine.configureVocabulary(saved.cleanup)
-            self.bridge?.configureVocabulary(saved.cleanup)
+            self.adoptRequestSettings(saved)
+            self.updateRequestConfiguration()
         })
         setupEngineCallbacks()
         startHistoryMaintenance()
@@ -256,7 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Ohne diesen Timer bleibt das Vorwärmen beim Aufnahme-Start die Absicherung
         // gegen Kaltstarts (DictationEngine.start()): Es lädt das Modell, während man
         // noch spricht, und schiebt die Frist bei jedem Diktat neu an.
-        guard CleanupService.pinsForever(config.cleanup.keepAlive) else { return }
+        guard CleanupService.pinsForever(config.resolvedForRequest().cleanup.keepAlive) else { return }
         warmUpTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             self?.engine.keepCleanupModelWarm()
         }
@@ -287,7 +302,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private func launchBridge() {
-        let server = BridgeServer(config: config)
+        let server = BridgeServer(config: requestConfiguration)
         // Zusätzlich zur Datei: stderr bleibt für `swift run` und Diagnoseläufe.
         // Bei der aus dem Finder gestarteten App landet stderr nirgends — deshalb
         // ist die Datei neben config.json der eigentliche Ort zum Nachsehen.
@@ -358,27 +373,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private var effectiveHistoryPolicy: Config.History {
-        var policy = config.history
+        var policy = config.resolvedForRequest().history
         if temporaryPrivateHistory { policy.storeText = false }
         return policy
     }
 
     @objc private func togglePrivateHistory() {
-        guard config.history.storeText else { return }
+        guard config.resolvedForRequest().history.storeText else { return }
         temporaryPrivateHistory.toggle()
         let environment = ProcessInfo.processInfo.environment
         if environment["STILLEPOST_HISTORY_TRACE"] == "1",
            environment["STILLEPOST_CONFIG"] != nil, environment["STILLEPOST_APP_SUPPORT"] != nil {
             FileHandle.standardError.write(Data("history-policy: storesText=\(effectiveHistoryPolicy.storeText)\n".utf8))
         }
-        engine.configureHistory(effectiveHistoryPolicy)
-        updatePrivateHistoryMenu()
+        updateRequestConfiguration()
     }
 
     private func updatePrivateHistoryMenu() {
         let item = statusItem.menu?.items.first { $0.action == #selector(togglePrivateHistory) }
         item?.state = effectiveHistoryPolicy.storeText ? .off : .on
-        item?.isEnabled = config.history.storeText
+        item?.isEnabled = config.resolvedForRequest().history.storeText
     }
 
     private func startHistoryMaintenance() {
@@ -410,32 +424,78 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    /// Verlaufsregeln und Wörterbuch gelten erst für neue Aufträge und beenden
-    /// keine laufende Aufnahme. Andere Einstellungen behalten ihren Neuaufbau.
+    private var requestConfiguration: Config {
+        var result = config
+        if temporaryPrivateHistory {
+            result.history.storeText = false
+            // Die flüchtige Datenschutzwahl hat Vorrang vor jedem Profil.
+            for index in result.profiles.indices where result.profiles[index].history != nil {
+                result.profiles[index].history?.storeText = false
+            }
+        }
+        return result
+    }
+
+    private func adoptRequestSettings(_ saved: Config) {
+        config.profiles = saved.profiles
+        config.defaultProfileID = saved.defaultProfileID
+        config.selectedProfileID = saved.selectedProfileID
+        config.whisper.language = saved.whisper.language
+        config.cleanup = saved.cleanup
+        config.history = saved.history
+    }
+
+    private func updateRequestConfiguration() {
+        engine.configure(requestConfiguration)
+        bridge?.configure(requestConfiguration)
+        statusItem.menu = buildMenu()
+        updateStatusIcon(for: engine.state)
+        warmUpTimer?.invalidate()
+        warmUpTimer = nil
+        if CleanupService.pinsForever(config.resolvedForRequest().cleanup.keepAlive) {
+            warmUpTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                self?.engine.keepCleanupModelWarm()
+            }
+        }
+    }
+
+    /// Profilfelder aktualisieren nur kommende Aufträge. Änderungen an Hardware
+    /// oder Bedienung dürfen einen laufenden Auftrag nicht abbrechen.
     private func applySettings(_ newConfig: Config, expected: Config) throws {
         guard !terminationPending else { return }
+        var requestOnly = config
+        requestOnly.history = newConfig.history
+        requestOnly.cleanup = newConfig.cleanup
+        requestOnly.whisper.language = newConfig.whisper.language
+        requestOnly.profiles = newConfig.profiles
+        requestOnly.defaultProfileID = newConfig.defaultProfileID
+        requestOnly.selectedProfileID = newConfig.selectedProfileID
+        let needsRebuild = requestOnly != newConfig
+        if needsRebuild && (engine.hasInFlightRequests || bridge?.hasInFlightRequests == true || !pendingResults.isEmpty) {
+            throw NSError(domain: "StillePost", code: 1, userInfo: [NSLocalizedDescriptionKey: L10n.text("profiles.busy_settings")])
+        }
         try newConfig.save(expected: expected)
-        var requestPolicyOnly = config
-        requestPolicyOnly.history = newConfig.history
-        requestPolicyOnly.cleanup.dictionary = newConfig.cleanup.dictionary
-        requestPolicyOnly.cleanup.dictionaryVariants = newConfig.cleanup.dictionaryVariants
-        if requestPolicyOnly == newConfig {
+        if !needsRebuild {
             config = newConfig
-            engine.configureHistory(effectiveHistoryPolicy)
-            engine.configureVocabulary(newConfig.cleanup)
-            bridge?.configureVocabulary(newConfig.cleanup)
-            updatePrivateHistoryMenu()
+            updateRequestConfiguration()
             return
         }
         overlay.hide()
-        resultPreview.dismiss()
         if let save = historyWindow.pendingSaveTask { retiredEngineShutdowns.append(save) }
         historyWindow.close()
         retiredEngineShutdowns.append(engine.shutdown())
         config = newConfig
         buildComponents()
-        // Menü neu beschriften (zeigt den ggf. geänderten Hotkey an).
         statusItem.menu = buildMenu()
+    }
+
+    @objc private func selectProfile(_ item: NSMenuItem) {
+        guard !terminationPending else { return }
+        do {
+            let id = (item.representedObject as? String).flatMap(UUID.init(uuidString:))
+            adoptRequestSettings(try ConfigFile().selectProfile(id))
+            updateRequestConfiguration()
+        } catch { overlay.show(.failure(error.localizedDescription)) }
     }
 
     // MARK: - Menüleiste
@@ -462,6 +522,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         cancelItem.target = self
         menu.addItem(cancelItem)
         menu.addItem(.separator())
+        let profileItem = NSMenuItem(title: L10n.format("profiles.active", config.profileLabel,
+            config.resolvedForRequest().whisper.language), action: nil, keyEquivalent: "")
+        let profileMenu = NSMenu()
+        let standard = NSMenuItem(title: L10n.text("profiles.use_default"), action: #selector(selectProfile(_:)), keyEquivalent: "")
+        standard.target = self
+        standard.state = config.selectedProfileID.flatMap { id in config.profiles.first { $0.id == id } } == nil ? .on : .off
+        profileMenu.addItem(standard)
+        for profile in config.profiles {
+            let item = NSMenuItem(title: profile.name, action: #selector(selectProfile(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = profile.id.uuidString
+            item.state = config.selectedProfileID == profile.id ? .on : .off
+            profileMenu.addItem(item)
+        }
+        profileItem.submenu = profileMenu
+        menu.addItem(profileItem)
         let lastResultItem = NSMenuItem(title: L10n.format("menu.last_result",
             HotkeyManager.describe(config.lastResultHotkey)), action: #selector(showLastResult), keyEquivalent: "")
         lastResultItem.target = self
@@ -526,26 +602,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             button.contentTintColor = nil
         }
         button.image = image
-        button.toolTip = description
+        let effective = (state == .starting || state == .recording || state == .processing)
+            ? (engine?.sessionConfiguration ?? config.resolvedForRequest()) : config.resolvedForRequest()
+        button.toolTip = description + " · " + effective.profileLabel + " · " + effective.whisper.language
     }
 
     // MARK: - Engine-Callbacks (Zustand -> Oberfläche)
 
     private func setupEngineCallbacks() {
+        let source = engine!
         // Der Startton wird vollständig vor dem Öffnen des Mikrofons abgespielt.
         // Gerade das iPhone als Continuity-Mikrofon hört den Mac-Lautsprecher sehr
         // klar; der Ton darf deshalb nicht Teil des Whisper-Segments werden.
-        engine.onBeforeRecordingStart = { [weak self] in
-            await self?.playSoundAndWait(custom: "dictation-start", fallback: "Pop")
+        engine.onBeforeRecordingStart = { [weak self, weak source] in
+            guard let self, self.engine === source else { return }
+            await self.playSoundAndWait(custom: "dictation-start", fallback: "Pop")
         }
-        engine.onStateChange = { [weak self] state in
-            guard let self else { return }
+        engine.onStateChange = { [weak self, weak source] state in
+            guard let self, self.engine === source else { return }
             self.updateStatusIcon(for: state)
             switch state {
             case .starting:
-                self.resultPreview.dismiss()
                 self.pasteTarget = PasteService.captureTarget()
             case .recording:
+                self.overlay.recordingContext = L10n.format("profiles.recording", self.engine.sessionConfiguration.profileLabel,
+                    self.engine.sessionConfiguration.whisper.language)
                 self.overlay.show(.recording)
             case .processing:
                 // Tieferer Whoosh/Ding: deutlich ANDERES "Aufnahme beendet"-Signal.
@@ -559,13 +640,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             }
         }
 
-        engine.onResult = { [weak self] result in
-            guard let self else { return }
+        engine.onResult = { [weak self, weak source] result in
+            guard let self, self.engine === source else { return }
             defer { self.pasteTarget = nil }
             if let entry = result.entry,
                let usable = TransientResultStore.Result(text: result.text,
                     rawFallback: entry.cleanupFellBack == true, failed: entry.isFailed) {
-                if self.config.ui.previewBeforePaste {
+                if self.engine.sessionConfiguration.ui.previewBeforePaste || !self.pendingResults.isEmpty {
                     self.overlay.hide()
                     self.showPreview(usable, target: self.pasteTarget)
                 } else {
@@ -580,21 +661,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // Fehlerfall zeigt schon onStateChange(.error) an.
         }
 
-        engine.onPrivateRetryResult = { [weak self] entry in
-            guard let self, let result = TransientResultStore.Result(text: entry.cleanText,
+        engine.onPrivateRetryResult = { [weak self, weak source] entry in
+            guard let self, self.engine === source, let result = TransientResultStore.Result(text: entry.cleanText,
                 rawFallback: entry.cleanupFellBack == true) else { return }
             self.showPreview(result, target: PasteService.captureTarget(), focus: self.canRecallResult, floating: false)
         }
 
         // Bereinigung weicht gerade auf einen Fallback-Endpoint aus: im Overlay
         // anzeigen, damit eine evtl. längere Wartezeit erklärbar ist.
-        engine.onCleanupFallback = { [weak self] label in
-            self?.overlay.show(.processing(detail: L10n.format("app.cleanup_fallback", label)))
+        engine.onCleanupFallback = { [weak self, weak source] label in
+            guard let self, self.engine === source, self.engine.state == .processing else { return }
+            self.overlay.show(.processing(detail: L10n.format("app.cleanup_fallback", label)))
         }
         // Direktanfrage an den primären Endpoint ist gescheitert — es läuft sofort
         // ein zweiter Versuch über eine frische Verbindung.
-        engine.onCleanupPrimaryRetry = { [weak self] in
-            self?.overlay.show(.processing(detail: L10n.text("app.cleanup_primary_retry")))
+        engine.onCleanupPrimaryRetry = { [weak self, weak source] in
+            guard let self, self.engine === source, self.engine.state == .processing else { return }
+            self.overlay.show(.processing(detail: L10n.text("app.cleanup_primary_retry")))
         }
     }
 
@@ -608,7 +691,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard !terminationPending else { return false }
-        if menuItem.action == #selector(togglePrivateHistory) { return config.history.storeText }
+        if menuItem.action == #selector(togglePrivateHistory) { return config.resolvedForRequest().history.storeText }
         return menuItem.action != #selector(showLastResult) ||
             ((resultMemory.last != nil || resultPreview.isVisible) && canRecallResult)
     }
@@ -632,7 +715,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private func showPreview(_ result: TransientResultStore.Result, target: PasteService.Target?, focus: Bool = false, floating: Bool = true) {
-        resultPreview.show(result, focus: focus, floating: floating) { [weak self] action in
+        let delivery = PreviewDelivery(result: result, target: target, focus: focus, floating: floating)
+        if pendingResults.append(delivery) { presentPreview(delivery) }
+    }
+
+    private func presentPreview(_ delivery: PreviewDelivery) {
+        let result = delivery.result
+        resultPreview.show(result, focus: delivery.focus, floating: delivery.floating) { [weak self] action in
             guard let self else { return }
             switch action {
             case .discard: break
@@ -644,8 +733,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 self.overlay.show(.clipboard(note: L10n.text("result.copied")))
             case .insert:
                 self.remember(result)
-                self.insert(result, target: target)
+                self.insert(result, target: delivery.target)
             }
+            if let next = self.pendingResults.finish() { self.presentPreview(next) }
         }
     }
 
@@ -669,7 +759,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func toggleDictation() { engine.toggle() }
     @objc private func cancelDictation() {
         pasteTarget = nil
-        resultPreview.dismiss()
         engine.cancel()
         overlay.hide()
     }

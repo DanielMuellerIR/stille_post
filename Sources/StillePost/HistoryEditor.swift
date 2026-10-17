@@ -7,6 +7,8 @@ import StillePostCore
 final class HistoryEditorModel: ObservableObject, Identifiable {
     let id: UUID
     private let history: HistoryStore
+    let vocabularyScopeLabel: String
+    private let vocabularyProfileID: UUID?
     private let onVocabularySaved: (Config) -> Void
     @Published private(set) var snapshot: HistoryStore.Entry?
     @Published var draft: String { didSet { scheduleComparison() } }
@@ -32,6 +34,9 @@ final class HistoryEditorModel: ObservableObject, Identifiable {
         snapshot = entry
         draft = entry.cleanText
         self.history = history
+        let config = Config.load()
+        self.vocabularyProfileID = config.vocabularyProfileID
+        self.vocabularyScopeLabel = config.vocabularyProfileID == nil ? L10n.text("profiles.global") : config.profileLabel
         self.onVocabularySaved = onVocabularySaved
         scheduleComparison()
     }
@@ -41,10 +46,21 @@ final class HistoryEditorModel: ObservableObject, Identifiable {
     var hasChanges: Bool { snapshot.map { !HistoryStore.sameText($0.cleanText, draft) } ?? false }
     var reviewingCleanup: Bool { recleaning || candidate != nil }
 
-    func copy(_ text: String) {
-        guard snapshot?.canEdit == true else { expireIfNeeded(); return }
+    @discardableResult
+    func copy(_ text: String, write: @escaping (String) -> Void = { text in
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
+    }) -> Task<Void, Never> {
+        Task { @MainActor in
+            do {
+                // Ein anderer Prozess erreicht unseren lokalen onChange-Callback
+                // nicht. Vor dem Export deshalb frisch nach Verfügbarkeit fragen.
+                let entries = try await history.listAsync()
+                reconcile(entries)
+                guard snapshot?.canEdit == true else { return }
+                write(text)
+            } catch { errorMessage = error.localizedDescription }
+        }
     }
 
     func save() {
@@ -90,7 +106,7 @@ final class HistoryEditorModel: ObservableObject, Identifiable {
             defer { saving = false; saveTask = nil }
             do {
                 let saved = try await history.withEditableSnapshotAsync(expected: expected) {
-                    try ConfigFile().addVocabulary(term: term, variant: variant)
+                    try ConfigFile().addVocabulary(term: term, variant: variant, profileID: self.vocabularyProfileID)
                 }
                 onVocabularySaved(saved)
                 vocabularySaved = true
@@ -329,6 +345,7 @@ struct HistoryEditorView: View {
                     .accessibilityLabel(L10n.text("editor.vocabulary.variant"))
                     .accessibilityIdentifier("historyVocabularyVariant")
             }
+            Text(L10n.format("profiles.vocabulary_scope", model.vocabularyScopeLabel)).font(.caption).foregroundColor(.secondary)
             Text(L10n.text("editor.vocabulary.variant_help")).font(.caption).foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Toggle(L10n.text("editor.vocabulary.confirm"), isOn: $model.vocabularyConfirmed)

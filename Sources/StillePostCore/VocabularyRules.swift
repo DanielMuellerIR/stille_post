@@ -10,7 +10,7 @@ public struct DictionaryVariant: Codable, Equatable, Sendable {
     }
 }
 
-/// Bestätigte Schreibweisen gelten global. Die engere Variantenregel verhindert
+/// Bestätigte Schreibweisen gelten im ausdrücklich gewählten Wörterbuch-Scope. Die engere Variantenregel verhindert
 /// insbesondere Ersetzungen kurzer Wörter, Zahlen und Verneinungen.
 public enum VocabularyRules {
     public enum Failure: Error, LocalizedError {

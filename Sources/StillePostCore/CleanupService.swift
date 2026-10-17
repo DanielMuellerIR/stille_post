@@ -76,15 +76,26 @@ public final class CleanupService {
     }
 
     public func replacingVocabulary(with vocabulary: Config.Cleanup) -> CleanupService {
+        return replacingConfiguration(with: vocabularyReplacing(config, vocabulary))
+    }
+
+    private func vocabularyReplacing(_ config: Config.Cleanup, _ vocabulary: Config.Cleanup) -> Config.Cleanup {
         var next = config
         next.dictionary = vocabulary.dictionary
         next.dictionaryVariants = vocabulary.dictionaryVariants
+        return next
+    }
+
+    public func replacingConfiguration(with next: Config.Cleanup) -> CleanupService {
+        if next == config { return self }
         let service = CleanupService(config: next, transport: transport)
         service.onFallbackEndpoint = onFallbackEndpoint
         service.onPrimaryRetry = onPrimaryRetry
-        stateLock.lock()
-        service.lastPrimarySuccess = lastPrimarySuccess
-        stateLock.unlock()
+        if next.chain == config.chain {
+            stateLock.lock()
+            service.lastPrimarySuccess = lastPrimarySuccess
+            stateLock.unlock()
+        }
         return service
     }
 

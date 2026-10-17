@@ -46,7 +46,7 @@ Unter **Text → Ins Wörterbuch …** lässt sich die markierte Schreibweise ü
 oder eine Schreibweise ausdrücklich eingeben. Erst die Bestätigung und
 **Wörterbucheintrag speichern** machen sie dauerhaft. Der Textentwurf wird dabei
 nicht gespeichert. Wörterbucheinträge bleiben unabhängig vom Verlauf erhalten;
-sie sind unter **Einstellungen → Bereinigung** editierbar.
+globale Einträge sind unter **Einstellungen → Bereinigung**, eigene Profilwörterbücher unter **Einstellungen → Profile** editierbar. Der Editor zeigt den beim Öffnen festgehaltenen Geltungsbereich; siehe [Diktierprofile](diktierprofile.md).
 
 Identische Einträge werden nicht erneut hinzugefügt. Eine abweichende Schreibweise
 mit demselben Namen ohne Beachtung der Großschreibung erzeugt einen Konflikt;
@@ -59,7 +59,7 @@ Wörterbuchstand. Reine Wörterbuchänderungen in den Einstellungen beenden kein
 laufende Aufnahme.
 
 Optional ist eine ausdrücklich bestätigte Verhörvariante möglich, etwa
-**Whis per → Whisper**. Sie gilt global und ersetzt ausschließlich die genaue
+**Whis per → Whisper**. Sie gilt im angezeigten Wörterbuch und ersetzt ausschließlich die genaue
 Mehrwortfolge an Wortgrenzen, ohne unscharfe Suche oder verkettete Ersetzungen.
 Die Quelle braucht zwei oder drei durch jeweils ein Leerzeichen getrennte Teile
 mit mindestens drei Buchstaben. Das Ziel muss im Wörterbuch stehen, 6–40 Buchstaben

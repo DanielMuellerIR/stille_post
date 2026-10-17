@@ -45,8 +45,13 @@ struct EditorRegression {
         competing.save(); await competing.saveTask?.value
         precondition(competing.errorMessage != nil && competing.hasChanges)
         precondition(competing.draft == "Konkurrierender ungespeicherter Entwurf")
-        try await store.deleteAsync(id: snapshot.id)
-        competing.reconcile(try await store.listAsync())
+        var copied: String?
+        await competing.copy(competing.draft, write: { copied = $0 }).value
+        precondition(copied == competing.draft, "Zulässiger Konfliktentwurf bleibt kopierbar")
+        try await HistoryStore(baseDir: base).deleteAsync(id: snapshot.id)
+        copied = nil
+        await competing.copy(competing.draft, write: { copied = $0 }).value
+        precondition(copied == nil, "Extern gelöschter Text darf nicht kopiert werden")
         precondition(competing.snapshot == nil && competing.draft.isEmpty && competing.difference == nil)
         precondition(competing.vocabularyTerm.isEmpty && competing.vocabularyVariant.isEmpty && competing.candidate == nil)
         var expiring = snapshot

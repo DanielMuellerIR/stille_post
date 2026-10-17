@@ -26,6 +26,8 @@ Text retention and a temporary mode without text history are available under **S
 
 In the editor, **Add to dictionary …** adopts explicitly confirmed spellings for future cleanup. **Clean up again** creates a new version from the entire raw transcript with the current configuration; it is saved only after **Accept new version** and is never pasted automatically.
 
+Manage profiles for language, dictionary, cleanup and retention in Settings, then select them manually from the menu. Inherited areas use global settings; running requests keep their initial configuration. See [dictation profiles](docs/diktierprofile.md) (German).
+
 ## Ready in five minutes
 
 The signed app package runs on **Apple Silicon Macs with macOS 13 or later**.

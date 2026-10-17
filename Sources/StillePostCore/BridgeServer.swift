@@ -50,6 +50,7 @@ public enum BridgeAddress {
 public final class BridgeServer: @unchecked Sendable {
 
     private let config: Config.Bridge
+    private let configurationUpdate: (@Sendable (Config) -> Void)?
     private let vocabularyUpdate: (@Sendable (Config.Cleanup) -> Void)?
     private let router: BridgeRouter
     private let queue = DispatchQueue(label: "de.stillepost.bridge")
@@ -91,11 +92,13 @@ public final class BridgeServer: @unchecked Sendable {
 
     public init(config: Config.Bridge, router: BridgeRouter,
                 vocabularyUpdate: (@Sendable (Config.Cleanup) -> Void)? = nil,
+                configurationUpdate: (@Sendable (Config) -> Void)? = nil,
                 tokenStatus: @escaping @Sendable () -> BridgeToken.LoadOutcome
                     = { BridgeToken.loadOutcome() }) {
         self.config = config
         self.router = router
         self.vocabularyUpdate = vocabularyUpdate
+        self.configurationUpdate = configurationUpdate
         self.tokenStatus = tokenStatus
         queue.setSpecific(key: queueKey, value: true)
     }
@@ -105,9 +108,12 @@ public final class BridgeServer: @unchecked Sendable {
         self.init(
             config: config.bridge,
             router: BridgeRouter(handlers: handlers, maxBodyBytes: config.bridge.maxRequestMegabytes * 1_048_576),
-            vocabularyUpdate: handlers.updateVocabulary
+            vocabularyUpdate: handlers.updateVocabulary,
+            configurationUpdate: handlers.updateConfiguration
         )
     }
+
+    public func configure(_ config: Config) { configurationUpdate?(config) }
 
     public func configureVocabulary(_ config: Config.Cleanup) { vocabularyUpdate?(config) }
 
@@ -266,6 +272,11 @@ public final class BridgeServer: @unchecked Sendable {
     public var isRunning: Bool {
         if DispatchQueue.getSpecific(key: queueKey) != nil { return running }
         return queue.sync { running }
+    }
+
+    public var hasInFlightRequests: Bool {
+        if DispatchQueue.getSpecific(key: queueKey) != nil { return !sessions.isEmpty }
+        return queue.sync { !sessions.isEmpty }
     }
 
     // MARK: - Verbindungen

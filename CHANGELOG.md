@@ -10,6 +10,28 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.28] — 2026-10-18
+
+### Neu
+
+- Manuell wechselbare Diktierprofile bündeln Sprache, Wörterbuch einschließlich
+  bestätigter Varianten, Bereinigung und Aufbewahrung. Jeder Bereich kann globale
+  Einstellungen übernehmen. Profile lassen sich anlegen, bearbeiten, löschen,
+  als Standard festlegen und im Menü auswählen.
+- Die Aufnahme zeigt Profil und Sprache. Bereits gestartete Desktop- und
+  Brückenaufträge behalten ihre Konfiguration bis zum Abschluss; Profilwechsel
+  starten den Whisper-Server nicht neu. Alte Konfigurationen behalten ihr Verhalten.
+- Wörterbuchübernahmen zeigen ihren globalen oder profilspezifischen Geltungsbereich.
+  Erneute Bereinigung verwendet das beim ausdrücklichen Start aktive Profil.
+
+### Behoben
+
+- Offene Editoren prüfen vor dem Kopieren frisch, ob ihr Text noch verfügbar ist.
+  Externe Löschung, Privatstatus und Textablauf sperren den Export; zulässige
+  Konfliktentwürfe bleiben kopierbar.
+- Gleichzeitig eintreffende private Wiederholungs- und Diktatergebnisse bleiben
+  bis zur ausdrücklichen Entscheidung in Vorschau-Reihenfolge erhalten.
+
 ## [0.9.27] — 2026-10-16
 
 ### Neu
