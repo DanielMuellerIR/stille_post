@@ -49,7 +49,7 @@ final class SelectionCleanupTests: XCTestCase {
         var profile = Config.Profile(name: "DE lokal"); profile.language = "de"; profile.spokenFormatting = true
         config.profiles = [profile]; config.appProfiles = ["com.example.selection": profile.id]
         let session = SelectionCleanupSession(), gate = SelectionTestGate()
-        let raw = "128, nicht 256. Format neuer Absatz Version 1.2."
+        let raw = "Format Liste Anfang 128, nicht 256. Format Listenpunkt Format Anführungszeichen Anfang Version 1.2. Format Anführungszeichen Ende Format Liste Ende"
         var calls = 0
         try session.start(text: raw, configuration: config, appBundleID: "com.example.selection") { cleanup, input in
             calls += 1; XCTAssertTrue(cleanup.spokenFormatting); XCTAssertEqual(input, raw)
@@ -64,7 +64,7 @@ final class SelectionCleanupTests: XCTestCase {
         try await selectionWait { await MainActor.run { session.state == .preview } }
         XCTAssertEqual(calls, 1)
         XCTAssertEqual(session.input, raw)
-        XCTAssertEqual(session.result?.text, "128, Nicht 256.\n\nVersion 1.2.")
+        XCTAssertEqual(session.result?.text, "• 128, nicht 256.\n• „Version 1.2.“\n")
         XCTAssertEqual(session.result?.origin, .formatting)
         session.close()
         XCTAssertNil(session.input); XCTAssertNil(session.configuration); XCTAssertNil(session.result)
@@ -101,19 +101,21 @@ final class SelectionCleanupTests: XCTestCase {
     }
 
     @MainActor func testUnverifiedServiceTightensPolicyAfterProfileResolutionWithoutSavingIt() async throws {
-        var config = Config(); config.cleanup.localOnly = false; config.cleanup.enabled = false
+        var config = Config(); config.cleanup.localOnly = false; config.cleanup.enabled = false; config.cleanup.spokenFormatting = true
         var profile = Config.Profile(name: "Manual")
         profile.cleanup = Config.CleanupOptions(config.cleanup); profile.cleanup?.localOnly = false
         config.profiles = [profile]; config.selectedProfileID = profile.id
         let session = SelectionCleanupSession()
-        try session.start(text: "128, not 256.", configuration: config, appBundleID: nil, requiresLocalOnly: true) { cleanup, input in
+        try session.start(text: "format list start 128, not 256. format bullet point format quote start Version 1.2 format quote end format list end", configuration: config, appBundleID: nil, requiresLocalOnly: true) { cleanup, input in
             XCTAssertTrue(cleanup.localOnly)
-            return .init(text: input, usedFallback: false, fallbackReason: nil, endpoint: nil, origin: .raw)
+            return await CleanupService(config: cleanup).clean(input)
         }
         try await selectionWait { await MainActor.run { session.state == .preview } }
         XCTAssertTrue(session.configuration?.cleanup.localOnly == true)
         XCTAssertFalse(config.cleanup.localOnly)
         XCTAssertEqual(config.profiles[0].cleanup?.localOnly, false)
+        XCTAssertEqual(session.result?.origin, .formatting)
+        XCTAssertEqual(session.result?.text, "• 128, not 256.\n• “Version 1.2”\n")
         session.close()
     }
 }

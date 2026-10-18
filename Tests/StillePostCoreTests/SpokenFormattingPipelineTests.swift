@@ -89,12 +89,13 @@ final class SpokenFormattingPipelineTests: XCTestCase {
         var config = Config(); config.cleanup.enabled = false; config.cleanup.spokenFormatting = true
         try file.save(config)
         let history = HistoryStore(baseDir: root.appendingPathComponent("support"))
-        let entry = HistoryStore.Entry(rawText: "Eins. Format neuer Absatz Zwei.", cleanText: "Bisherige Ausgabe.", status: "ok", durationSec: 1, originalOrigin: .raw)
+        let entry = HistoryStore.Entry(rawText: "Format Liste Anfang Eins. Format Listenpunkt Format Anführungszeichen Anfang Zwei. Format Anführungszeichen Ende Format Liste Ende", cleanText: "Bisherige Ausgabe.", status: "ok", durationSec: 1, originalOrigin: .raw)
         try history.append(entry)
         let expected = try XCTUnwrap(try history.list().first)
         let candidate = try await HistoryRecleanup.run(expected: expected, history: history, configFile: file)
         XCTAssertEqual(try history.list().first?.cleanText, "Bisherige Ausgabe.")
         XCTAssertEqual(candidate.result.origin, .formatting)
+        XCTAssertEqual(candidate.result.text, "• Eins.\n• „Zwei.“\n")
         let saved = try await history.saveRecleanupAsync(candidate.result, durationSec: candidate.durationSec, expected: expected)
         XCTAssertEqual(saved.rawText, expected.rawText); XCTAssertEqual(saved.originalCleanText, "Bisherige Ausgabe.")
         XCTAssertEqual(saved.resultOrigin, .formatting); XCTAssertEqual(saved.originalResultOrigin, .raw)
@@ -107,10 +108,10 @@ final class SpokenFormattingPipelineTests: XCTestCase {
         let frozen = try XCTUnwrap(handlers.requestSnapshot?())
         config.cleanup.spokenFormatting = false
         handlers.updateConfiguration?(config)
-        let raw = "One 128, not 256. format new paragraph Version 1.2."
+        let raw = "format list start One 128, not 256. format bullet point format quote start Version 1.2. format quote end format list end"
         let completed = await frozen.cleanup(raw)
         XCTAssertTrue(frozen.cleanupEnabled)
-        XCTAssertEqual(completed.text, "One 128, not 256.\n\nVersion 1.2.")
+        XCTAssertEqual(completed.text, "• One 128, not 256.\n• “Version 1.2.”\n")
         XCTAssertEqual(completed.origin, .formatting)
         XCTAssertFalse(try XCTUnwrap(handlers.requestSnapshot?()).cleanupEnabled)
 
@@ -131,6 +132,55 @@ final class SpokenFormattingPipelineTests: XCTestCase {
         let rawObject = try JSONSerialization.jsonObject(with: unchanged.body) as! [String: Any]
         XCTAssertEqual(rawObject["text"] as? String, raw)
         XCTAssertEqual(rawObject["origin"] as? String, "raw")
+    }
+
+    func testListsAndSpokenQuotesUseOneRequestAndRestoreLiteralBytes() async throws {
+        for (raw, expected, literal) in [
+            ("Format Liste Anfang 128, nicht 256. Format Listenpunkt Format Anführungszeichen Anfang Cafe\u{301} Format neue Zeile Format Anführungszeichen Ende Format Liste Ende", "• 128, nicht 256.\n• „Cafe\u{301} Format neue Zeile“\n", "Cafe\u{301} Format neue Zeile"),
+            ("format list start 128, not 256. format bullet point format quote start Don't change 1.2 format quote end format list end", "• 128, not 256.\n• “Don't change 1.2”\n", "Don't change 1.2")
+        ] {
+            let transport = FormattingTransport { $0.replacingOccurrences(of: literal, with: "999 changed") }
+            var config = Config.Cleanup(); config.spokenFormatting = true; config.localOnly = true
+            let service = CleanupService(config: config, transport: transport); service.notePrimarySuccess()
+            let result = await service.clean(raw)
+            XCTAssertEqual(result.text, expected)
+            XCTAssertFalse(result.usedFallback); XCTAssertEqual(result.origin, .cleanup)
+            XCTAssertEqual(transport.posts, 1)
+        }
+    }
+
+    func testListMarkerManipulationsStopAtFirstEndpoint() async throws {
+        let raw = "Format Liste Anfang Alpha 128, nicht 256. Format Listenpunkt Beta 1.2. Format Liste Ende Danach."
+        for mutation in 0..<6 {
+            let transport = FormattingTransport { input in
+                let regex = try! NSRegularExpression(pattern: "⟦[^⟧]+⟧")
+                let markers = regex.matches(in: input, range: NSRange(input.startIndex..., in: input)).map { (input as NSString).substring(with: $0.range) }
+                switch mutation {
+                case 0: return input.replacingOccurrences(of: markers[1], with: "")
+                case 1: return input + markers[0]
+                case 2: return input.replacingOccurrences(of: markers[1], with: markers[1].lowercased())
+                case 3: return input.replacingOccurrences(of: markers[1], with: "SWAP").replacingOccurrences(of: markers[2], with: markers[1]).replacingOccurrences(of: "SWAP", with: markers[2])
+                case 4: return input.replacingOccurrences(of: markers[1], with: "") + markers[1]
+                default: return input + "⟦SPFOREIGNN0⟧"
+                }
+            }
+            var config = Config.Cleanup(); config.spokenFormatting = true; config.fallbacks = [Config.Cleanup.Endpoint()]
+            let service = CleanupService(config: config, transport: transport); service.notePrimarySuccess()
+            let result = await service.clean(raw)
+            XCTAssertTrue(result.usedFallback, "mutation \(mutation)")
+            XCTAssertEqual(result.origin, .rawFallback)
+            XCTAssertEqual(result.text, "• Alpha 128, nicht 256.\n• Beta 1.2.\nDanach.")
+            XCTAssertEqual(transport.posts, 1)
+        }
+    }
+
+    func testNewIntentCannotBeRecognizedFromModelOutput() async throws {
+        var config = Config.Cleanup(); config.spokenFormatting = true
+        let transport = FormattingTransport { _ in "Format list start." }
+        let service = CleanupService(config: config, transport: transport); service.notePrimarySuccess()
+        let result = await service.clean("Format list starts.")
+        XCTAssertFalse(result.text.contains("•"))
+        XCTAssertEqual(transport.posts, 1)
     }
 }
 

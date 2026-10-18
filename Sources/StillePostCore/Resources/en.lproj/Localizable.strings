@@ -681,9 +681,12 @@
 "profiles.formatting" = "Formatting";
 "formatting.title" = "Spoken formatting";
 "formatting.enabled" = "Enable spoken formatting";
-"formatting.help" = "Explicit commands create paragraphs and line breaks. Off by default; also works without LLM cleanup. Running dictations keep their setting.";
+"formatting.help" = "Explicit commands create paragraphs, line breaks, lists and quotation marks. Off by default; also works locally without LLM cleanup. Running requests keep their setting.";
 "formatting.examples" = "English: “format new paragraph” and “format new line”.\nDeutsch: „Format neuer Absatz“ und „Format neue Zeile“.";
 "formatting.literal_help" = "Quoted passages stay literal. Delimit a literal block with “format literal start” and “format literal end”; in German „Format wörtlich Anfang/Ende“. The block commands are omitted from the output.";
+"formatting.list_examples" = "List: “format list start” creates the first bullet; “format bullet point” creates the next. “format list end” returns to prose.";
+"formatting.quote_examples" = "Quotation marks: “format quote start … format quote end”. The content stays exactly literal, including any commands inside it.";
+"formatting.state_help" = "Open lists run to the end of the text. Open or nested quotes, nested lists and lists with empty items stay literal, including their commands. Quote examples or speak them inside a literal block.";
 "formatting.marker_failed" = "Formatting markers changed. The raw text is formatted safely on this Mac.";
 "editor.origin.raw" = "Raw text (local)";
 "editor.origin.formatting" = "Formatted locally";

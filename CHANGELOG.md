@@ -10,6 +10,22 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.39] — 2026-10-18
+
+### Neu
+
+- Die optionale gesprochene Formatierung versteht ausdrückliche deutsche und
+  englische Listen- und Anführungszeichenbefehle. Zitatinhalt bleibt exakt wörtlich;
+  offene oder verschachtelte Zitate und ungültige Listen bleiben samt Befehlen Text.
+- Die neuen Befehle gelten auch bei lokaler Verarbeitung, ausdrücklicher
+  Neubereinigung und Auswahlbereinigung. Hilfe und Beispiele sind in DE/EN ergänzt.
+
+### Behoben
+
+- Formatierungsmarkierungen werden zusätzlich auf ihre Lage zwischen den
+  Inhaltswörtern geprüft. Verschobene Markierungen führen sofort zum sicher lokal
+  formatierten Rohtext, ohne einen weiteren Bereinigungsdienst anzufragen.
+
 ## [0.9.38] — 2026-10-18
 
 ### Neu

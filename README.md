@@ -28,7 +28,7 @@ In the editor, **Add to dictionary …** adopts explicitly confirmed spellings f
 
 Manage profiles for language, dictionary, cleanup and retention in Settings, assign them to apps, or select them manually from the menu. Inherited areas use global settings; running requests keep their initial configuration. A local policy also confines every text request to loopback. See [dictation profiles](docs/diktierprofile.md) (German).
 
-Optional explicit German and English commands create paragraphs and line breaks, including with LLM cleanup disabled. Quoted text stays literal; see [spoken formatting](docs/gesprochene-formatierung.md) (German).
+Optional explicit German and English commands create paragraphs, line breaks, bullet lists and quotation marks, including with LLM cleanup disabled. Quoted text stays literal; see [spoken formatting](docs/spoken-formatting.md).
 
 Explicitly clean up selected text in another app through the menu or a macOS service. A preview and a fresh target check precede confirmed replacement. See [selected text cleanup](docs/auswahl-bereinigen.md) (German).
 

@@ -28,7 +28,7 @@ Im Editor übernimmt **Ins Wörterbuch …** ausdrücklich bestätigte Schreibwe
 
 Profile für Sprache, Wörterbuch, Bereinigung und Aufbewahrung lassen sich in den Einstellungen verwalten, Apps zuordnen und im Menü manuell wechseln. Geerbte Bereiche verwenden globale Einstellungen; laufende Aufträge behalten ihren Startstand. Eine lokale Richtlinie begrenzt auch sämtliche Textanfragen auf Loopback. Siehe [Diktierprofile](docs/diktierprofile.md).
 
-Ausdrückliche deutsche und englische Absatz-/Zeilenbefehle lassen sich optional aktivieren, auch ohne LLM. Zitate bleiben wörtlich; siehe [gesprochene Formatierung](docs/gesprochene-formatierung.md).
+Ausdrückliche deutsche und englische Befehle für Absätze, Zeilen, Listen und Anführungszeichen lassen sich optional aktivieren, auch ohne LLM. Zitate bleiben wörtlich; siehe [gesprochene Formatierung](docs/gesprochene-formatierung.md).
 
 Ausgewählter Text anderer Apps lässt sich ausdrücklich über Menü oder macOS-Dienst bereinigen. Eine Vorschau und erneute Zielprüfung gehen dem bestätigten Ersetzen voraus. Siehe [Auswahl bereinigen](docs/auswahl-bereinigen.md).
 
