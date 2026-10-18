@@ -28,7 +28,7 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Silero als Opt-in mit festem, SHA-256-geprüftem Modell und RMS-Rückfall integrieren; siehe [Silero](docs/silero-vad.md).
 - [ ] Silero mit menschlichen Mikrofonaufnahmen abnehmen (kurze/leise Wörter, Klicks, Rauschen, lange Pausen und Pause/Fortsetzen).
 - [x] Native iPhone-App mit Aufnahme, Brückenzugriff und manuellem Kopieren umsetzen und am echten Gerät prüfen; [Entwicklungsclient](iOS/README.md), HTTP ausschließlich für ausdrücklich freigegebene Debug-Tests.
-- [ ] TLS-/QR-Kopplung: 0.9.42 implementiert; QR-/HTTPS-Kopplung, echtes AAC-Diktat, Kopieren, Listener-Neustart sowie Pin-/Token-/Zertifikatswechsel am iPhone geprüft. Versandabbruch während der Bereinigung, Aufnahmeerhalt über App-Neustart und ausdrückliches erneutes Senden über HTTPS geprüft. Mac-Kopplungsansicht in DE/EN auf Öffnen, Fokuswechsel und Schließen geprüft, Zweiminutenfrist unter DE bestätigt. Der Ausblendfall bleibt unbelegt. Danach lokales Offline-Diktat aufbauen.
+- [x] TLS-/QR-Kopplung: 0.9.42 implementiert; QR-/HTTPS-Kopplung, echtes AAC-Diktat, Kopieren, Listener-Neustart sowie Pin-/Token-/Zertifikatswechsel am iPhone geprüft. Versandabbruch während der Bereinigung, Aufnahmeerhalt über App-Neustart und ausdrückliches erneutes Senden über HTTPS geprüft. Mac-Kopplungsansicht in DE/EN auf Öffnen, Fokuswechsel, Schließen und natives Aus-/Einblenden geprüft; nach der Rückkehr bleibt der QR-Code geschlossen. Zweiminutenfrist unter DE bestätigt. Danach lokales Offline-Diktat aufbauen.
 - [ ] Die wesentlichen Kombinationen auf realen Geräten abnehmen und beide Nutzungsanleitungen aktualisieren.
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
@@ -90,10 +90,10 @@ wurden am 2026-10-18 auf iOS 26.6.2 mit macOS 26.7.1 geprüft. Falscher Pin,
 alter und falscher Token sowie fehlender Token werden abgewiesen; Neu-Kopplung
 nach Tokenwechsel und Zertifikatserneuerung funktioniert. Auch der verschlüsselte
 Versandabbruch während der Bereinigung, Aufnahmeerhalt nach App-Neustart und
-ausdrückliches erneutes Senden sind bestanden. Der native Ausblendfall bleibt
-unbelegt: Die Menüleisten-App ließ sich auf dem geprüften macOS weder per API
-noch per ⌘H ausblenden. Bis zum Abschluss der Restabnahme bleibt 0.9.42 ein
-Entwicklungsstand. Simulator und lokale Prüfungen ersetzen die Gerätefälle nicht.
+ausdrückliches erneutes Senden sind bestanden. Auch das native Aus-/Einblenden
+der Mac-App über Bedienungshilfen wurde in DE/EN geprüft: Alle Fenster waren
+ausgeblendet; nach der Rückkehr blieb der QR-Code geschlossen. Simulator und
+lokale Prüfungen ersetzen weitere Geräte-/Plattformfälle nicht.
 Anschließend folgen getrennt Modell-/Ressourcenverwaltung und Offline-Diktat;
 die vorhandene Whisper-Engine und Silero als Opt-in mit RMS bleiben unverändert.
 

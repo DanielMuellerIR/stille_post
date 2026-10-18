@@ -4,8 +4,8 @@ Native SwiftUI-App ab iOS 17. Der Kandidat 0.9.42 verbindet sich ausschließlich
 verschlüsselt mit der Mac-Brücke und übernimmt deren Identität direkt per QR-Code.
 Reale QR-/HTTPS-Kopplung, verschlüsseltes AAC-Diktat und Versandabbruch mit
 Wiederaufnahme nach App-Neustart wurden am iPhone geprüft. Die App bleibt ein
-Entwicklungsclient; verbleibende Mac-/Plattformfälle stehen im Backlog. HTTP wird
-in Debug und Release abgewiesen.
+Entwicklungsclient; weitere Geräte-/Plattformabnahmen stehen im Backlog. HTTP
+wird in Debug und Release abgewiesen.
 
 ## Benutzung und sichere Kopplung
 

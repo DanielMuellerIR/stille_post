@@ -170,10 +170,13 @@ Versandabbruch während der Bereinigung, Aufnahmeerhalt nach App-Neustart und
 ausdrückliches erneutes Senden sind bestanden. Die laufende Bereinigungsanfrage
 wurde beendet, ohne automatisch erneut anzufragen; nach dem erfolgreichen
 Wiederholen waren Audio und Metadaten auf dem iPhone entfernt. Die native
-Mac-Anzeige wurde in DE/EN auf Öffnen, Fokuswechsel und Schließen geprüft,
-ihre Zweiminutenfrist unter DE
-bestätigt. Der Ausblendfall blieb unbelegt, weil sich die Menüleisten-App auf dem
-geprüften macOS weder per API noch per ⌘H ausblenden ließ.
+Mac-Anzeige wurde in DE/EN auf Öffnen, Fokuswechsel, Schließen und natives
+Aus-/Einblenden geprüft; ihre Zweiminutenfrist wurde unter DE bestätigt. Das
+Ausblenden über das macOS-Bedienungshilfen-Attribut
+[`AXHidden`](https://developer.apple.com/documentation/applicationservices/kaxhiddenattribute)
+entfernte alle App-Fenster vom Bildschirm. Nach dem Wiedereinblenden waren die
+Einstellungen wieder verfügbar und der QR-Code geschlossen. Beide kurzen
+Aus-/Einblendprüfungen lagen deutlich unter der Zweiminutenfrist.
 
 Technische Grundlage: Apples Dokumentation zu
 [manueller Serverprüfung](https://developer.apple.com/documentation/foundation/performing-manual-server-trust-authentication)
