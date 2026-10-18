@@ -1,0 +1,260 @@
+{
+  "schema": 1,
+  "seed": 1729,
+  "rate": 155,
+  "sampleRate": 16000,
+  "channels": 1,
+  "sampleFormat": "PCM signed 16-bit little endian",
+  "normalRmsDb": -22,
+  "quietRmsDb": -52,
+  "noiseRmsDb": -40,
+  "paddingSec": 0.5,
+  "pauseSec": 1.2,
+  "asrSegmentSec": 15,
+  "warmRepeats": 3,
+  "processColdRepeats": 3,
+  "cases": [
+    {
+      "id": "de-short",
+      "language": "de",
+      "voice": "Anna",
+      "kind": "short",
+      "text": "Nein.",
+      "reference": "Nein."
+    },
+    {
+      "id": "de-terms",
+      "language": "de",
+      "voice": "Anna",
+      "kind": "terms",
+      "text": "Der Kubernetes Pod nutzt PostgreSQL und WebKit.",
+      "reference": "Der Kubernetes Pod nutzt PostgreSQL und WebKit."
+    },
+    {
+      "id": "de-names",
+      "language": "de",
+      "voice": "Anna",
+      "kind": "names",
+      "text": "Maja Kern trifft Otto Wolf in Bremen.",
+      "reference": "Maja Kern trifft Otto Wolf in Bremen."
+    },
+    {
+      "id": "de-numbers",
+      "language": "de",
+      "voice": "Anna",
+      "kind": "numbers",
+      "text": "Bitte zwölf und nicht zwanzig Kopien für drei Teams.",
+      "reference": "Bitte zwölf und nicht zwanzig Kopien für drei Teams."
+    },
+    {
+      "id": "de-negation",
+      "language": "de",
+      "voice": "Anna",
+      "kind": "negation",
+      "text": "Bitte keine Datei löschen. Der Dienst darf nicht starten.",
+      "reference": "Bitte keine Datei löschen. Der Dienst darf nicht starten."
+    },
+    {
+      "id": "de-versions",
+      "language": "de",
+      "voice": "Anna",
+      "kind": "versions",
+      "text": "Version null Punkt neun Punkt neununddreißig bleibt aktiv.",
+      "reference": "Version null Punkt neun Punkt neununddreißig bleibt aktiv."
+    },
+    {
+      "id": "de-correction",
+      "language": "de",
+      "voice": "Anna",
+      "kind": "correction",
+      "text": "Wir treffen uns Dienstag, nein, Mittwoch um zehn Uhr.",
+      "reference": "Wir treffen uns Dienstag, nein, Mittwoch um zehn Uhr."
+    },
+    {
+      "id": "de-commands",
+      "language": "de",
+      "voice": "Anna",
+      "kind": "commands",
+      "text": "Format Liste Anfang. Format Listenpunkt. Alpha bleibt. Format Liste Ende.",
+      "reference": "Format Liste Anfang. Format Listenpunkt. Alpha bleibt. Format Liste Ende."
+    },
+    {
+      "id": "de-quiet",
+      "language": "de",
+      "voice": "Anna",
+      "kind": "quiet",
+      "text": "Bitte keine Datei löschen und zwölf Kopien behalten.",
+      "reference": "Bitte keine Datei löschen und zwölf Kopien behalten.",
+      "parts": []
+    },
+    {
+      "id": "de-noise-speech",
+      "language": "de",
+      "voice": "Anna",
+      "kind": "noise-speech",
+      "text": "Bitte keine Datei löschen und zwölf Kopien behalten.",
+      "reference": "Bitte keine Datei löschen und zwölf Kopien behalten.",
+      "parts": []
+    },
+    {
+      "id": "de-pauses",
+      "language": "de",
+      "voice": "Anna",
+      "kind": "pauses",
+      "text": "Der Anfang bleibt erhalten. Bitte keine Datei löschen und zwölf Kopien behalten. Maja Kern prüft PostgreSQL und WebKit. Die Mitte enthält Version null Punkt neun Punkt neununddreißig. Wir treffen uns Dienstag, nein, Mittwoch. Der Dienst darf nicht starten. Otto Wolf prüft drei Teams. Das Ende bleibt erhalten.",
+      "reference": "Der Anfang bleibt erhalten. Bitte keine Datei löschen und zwölf Kopien behalten. Maja Kern prüft PostgreSQL und WebKit. Die Mitte enthält Version null Punkt neun Punkt neununddreißig. Wir treffen uns Dienstag, nein, Mittwoch. Der Dienst darf nicht starten. Otto Wolf prüft drei Teams. Das Ende bleibt erhalten.",
+      "parts": [
+        "Der Anfang bleibt erhalten.",
+        "Bitte keine Datei löschen und zwölf Kopien behalten.",
+        "Maja Kern prüft PostgreSQL und WebKit.",
+        "Die Mitte enthält Version null Punkt neun Punkt neununddreißig.",
+        "Wir treffen uns Dienstag, nein, Mittwoch.",
+        "Der Dienst darf nicht starten.",
+        "Otto Wolf prüft drei Teams.",
+        "Das Ende bleibt erhalten."
+      ]
+    },
+    {
+      "id": "de-long",
+      "language": "de",
+      "voice": "Anna",
+      "kind": "long",
+      "text": "Der Anfang bleibt erhalten. Bitte keine Datei löschen und zwölf Kopien behalten. Maja Kern prüft PostgreSQL und WebKit. Die Mitte enthält Version null Punkt neun Punkt neununddreißig. Wir treffen uns Dienstag, nein, Mittwoch. Der Dienst darf nicht starten. Otto Wolf prüft drei Teams. Das Ende bleibt erhalten. Der Anfang bleibt erhalten. Bitte keine Datei löschen und zwölf Kopien behalten. Maja Kern prüft PostgreSQL und WebKit. Die Mitte enthält Version null Punkt neun Punkt neununddreißig. Wir treffen uns Dienstag, nein, Mittwoch. Der Dienst darf nicht starten. Otto Wolf prüft drei Teams. Das Ende bleibt erhalten. Der Anfang bleibt erhalten. Bitte keine Datei löschen und zwölf Kopien behalten. Maja Kern prüft PostgreSQL und WebKit. Die Mitte enthält Version null Punkt neun Punkt neununddreißig. Wir treffen uns Dienstag, nein, Mittwoch. Der Dienst darf nicht starten. Otto Wolf prüft drei Teams. Das Ende bleibt erhalten.",
+      "reference": "Der Anfang bleibt erhalten. Bitte keine Datei löschen und zwölf Kopien behalten. Maja Kern prüft PostgreSQL und WebKit. Die Mitte enthält Version null Punkt neun Punkt neununddreißig. Wir treffen uns Dienstag, nein, Mittwoch. Der Dienst darf nicht starten. Otto Wolf prüft drei Teams. Das Ende bleibt erhalten. Der Anfang bleibt erhalten. Bitte keine Datei löschen und zwölf Kopien behalten. Maja Kern prüft PostgreSQL und WebKit. Die Mitte enthält Version null Punkt neun Punkt neununddreißig. Wir treffen uns Dienstag, nein, Mittwoch. Der Dienst darf nicht starten. Otto Wolf prüft drei Teams. Das Ende bleibt erhalten. Der Anfang bleibt erhalten. Bitte keine Datei löschen und zwölf Kopien behalten. Maja Kern prüft PostgreSQL und WebKit. Die Mitte enthält Version null Punkt neun Punkt neununddreißig. Wir treffen uns Dienstag, nein, Mittwoch. Der Dienst darf nicht starten. Otto Wolf prüft drei Teams. Das Ende bleibt erhalten.",
+      "parts": []
+    },
+    {
+      "id": "en-short",
+      "language": "en",
+      "voice": "Samantha",
+      "kind": "short",
+      "text": "No.",
+      "reference": "No."
+    },
+    {
+      "id": "en-terms",
+      "language": "en",
+      "voice": "Samantha",
+      "kind": "terms",
+      "text": "The Kubernetes pod uses PostgreSQL and WebKit.",
+      "reference": "The Kubernetes pod uses PostgreSQL and WebKit."
+    },
+    {
+      "id": "en-names",
+      "language": "en",
+      "voice": "Samantha",
+      "kind": "names",
+      "text": "Maya Kern meets Otto Wolf in Boston.",
+      "reference": "Maya Kern meets Otto Wolf in Boston."
+    },
+    {
+      "id": "en-numbers",
+      "language": "en",
+      "voice": "Samantha",
+      "kind": "numbers",
+      "text": "Please make twelve and not twenty copies for three teams.",
+      "reference": "Please make twelve and not twenty copies for three teams."
+    },
+    {
+      "id": "en-negation",
+      "language": "en",
+      "voice": "Samantha",
+      "kind": "negation",
+      "text": "Do not delete any file. The service must not start.",
+      "reference": "Do not delete any file. The service must not start."
+    },
+    {
+      "id": "en-versions",
+      "language": "en",
+      "voice": "Samantha",
+      "kind": "versions",
+      "text": "Version zero point nine point thirty nine stays active.",
+      "reference": "Version zero point nine point thirty nine stays active."
+    },
+    {
+      "id": "en-correction",
+      "language": "en",
+      "voice": "Samantha",
+      "kind": "correction",
+      "text": "We meet on Tuesday, no, Wednesday at ten.",
+      "reference": "We meet on Tuesday, no, Wednesday at ten."
+    },
+    {
+      "id": "en-commands",
+      "language": "en",
+      "voice": "Samantha",
+      "kind": "commands",
+      "text": "Format list start. Format list item. Alpha stays. Format list end.",
+      "reference": "Format list start. Format list item. Alpha stays. Format list end."
+    },
+    {
+      "id": "en-quiet",
+      "language": "en",
+      "voice": "Samantha",
+      "kind": "quiet",
+      "text": "Do not delete any file and keep twelve copies.",
+      "reference": "Do not delete any file and keep twelve copies.",
+      "parts": []
+    },
+    {
+      "id": "en-noise-speech",
+      "language": "en",
+      "voice": "Samantha",
+      "kind": "noise-speech",
+      "text": "Do not delete any file and keep twelve copies.",
+      "reference": "Do not delete any file and keep twelve copies.",
+      "parts": []
+    },
+    {
+      "id": "en-pauses",
+      "language": "en",
+      "voice": "Samantha",
+      "kind": "pauses",
+      "text": "The beginning is retained. Do not delete any file and keep twelve copies. Maya Kern checks PostgreSQL and WebKit. The middle contains version zero point nine point thirty nine. We meet on Tuesday, no, Wednesday. The service must not start. Otto Wolf checks three teams. The ending is retained.",
+      "reference": "The beginning is retained. Do not delete any file and keep twelve copies. Maya Kern checks PostgreSQL and WebKit. The middle contains version zero point nine point thirty nine. We meet on Tuesday, no, Wednesday. The service must not start. Otto Wolf checks three teams. The ending is retained.",
+      "parts": [
+        "The beginning is retained.",
+        "Do not delete any file and keep twelve copies.",
+        "Maya Kern checks PostgreSQL and WebKit.",
+        "The middle contains version zero point nine point thirty nine.",
+        "We meet on Tuesday, no, Wednesday.",
+        "The service must not start.",
+        "Otto Wolf checks three teams.",
+        "The ending is retained."
+      ]
+    },
+    {
+      "id": "en-long",
+      "language": "en",
+      "voice": "Samantha",
+      "kind": "long",
+      "text": "The beginning is retained. Do not delete any file and keep twelve copies. Maya Kern checks PostgreSQL and WebKit. The middle contains version zero point nine point thirty nine. We meet on Tuesday, no, Wednesday. The service must not start. Otto Wolf checks three teams. The ending is retained. The beginning is retained. Do not delete any file and keep twelve copies. Maya Kern checks PostgreSQL and WebKit. The middle contains version zero point nine point thirty nine. We meet on Tuesday, no, Wednesday. The service must not start. Otto Wolf checks three teams. The ending is retained. The beginning is retained. Do not delete any file and keep twelve copies. Maya Kern checks PostgreSQL and WebKit. The middle contains version zero point nine point thirty nine. We meet on Tuesday, no, Wednesday. The service must not start. Otto Wolf checks three teams. The ending is retained.",
+      "reference": "The beginning is retained. Do not delete any file and keep twelve copies. Maya Kern checks PostgreSQL and WebKit. The middle contains version zero point nine point thirty nine. We meet on Tuesday, no, Wednesday. The service must not start. Otto Wolf checks three teams. The ending is retained. The beginning is retained. Do not delete any file and keep twelve copies. Maya Kern checks PostgreSQL and WebKit. The middle contains version zero point nine point thirty nine. We meet on Tuesday, no, Wednesday. The service must not start. Otto Wolf checks three teams. The ending is retained. The beginning is retained. Do not delete any file and keep twelve copies. Maya Kern checks PostgreSQL and WebKit. The middle contains version zero point nine point thirty nine. We meet on Tuesday, no, Wednesday. The service must not start. Otto Wolf checks three teams. The ending is retained.",
+      "parts": []
+    },
+    {
+      "id": "silence",
+      "language": "de",
+      "voice": null,
+      "kind": "silence",
+      "text": "",
+      "reference": ""
+    },
+    {
+      "id": "noise",
+      "language": "de",
+      "voice": null,
+      "kind": "noise",
+      "text": "",
+      "reference": ""
+    },
+    {
+      "id": "clicks",
+      "language": "de",
+      "voice": null,
+      "kind": "clicks",
+      "text": "",
+      "reference": ""
+    }
+  ]
+}

@@ -1,0 +1,1481 @@
+{
+  "schema": 1,
+  "date": "2026-10-18",
+  "productVersion": "0.9.39",
+  "productCommit": "469ceea430b59fce93e22d6c36e40efbad7f6e22",
+  "audioSeconds": 274.9688125,
+  "speechCases": 24,
+  "nonspeechCases": 3,
+  "warmRepeats": 3,
+  "coldRepeats": 3,
+  "devices": [
+    {
+      "chip": "Apple M5 Max",
+      "ramBytes": 137438953472,
+      "os": "26.7.1",
+      "loadAverage": [
+        8.1396484375,
+        10.59765625,
+        11.91357421875
+      ],
+      "hostIsolation": "shared host; own comparisons sequential",
+      "whisperVersion": "1.9.5",
+      "whisperModelSha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+      "asr": {
+        "whisper": {
+          "languages": {
+            "de": {
+              "wordEdits": 120,
+              "referenceWords": 792,
+              "wer": 0.15151515151515152,
+              "characterEdits": 660,
+              "referenceCharacters": 5031,
+              "cer": 0.13118664281454978
+            },
+            "en": {
+              "wordEdits": 162,
+              "referenceWords": 831,
+              "wer": 0.19494584837545126,
+              "characterEdits": 732,
+              "referenceCharacters": 4695,
+              "cer": 0.15591054313099043
+            }
+          },
+          "warmCorpusTotalSeconds": 17.584247377235442,
+          "speechFileMedianSeconds": 0.14068464550655335,
+          "peakProcessRSSBytes": 1959657472,
+          "memoryMethod": "ps observed lower bound",
+          "emptySpeechSegments": 0,
+          "differentWarmTexts": 27,
+          "cases": [
+            {
+              "id": "de-short",
+              "wordEdits": 0,
+              "referenceWords": 1,
+              "seconds": 0.11143466690555215
+            },
+            {
+              "id": "de-terms",
+              "wordEdits": 0,
+              "referenceWords": 7,
+              "seconds": 0.13321020803414285
+            },
+            {
+              "id": "de-names",
+              "wordEdits": 0,
+              "referenceWords": 7,
+              "seconds": 0.132374000037089
+            },
+            {
+              "id": "de-numbers",
+              "wordEdits": 2,
+              "referenceWords": 9,
+              "seconds": 0.1292119580321014
+            },
+            {
+              "id": "de-negation",
+              "wordEdits": 0,
+              "referenceWords": 9,
+              "seconds": 0.13569908309727907
+            },
+            {
+              "id": "de-versions",
+              "wordEdits": 5,
+              "referenceWords": 8,
+              "seconds": 0.13005770812742412
+            },
+            {
+              "id": "de-correction",
+              "wordEdits": 1,
+              "referenceWords": 9,
+              "seconds": 0.13256816705688834
+            },
+            {
+              "id": "de-commands",
+              "wordEdits": 6,
+              "referenceWords": 10,
+              "seconds": 0.1469858749769628
+            },
+            {
+              "id": "de-quiet",
+              "wordEdits": 1,
+              "referenceWords": 8,
+              "seconds": 0.14051649998873472
+            },
+            {
+              "id": "de-noise-speech",
+              "wordEdits": 1,
+              "referenceWords": 8,
+              "seconds": 0.13828941597603261
+            },
+            {
+              "id": "de-pauses",
+              "wordEdits": 7,
+              "referenceWords": 47,
+              "seconds": 0.4776047090999782
+            },
+            {
+              "id": "de-long",
+              "wordEdits": 17,
+              "referenceWords": 141,
+              "seconds": 1.0323760830797255
+            },
+            {
+              "id": "en-short",
+              "wordEdits": 0,
+              "referenceWords": 1,
+              "seconds": 0.1125758329872042
+            },
+            {
+              "id": "en-terms",
+              "wordEdits": 0,
+              "referenceWords": 7,
+              "seconds": 0.13026124984025955
+            },
+            {
+              "id": "en-names",
+              "wordEdits": 0,
+              "referenceWords": 7,
+              "seconds": 0.12598975002765656
+            },
+            {
+              "id": "en-numbers",
+              "wordEdits": 3,
+              "referenceWords": 10,
+              "seconds": 0.12951987492851913
+            },
+            {
+              "id": "en-negation",
+              "wordEdits": 0,
+              "referenceWords": 10,
+              "seconds": 0.13361295801587403
+            },
+            {
+              "id": "en-versions",
+              "wordEdits": 6,
+              "referenceWords": 9,
+              "seconds": 0.12671470805071294
+            },
+            {
+              "id": "en-correction",
+              "wordEdits": 1,
+              "referenceWords": 8,
+              "seconds": 0.132835874799639
+            },
+            {
+              "id": "en-commands",
+              "wordEdits": 0,
+              "referenceWords": 11,
+              "seconds": 0.14325804193504155
+            },
+            {
+              "id": "en-quiet",
+              "wordEdits": 1,
+              "referenceWords": 9,
+              "seconds": 0.12371495901606977
+            },
+            {
+              "id": "en-noise-speech",
+              "wordEdits": 1,
+              "referenceWords": 9,
+              "seconds": 0.127015708014369
+            },
+            {
+              "id": "en-pauses",
+              "wordEdits": 8,
+              "referenceWords": 49,
+              "seconds": 0.3884848328307271
+            },
+            {
+              "id": "en-long",
+              "wordEdits": 34,
+              "referenceWords": 147,
+              "seconds": 0.8405434580054134
+            },
+            {
+              "id": "silence",
+              "wordEdits": 2,
+              "referenceWords": 0,
+              "seconds": 0.11362900002859533
+            },
+            {
+              "id": "noise",
+              "wordEdits": 1,
+              "referenceWords": 0,
+              "seconds": 0.1157192918471992
+            },
+            {
+              "id": "clicks",
+              "wordEdits": 2,
+              "referenceWords": 0,
+              "seconds": 0.11524025001563132
+            }
+          ],
+          "coldParentToResultSeconds": [
+            0.7935096670407802,
+            0.8839944161009043,
+            0.7519984170794487
+          ],
+          "firstOriginalColdSeconds": 5.177981416927651,
+          "originalColdParentToResultSeconds": [
+            5.177981416927651,
+            0.8527153751347214,
+            0.9699011659249663
+          ]
+        },
+        "parakeet": {
+          "languages": {
+            "de": {
+              "wordEdits": 147,
+              "referenceWords": 792,
+              "wer": 0.1856060606060606,
+              "characterEdits": 756,
+              "referenceCharacters": 5031,
+              "cer": 0.15026833631484796
+            },
+            "en": {
+              "wordEdits": 174,
+              "referenceWords": 831,
+              "wer": 0.20938628158844766,
+              "characterEdits": 690,
+              "referenceCharacters": 4695,
+              "cer": 0.14696485623003194
+            }
+          },
+          "warmCorpusTotalSeconds": 6.802252876572311,
+          "speechFileMedianSeconds": 0.040232833358459175,
+          "peakProcessRSSBytes": 109363200,
+          "memoryMethod": "getrusage process peak; excludes XPC/ANE",
+          "emptySpeechSegments": 0,
+          "differentWarmTexts": 27,
+          "cases": [
+            {
+              "id": "de-short",
+              "wordEdits": 0,
+              "referenceWords": 1,
+              "seconds": 0.030326124979183078
+            },
+            {
+              "id": "de-terms",
+              "wordEdits": 0,
+              "referenceWords": 7,
+              "seconds": 0.04655658337287605
+            },
+            {
+              "id": "de-names",
+              "wordEdits": 1,
+              "referenceWords": 7,
+              "seconds": 0.043531875126063824
+            },
+            {
+              "id": "de-numbers",
+              "wordEdits": 3,
+              "referenceWords": 9,
+              "seconds": 0.04064145847223699
+            },
+            {
+              "id": "de-negation",
+              "wordEdits": 0,
+              "referenceWords": 9,
+              "seconds": 0.04024925013072789
+            },
+            {
+              "id": "de-versions",
+              "wordEdits": 5,
+              "referenceWords": 8,
+              "seconds": 0.0374761251732707
+            },
+            {
+              "id": "de-correction",
+              "wordEdits": 1,
+              "referenceWords": 9,
+              "seconds": 0.04142683348618448
+            },
+            {
+              "id": "de-commands",
+              "wordEdits": 6,
+              "referenceWords": 10,
+              "seconds": 0.04523683339357376
+            },
+            {
+              "id": "de-quiet",
+              "wordEdits": 1,
+              "referenceWords": 8,
+              "seconds": 0.03973083337768912
+            },
+            {
+              "id": "de-noise-speech",
+              "wordEdits": 1,
+              "referenceWords": 8,
+              "seconds": 0.039983958238735795
+            },
+            {
+              "id": "de-pauses",
+              "wordEdits": 7,
+              "referenceWords": 47,
+              "seconds": 0.12821550015360117
+            },
+            {
+              "id": "de-long",
+              "wordEdits": 24,
+              "referenceWords": 141,
+              "seconds": 0.3639399167150259
+            },
+            {
+              "id": "en-short",
+              "wordEdits": 0,
+              "referenceWords": 1,
+              "seconds": 0.031036958331242204
+            },
+            {
+              "id": "en-terms",
+              "wordEdits": 2,
+              "referenceWords": 7,
+              "seconds": 0.04233858338557184
+            },
+            {
+              "id": "en-names",
+              "wordEdits": 0,
+              "referenceWords": 7,
+              "seconds": 0.03838554164394736
+            },
+            {
+              "id": "en-numbers",
+              "wordEdits": 2,
+              "referenceWords": 10,
+              "seconds": 0.039572583278641105
+            },
+            {
+              "id": "en-negation",
+              "wordEdits": 0,
+              "referenceWords": 10,
+              "seconds": 0.03798120841383934
+            },
+            {
+              "id": "en-versions",
+              "wordEdits": 6,
+              "referenceWords": 9,
+              "seconds": 0.03737404174171388
+            },
+            {
+              "id": "en-correction",
+              "wordEdits": 1,
+              "referenceWords": 8,
+              "seconds": 0.040157000068575144
+            },
+            {
+              "id": "en-commands",
+              "wordEdits": 0,
+              "referenceWords": 11,
+              "seconds": 0.04331399989314377
+            },
+            {
+              "id": "en-quiet",
+              "wordEdits": 1,
+              "referenceWords": 9,
+              "seconds": 0.03774004173465073
+            },
+            {
+              "id": "en-noise-speech",
+              "wordEdits": 1,
+              "referenceWords": 9,
+              "seconds": 0.03857583343051374
+            },
+            {
+              "id": "en-pauses",
+              "wordEdits": 9,
+              "referenceWords": 49,
+              "seconds": 0.12461862503550947
+            },
+            {
+              "id": "en-long",
+              "wordEdits": 36,
+              "referenceWords": 147,
+              "seconds": 0.3058206250425428
+            },
+            {
+              "id": "silence",
+              "wordEdits": 0,
+              "referenceWords": 0,
+              "seconds": 0.033941749949008226
+            },
+            {
+              "id": "noise",
+              "wordEdits": 0,
+              "referenceWords": 0,
+              "seconds": 0.2090622081886977
+            },
+            {
+              "id": "clicks",
+              "wordEdits": 0,
+              "referenceWords": 0,
+              "seconds": 0.25156316673383117
+            }
+          ],
+          "coldParentToResultSeconds": [
+            0.20522295800037682,
+            0.19893612479791045,
+            0.19567437493242323
+          ],
+          "firstOriginalInternalColdSeconds": 13.211039666784927,
+          "originalColdInternalSeconds": [
+            13.211039666784927,
+            0.16035166662186384,
+            0.16211495827883482
+          ]
+        }
+      },
+      "vad": {
+        "rms": {
+          "warmCorpusTotalSeconds": 0.27768737473525107,
+          "peakProcessRSSBytes": 122421248,
+          "lostSpeechCases": [
+            "de-quiet",
+            "en-quiet"
+          ],
+          "retainedActivitySamples": 2801760,
+          "activitySamples": 2883360,
+          "acceptedNonspeechCases": [
+            "noise"
+          ],
+          "coldParentToResultSeconds": [
+            0.04331899993121624,
+            0.03208170784637332,
+            0.03213087492622435
+          ],
+          "cases": [
+            {
+              "id": "de-short",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-terms",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-names",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-numbers",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-negation",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-versions",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-correction",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-commands",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-quiet",
+              "segmentCount": 0,
+              "activityRetention": 0.0
+            },
+            {
+              "id": "de-noise-speech",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-pauses",
+              "segmentCount": 8,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-long",
+              "segmentCount": 3,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-short",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-terms",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-names",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-numbers",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-negation",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-versions",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-correction",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-commands",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-quiet",
+              "segmentCount": 0,
+              "activityRetention": 0.0
+            },
+            {
+              "id": "en-noise-speech",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-pauses",
+              "segmentCount": 8,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-long",
+              "segmentCount": 2,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "silence",
+              "segmentCount": 0,
+              "activityRetention": null
+            },
+            {
+              "id": "noise",
+              "segmentCount": 1,
+              "activityRetention": null
+            },
+            {
+              "id": "clicks",
+              "segmentCount": 0,
+              "activityRetention": null
+            }
+          ],
+          "originalColdInternalSeconds": [
+            0.007295666495338082,
+            0.005768375005573034,
+            0.006126166554167867
+          ]
+        },
+        "silero": {
+          "warmCorpusTotalSeconds": 0.876301500480622,
+          "peakProcessRSSBytes": 49823744,
+          "lostSpeechCases": [],
+          "retainedActivitySamples": 2883360,
+          "activitySamples": 2883360,
+          "acceptedNonspeechCases": [],
+          "coldParentToResultSeconds": [
+            0.09091620799154043,
+            0.06843058299273252,
+            0.07715379190631211
+          ],
+          "cases": [
+            {
+              "id": "de-short",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-terms",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-names",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-numbers",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-negation",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-versions",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-correction",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-commands",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-quiet",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-noise-speech",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-pauses",
+              "segmentCount": 7,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-long",
+              "segmentCount": 3,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-short",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-terms",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-names",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-numbers",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-negation",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-versions",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-correction",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-commands",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-quiet",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-noise-speech",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-pauses",
+              "segmentCount": 7,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-long",
+              "segmentCount": 2,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "silence",
+              "segmentCount": 0,
+              "activityRetention": null
+            },
+            {
+              "id": "noise",
+              "segmentCount": 0,
+              "activityRetention": null
+            },
+            {
+              "id": "clicks",
+              "segmentCount": 0,
+              "activityRetention": null
+            }
+          ],
+          "originalColdInternalSeconds": [
+            0.051844041561707854,
+            0.05947320815175772,
+            0.0515105000231415
+          ]
+        }
+      }
+    },
+    {
+      "chip": "Apple M1",
+      "ramBytes": 17179869184,
+      "os": "26.7.1",
+      "loadAverage": [
+        9.5576171875,
+        34.55224609375,
+        27.07568359375
+      ],
+      "hostIsolation": "resource-isolated background; shared CPU/ANE",
+      "whisperVersion": "1.9.5",
+      "whisperModelSha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+      "asr": {
+        "whisper": {
+          "languages": {
+            "de": {
+              "wordEdits": 120,
+              "referenceWords": 792,
+              "wer": 0.15151515151515152,
+              "characterEdits": 660,
+              "referenceCharacters": 5031,
+              "cer": 0.13118664281454978
+            },
+            "en": {
+              "wordEdits": 162,
+              "referenceWords": 831,
+              "wer": 0.19494584837545126,
+              "characterEdits": 732,
+              "referenceCharacters": 4695,
+              "cer": 0.15591054313099043
+            }
+          },
+          "warmCorpusTotalSeconds": 208.34747775798314,
+          "speechFileMedianSeconds": 1.8062166669988073,
+          "peakProcessRSSBytes": 1946517504,
+          "memoryMethod": "ps observed lower bound",
+          "emptySpeechSegments": 0,
+          "differentWarmTexts": 27,
+          "cases": [
+            {
+              "id": "de-short",
+              "wordEdits": 0,
+              "referenceWords": 1,
+              "seconds": 1.6911294169840403
+            },
+            {
+              "id": "de-terms",
+              "wordEdits": 0,
+              "referenceWords": 7,
+              "seconds": 1.8207229169784114
+            },
+            {
+              "id": "de-names",
+              "wordEdits": 0,
+              "referenceWords": 7,
+              "seconds": 1.8131888750067446
+            },
+            {
+              "id": "de-numbers",
+              "wordEdits": 2,
+              "referenceWords": 9,
+              "seconds": 1.7580596250190865
+            },
+            {
+              "id": "de-negation",
+              "wordEdits": 0,
+              "referenceWords": 9,
+              "seconds": 1.7846916659909766
+            },
+            {
+              "id": "de-versions",
+              "wordEdits": 5,
+              "referenceWords": 8,
+              "seconds": 1.744118583999807
+            },
+            {
+              "id": "de-correction",
+              "wordEdits": 1,
+              "referenceWords": 9,
+              "seconds": 1.7823287089995574
+            },
+            {
+              "id": "de-commands",
+              "wordEdits": 6,
+              "referenceWords": 10,
+              "seconds": 1.8468334579956718
+            },
+            {
+              "id": "de-quiet",
+              "wordEdits": 1,
+              "referenceWords": 8,
+              "seconds": 1.8036675000039395
+            },
+            {
+              "id": "de-noise-speech",
+              "wordEdits": 1,
+              "referenceWords": 8,
+              "seconds": 1.8310570000030566
+            },
+            {
+              "id": "de-pauses",
+              "wordEdits": 7,
+              "referenceWords": 47,
+              "seconds": 4.330130457994528
+            },
+            {
+              "id": "de-long",
+              "wordEdits": 17,
+              "referenceWords": 141,
+              "seconds": 10.861555416980991
+            },
+            {
+              "id": "en-short",
+              "wordEdits": 0,
+              "referenceWords": 1,
+              "seconds": 1.6710466250078753
+            },
+            {
+              "id": "en-terms",
+              "wordEdits": 0,
+              "referenceWords": 7,
+              "seconds": 1.7567481670121197
+            },
+            {
+              "id": "en-names",
+              "wordEdits": 0,
+              "referenceWords": 7,
+              "seconds": 1.7448219999787398
+            },
+            {
+              "id": "en-numbers",
+              "wordEdits": 3,
+              "referenceWords": 10,
+              "seconds": 1.7338204170227982
+            },
+            {
+              "id": "en-negation",
+              "wordEdits": 0,
+              "referenceWords": 10,
+              "seconds": 1.7970784999779426
+            },
+            {
+              "id": "en-versions",
+              "wordEdits": 6,
+              "referenceWords": 9,
+              "seconds": 1.7432119160075672
+            },
+            {
+              "id": "en-correction",
+              "wordEdits": 1,
+              "referenceWords": 8,
+              "seconds": 1.8870672920020297
+            },
+            {
+              "id": "en-commands",
+              "wordEdits": 0,
+              "referenceWords": 11,
+              "seconds": 1.9101676669961307
+            },
+            {
+              "id": "en-quiet",
+              "wordEdits": 1,
+              "referenceWords": 9,
+              "seconds": 1.8058268339955248
+            },
+            {
+              "id": "en-noise-speech",
+              "wordEdits": 1,
+              "referenceWords": 9,
+              "seconds": 1.8561444160004612
+            },
+            {
+              "id": "en-pauses",
+              "wordEdits": 8,
+              "referenceWords": 49,
+              "seconds": 4.400590958015528
+            },
+            {
+              "id": "en-long",
+              "wordEdits": 34,
+              "referenceWords": 147,
+              "seconds": 9.191110042011132
+            },
+            {
+              "id": "silence",
+              "wordEdits": 2,
+              "referenceWords": 0,
+              "seconds": 1.726666375005152
+            },
+            {
+              "id": "noise",
+              "wordEdits": 1,
+              "referenceWords": 0,
+              "seconds": 1.7421978749916889
+            },
+            {
+              "id": "clicks",
+              "wordEdits": 2,
+              "referenceWords": 0,
+              "seconds": 1.6942674590100069
+            }
+          ],
+          "coldParentToResultSeconds": [
+            2.4627890000119805,
+            2.3721041660173796,
+            2.4209170830145013
+          ],
+          "firstOriginalColdSeconds": 3.0670124999887776,
+          "originalColdParentToResultSeconds": [
+            3.0670124999887776,
+            2.4560312909889035,
+            2.438316459010821
+          ]
+        },
+        "parakeet": {
+          "languages": {
+            "de": {
+              "wordEdits": 150,
+              "referenceWords": 792,
+              "wer": 0.1893939393939394,
+              "characterEdits": 768,
+              "referenceCharacters": 5031,
+              "cer": 0.1526535480023852
+            },
+            "en": {
+              "wordEdits": 174,
+              "referenceWords": 831,
+              "wer": 0.20938628158844766,
+              "characterEdits": 690,
+              "referenceCharacters": 4695,
+              "cer": 0.14696485623003194
+            }
+          },
+          "warmCorpusTotalSeconds": 12.181357750028837,
+          "speechFileMedianSeconds": 0.07248641666956246,
+          "peakProcessRSSBytes": 86753280,
+          "memoryMethod": "getrusage process peak; excludes XPC/ANE",
+          "emptySpeechSegments": 0,
+          "differentWarmTexts": 27,
+          "cases": [
+            {
+              "id": "de-short",
+              "wordEdits": 0,
+              "referenceWords": 1,
+              "seconds": 0.04982524999650195
+            },
+            {
+              "id": "de-terms",
+              "wordEdits": 0,
+              "referenceWords": 7,
+              "seconds": 0.08045237499754876
+            },
+            {
+              "id": "de-names",
+              "wordEdits": 1,
+              "referenceWords": 7,
+              "seconds": 0.07116437502554618
+            },
+            {
+              "id": "de-numbers",
+              "wordEdits": 3,
+              "referenceWords": 9,
+              "seconds": 0.07327545832959004
+            },
+            {
+              "id": "de-negation",
+              "wordEdits": 0,
+              "referenceWords": 9,
+              "seconds": 0.07538362499326468
+            },
+            {
+              "id": "de-versions",
+              "wordEdits": 5,
+              "referenceWords": 8,
+              "seconds": 0.0664649166574236
+            },
+            {
+              "id": "de-correction",
+              "wordEdits": 1,
+              "referenceWords": 9,
+              "seconds": 0.0741965000052005
+            },
+            {
+              "id": "de-commands",
+              "wordEdits": 6,
+              "referenceWords": 10,
+              "seconds": 0.08290833330829628
+            },
+            {
+              "id": "de-quiet",
+              "wordEdits": 1,
+              "referenceWords": 8,
+              "seconds": 0.07580300001427531
+            },
+            {
+              "id": "de-noise-speech",
+              "wordEdits": 1,
+              "referenceWords": 8,
+              "seconds": 0.09336954168975353
+            },
+            {
+              "id": "de-pauses",
+              "wordEdits": 7,
+              "referenceWords": 47,
+              "seconds": 0.28220112502458505
+            },
+            {
+              "id": "de-long",
+              "wordEdits": 25,
+              "referenceWords": 141,
+              "seconds": 0.6901010000146925
+            },
+            {
+              "id": "en-short",
+              "wordEdits": 0,
+              "referenceWords": 1,
+              "seconds": 0.05122904168092646
+            },
+            {
+              "id": "en-terms",
+              "wordEdits": 2,
+              "referenceWords": 7,
+              "seconds": 0.0746800416673068
+            },
+            {
+              "id": "en-names",
+              "wordEdits": 0,
+              "referenceWords": 7,
+              "seconds": 0.06904500001110137
+            },
+            {
+              "id": "en-numbers",
+              "wordEdits": 2,
+              "referenceWords": 10,
+              "seconds": 0.07223308333777823
+            },
+            {
+              "id": "en-negation",
+              "wordEdits": 0,
+              "referenceWords": 10,
+              "seconds": 0.06825220832251944
+            },
+            {
+              "id": "en-versions",
+              "wordEdits": 6,
+              "referenceWords": 9,
+              "seconds": 0.06498049999936484
+            },
+            {
+              "id": "en-correction",
+              "wordEdits": 1,
+              "referenceWords": 8,
+              "seconds": 0.0711403333407361
+            },
+            {
+              "id": "en-commands",
+              "wordEdits": 0,
+              "referenceWords": 11,
+              "seconds": 0.07860337500460446
+            },
+            {
+              "id": "en-quiet",
+              "wordEdits": 1,
+              "referenceWords": 9,
+              "seconds": 0.06705016666091979
+            },
+            {
+              "id": "en-noise-speech",
+              "wordEdits": 1,
+              "referenceWords": 9,
+              "seconds": 0.06701524998061359
+            },
+            {
+              "id": "en-pauses",
+              "wordEdits": 9,
+              "referenceWords": 49,
+              "seconds": 0.23699483333621174
+            },
+            {
+              "id": "en-long",
+              "wordEdits": 36,
+              "referenceWords": 147,
+              "seconds": 0.604114916670369
+            },
+            {
+              "id": "silence",
+              "wordEdits": 0,
+              "referenceWords": 0,
+              "seconds": 0.05601004164782353
+            },
+            {
+              "id": "noise",
+              "wordEdits": 0,
+              "referenceWords": 0,
+              "seconds": 0.3435553750023246
+            },
+            {
+              "id": "clicks",
+              "wordEdits": 0,
+              "referenceWords": 0,
+              "seconds": 0.38242804165929556
+            }
+          ],
+          "coldParentToResultSeconds": [
+            0.299947916995734,
+            0.22934437499498017,
+            0.2432897920079995
+          ],
+          "firstOriginalInternalColdSeconds": 28.50173795831506,
+          "originalColdInternalSeconds": [
+            28.50173795831506,
+            0.21058187499875203,
+            0.20285120833432302
+          ]
+        }
+      },
+      "vad": {
+        "rms": {
+          "warmCorpusTotalSeconds": 0.37459699995815754,
+          "peakProcessRSSBytes": 112787456,
+          "lostSpeechCases": [
+            "de-quiet",
+            "en-quiet"
+          ],
+          "retainedActivitySamples": 2801760,
+          "activitySamples": 2883360,
+          "acceptedNonspeechCases": [
+            "noise"
+          ],
+          "coldParentToResultSeconds": [
+            0.03544387500733137,
+            0.026580332982121035,
+            0.03161254100268707
+          ],
+          "cases": [
+            {
+              "id": "de-short",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-terms",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-names",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-numbers",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-negation",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-versions",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-correction",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-commands",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-quiet",
+              "segmentCount": 0,
+              "activityRetention": 0.0
+            },
+            {
+              "id": "de-noise-speech",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-pauses",
+              "segmentCount": 8,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-long",
+              "segmentCount": 3,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-short",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-terms",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-names",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-numbers",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-negation",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-versions",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-correction",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-commands",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-quiet",
+              "segmentCount": 0,
+              "activityRetention": 0.0
+            },
+            {
+              "id": "en-noise-speech",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-pauses",
+              "segmentCount": 8,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-long",
+              "segmentCount": 2,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "silence",
+              "segmentCount": 0,
+              "activityRetention": null
+            },
+            {
+              "id": "noise",
+              "segmentCount": 1,
+              "activityRetention": null
+            },
+            {
+              "id": "clicks",
+              "segmentCount": 0,
+              "activityRetention": null
+            }
+          ],
+          "originalColdInternalSeconds": [
+            0.008773541660048068,
+            0.005524000007426366,
+            0.005599625001195818
+          ]
+        },
+        "silero": {
+          "warmCorpusTotalSeconds": 0.8719319166557398,
+          "peakProcessRSSBytes": 41172992,
+          "lostSpeechCases": [],
+          "retainedActivitySamples": 2883360,
+          "activitySamples": 2883360,
+          "acceptedNonspeechCases": [],
+          "coldParentToResultSeconds": [
+            0.07671600001049228,
+            0.07673733402043581,
+            0.07680033400538377
+          ],
+          "cases": [
+            {
+              "id": "de-short",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-terms",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-names",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-numbers",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-negation",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-versions",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-correction",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-commands",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-quiet",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-noise-speech",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-pauses",
+              "segmentCount": 7,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "de-long",
+              "segmentCount": 3,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-short",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-terms",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-names",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-numbers",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-negation",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-versions",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-correction",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-commands",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-quiet",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-noise-speech",
+              "segmentCount": 1,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-pauses",
+              "segmentCount": 7,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "en-long",
+              "segmentCount": 2,
+              "activityRetention": 1.0
+            },
+            {
+              "id": "silence",
+              "segmentCount": 0,
+              "activityRetention": null
+            },
+            {
+              "id": "noise",
+              "segmentCount": 0,
+              "activityRetention": null
+            },
+            {
+              "id": "clicks",
+              "segmentCount": 0,
+              "activityRetention": null
+            }
+          ],
+          "originalColdInternalSeconds": [
+            0.04044866666663438,
+            0.039904250006657094,
+            0.03988037499948405
+          ]
+        }
+      }
+    }
+  ]
+}

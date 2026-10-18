@@ -23,7 +23,8 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Gesprochene Absatz-/Zeilenformatierung mit globaler und profilbezogener Auswahl ergänzen; siehe [Formatierung](docs/gesprochene-formatierung.md).
 - [x] Ausdrückliche Listen-/Anführungszeichenbefehle DE/EN mit geschützten wörtlichen Bereichen ergänzen.
 - [x] Auswahl ausdrücklich bereinigen, im Arbeitsspeicher prüfen und nur bei unverändertem Ziel ersetzen; siehe [Auswahl bereinigen](docs/auswahl-bereinigen.md).
-- [ ] Parakeet und Silero gegen den bestehenden Weg messen und geeignete Kandidaten evidenzbasiert integrieren.
+- [x] Parakeet und Silero reproduzierbar auf zwei Apple-Silicon-Geräten vergleichen; siehe [ASR-/VAD-Vergleich](docs/asr-vad-vergleich.md). Parakeet v3 für die Übernahme abgelehnt.
+- [ ] Silero unter den gemessenen Bedingungen als Opt-in mit bisherigem Detektor als Rückfall integrieren und am Mikrofon abnehmen.
 - [ ] Native iPhone-App, TLS-/QR-Kopplung und lokales Offline-Diktat aufbauen.
 - [ ] Die wesentlichen Kombinationen auf realen Geräten abnehmen und beide Nutzungsanleitungen aktualisieren.
 
@@ -351,17 +352,8 @@ liegen, weil sie mehr als einen chirurgischen Eingriff brauchen.
   `docs/cleanup-model-benchmark.md`.
 - Login-Item: gebaut und verifiziert in 0.8.1. Offen bleibt nur das Deaktivieren im
   Alltag und der echte Ab-/Anmeldezyklus.
-- Optional später: Live-Text-Anzeige und Silero-VAD evaluieren.
-- FluidAudio/Parakeet-Benchmark (Idee 2026-07-24): FluidAudio
-  (https://github.com/FluidInference/FluidAudio) ist ein Swift-SDK für lokale
-  Audio-KI auf der Apple Neural Engine — ASR mit Parakeet TDT v3 (0,6B, Deutsch,
-  sehr schnell, liefert Interpunktion/Großschreibung nativ und hat Whispers
-  Übersetzungsproblem bei kurzen Segmenten nicht), dazu Silero-VAD. Vor einem
-  Engine-Wechsel gilt die Repo-Regel: reproduzierbarer Qualitäts- UND
-  Latenzvergleich gegen `large-v3-turbo` mit echten deutschen Diktaten.
-  Referenz-Gegenprobe: VoiceInk (GPL-3) baut auf denselben Bausteinen
-  (whisper.cpp + optional Parakeet via FluidAudio) — architektonisch kein
-  Vorsprung gegenüber Stille Post, aber Ideenquelle (z. B. app-abhängige Modi).
+- Optional: Silero-VAD nach dem [abgeschlossenen Vergleich](docs/asr-vad-vergleich.md) mit Rückfall integrieren; menschliche Mikrofonabnahme bleibt offen.
+- Lokaler ASR-/VAD-Vergleich am 2026-10-18 abgeschlossen. Whisper bleibt Standard; Parakeet v3 verfehlt die Qualitätsgrenze. Silero zeigt unter den künstlichen Testbedingungen Nutzen und ist für eine optionale Integration empfohlen; Quellen, Plattformgrenzen und Messwerte im [Vergleichsbericht](docs/asr-vad-vergleich.md).
 - CI für `swift test` und die echten Release-Shellverträge ist eingerichtet:
   Push auf `main`, Pull Request und manueller Start. Der Workflow ist noch nicht
   öffentlich ausgeführt; lokale Vertragsprüfungen bestehen.
