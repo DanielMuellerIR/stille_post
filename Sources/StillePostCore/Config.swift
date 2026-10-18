@@ -183,6 +183,9 @@ public struct Config: Codable, Equatable {
 
     /// Einstellungen für die Stille-Erkennung (VAD = Voice Activity Detection).
     public struct Vad: Codable, Equatable {
+        public enum Detector: String, Codable, CaseIterable { case rms, silero }
+        /// Silero ist ausdrücklich optional; alte Konfigurationen bleiben bei RMS.
+        public var detector: Detector = .rms
         /// Pegel-Schwelle in dBFS, unterhalb derer ein Frame als "still" gilt.
         /// 0 dBFS = Vollaussteuerung; typische Sprechpegel liegen deutlich über -40.
         public var silenceThresholdDb: Double = -45
@@ -563,11 +566,12 @@ extension Config.Bridge {
 
 extension Config.Vad {
     private enum CodingKeys: String, CodingKey {
-        case silenceThresholdDb, minSpeechSec, splitAfterSilenceSec, minSegmentSec, maxSegmentSec, paddingSec, autoStopAfterSilenceSec
+        case detector, silenceThresholdDb, minSpeechSec, splitAfterSilenceSec, minSegmentSec, maxSegmentSec, paddingSec, autoStopAfterSilenceSec
     }
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
+        detector = c.decodeOrDefault(Detector.self, forKey: .detector, default: .rms)
         silenceThresholdDb = c.decodeOrDefault(Double.self, forKey: .silenceThresholdDb,
                                                default: silenceThresholdDb)
         minSpeechSec = c.decodeOrDefault(Double.self, forKey: .minSpeechSec, default: minSpeechSec)

@@ -120,7 +120,7 @@ final class AudioFileImportWork {
     }
 
     func transcribe(request: DictationRequestStore.Snapshot, server: any DictationServer,
-                    makeSegmenter: (Config.Vad) -> any DictationSegmenter,
+                    makeSegmenter: (Config.Vad) async -> any DictationSegmenter,
                     timings: DictationTimingStore?, clock: () -> TimeInterval) async throws -> [String?] {
         try Task.checkCancellation()
         let reader: AudioDecoder.FileReader
@@ -137,7 +137,8 @@ final class AudioFileImportWork {
         // Ein Vorlauf über der Segmentgrenze würde nach jedem Schnitt weiter
         // anwachsen und die Begrenzung der Audioanfragen aushebeln.
         config.paddingSec = min(config.paddingSec, min(1, config.maxSegmentSec / 2))
-        let segmenter = makeSegmenter(config)
+        let segmenter = await makeSegmenter(config)
+        try Task.checkCancellation()
         var pending: [VadSegmenter.Segment] = []
         segmenter.onSegment = { if $0.hadSpeech { pending.append($0) } }
         var texts: [String?] = []

@@ -746,6 +746,9 @@ private struct WhisperTab: View {
 private struct RecordingTab: View {
     @Binding var audio: Config.Audio
     @Binding var vad: Config.Vad
+    @State private var modelNote = L10n.text("vad.checking")
+    @State private var installing = false
+    @State private var downloadTask: Task<Void, Never>?
 
     var body: some View {
         Form {
@@ -753,6 +756,25 @@ private struct RecordingTab: View {
                 AudioInputPicker(audio: $audio)
             }
             Section(L10n.text("settings.vad.section")) {
+                Picker(L10n.text("vad.detector"), selection: $vad.detector) {
+                    Text(L10n.text("vad.rms")).tag(Config.Vad.Detector.rms)
+                    Text(L10n.text("vad.silero")).tag(Config.Vad.Detector.silero)
+                }.accessibilityIdentifier("vadDetector")
+                if vad.detector == .silero {
+                    Text(L10n.text("vad.opt_in_help"))
+                        .font(.caption).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(modelNote).font(.caption).fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("vadModelStatus")
+                    HStack {
+                        Button(L10n.text("vad.download")) { installModel() }
+                            .disabled(installing).accessibilityIdentifier("vadDownload")
+                        if installing {
+                            ProgressView().controlSize(.small)
+                            Button(L10n.text("common.cancel")) { downloadTask?.cancel() }
+                        }
+                    }
+                }
                 TextField(L10n.text("settings.vad.threshold"), value: $vad.silenceThresholdDb,
                           format: .number.locale(Locale(identifier: L10n.languageCode)))
                 Text(L10n.text("settings.vad.threshold_help"))
@@ -774,6 +796,21 @@ private struct RecordingTab: View {
             }
         }
         .formStyle(.grouped)
+        .task { modelNote = await SileroModel.availability() ?? L10n.text("vad.ready") }
+        .onDisappear { downloadTask?.cancel() }
+    }
+
+    private func installModel() {
+        installing = true
+        modelNote = L10n.text("vad.downloading")
+        downloadTask = Task { @MainActor in
+            defer { installing = false; downloadTask = nil }
+            do {
+                try await SileroModel.install()
+                modelNote = L10n.text("vad.ready")
+            } catch is CancellationError { modelNote = L10n.text("vad.cancelled") }
+            catch { modelNote = L10n.text(Task.isCancelled ? "vad.cancelled" : "vad.download_failed") }
+        }
     }
 }
 

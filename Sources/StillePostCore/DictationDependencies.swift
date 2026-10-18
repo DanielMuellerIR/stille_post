@@ -14,8 +14,15 @@ protocol DictationSegmenter: AnyObject {
     var onSegment: ((VadSegmenter.Segment) -> Void)? { get set }
     var onAutoStop: (() -> Void)? { get set }
     var currentLevelDb: Double { get }
+    var fallbackReason: String? { get }
+    var onFallback: ((String) -> Void)? { get set }
     func process(_ samples: [Float])
     func flush()
+}
+
+extension DictationSegmenter {
+    var fallbackReason: String? { nil }
+    var onFallback: ((String) -> Void)? { get { nil } set {} }
 }
 
 protocol DictationTranscriber: AnyObject {
@@ -58,7 +65,7 @@ struct DictationDependencies {
     let server: any DictationServer
     let cleanup: any DictationCleanup
     let makeRecorder: (Config.Audio) -> any DictationRecorder
-    let makeSegmenter: (Config.Vad) -> any DictationSegmenter
+    let makeSegmenter: (Config.Vad) async -> any DictationSegmenter
     let makeWavWriter: (URL) throws -> any DictationWavWriter
     var makeTranscriber: ((Config.Whisper) -> any DictationTranscriber)? = nil
     var monotonicTime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
@@ -71,7 +78,7 @@ struct DictationDependencies {
             server: WhisperServerManager(config: config.whisper),
             cleanup: CleanupService(config: config.cleanup),
             makeRecorder: { AudioRecorder(config: $0) },
-            makeSegmenter: { VadSegmenter(config: $0) },
+            makeSegmenter: { await VadSegmenter.prepared(config: $0) },
             makeWavWriter: { try WavFileWriter(url: $0) }
         )
     }

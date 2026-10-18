@@ -32,6 +32,15 @@ final class OverlayController {
     private var hideTimer: Timer?
     private let config: Config.UI
     var recordingContext: String = "" { didSet { model.recordingContext = recordingContext } }
+    var recordingVad: String = "" {
+        didSet {
+            model.recordingVad = recordingVad
+            if panel != nil {
+                panel?.setContentSize(NSSize(width: 340, height: model.panelHeight))
+                positionPanel()
+            }
+        }
+    }
     var recordingReason: String = "" { didSet { model.recordingReason = recordingReason } }
     var recordingInstruction: String = "" { didSet { model.recordingInstruction = recordingInstruction } }
     var liveTranscriptPreview: Bool = false { didSet { model.liveTranscriptPreview = liveTranscriptPreview } }
@@ -223,6 +232,7 @@ final class OverlayModel: ObservableObject {
     @Published var mode: Mode = .recording
     @Published var levelDb: Double = -120
     @Published var recordingContext = ""
+    @Published var recordingVad = ""
     @Published var recordingReason = ""
     @Published var recordingInstruction = ""
     @Published var duration: TimeInterval = 0
@@ -238,7 +248,10 @@ final class OverlayModel: ObservableObject {
     var panelHeight: CGFloat {
         let previewHeight: CGFloat = showsTranscriptPreview ? 150 : 0
         switch mode {
-        case .recording, .paused: return 180 + previewHeight
+        case .recording, .paused:
+            // Der Rückfallgrund kann in DE drei Zeilen benötigen. Auch im
+            // Hold-Modus müssen Hinweis und beide Schaltflächen Platz behalten.
+            return (recordingVad.isEmpty ? 180 : 210) + previewHeight
         default: break
         }
         return 110 + previewHeight
@@ -324,6 +337,12 @@ struct OverlayView: View {
                                 .foregroundColor(.white.opacity(0.85)).lineLimit(1).truncationMode(.middle)
                                 .accessibilityIdentifier("recordingProfileReason")
                         }
+                        if !model.recordingVad.isEmpty {
+                            Text(model.recordingVad).font(.system(size: 10))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .foregroundColor(.white.opacity(0.95))
+                                .accessibilityIdentifier("recordingVad")
+                        }
                         Text(L10n.format("recording.audio_time", timeString))
                             .font(.system(size: 14, weight: .medium).monospacedDigit())
                             .foregroundColor(.white.opacity(0.85))
@@ -351,6 +370,12 @@ struct OverlayView: View {
                             .accessibilityIdentifier("recordingProfile")
                         if !model.recordingReason.isEmpty {
                             Text(model.recordingReason).font(.system(size: 10)).lineLimit(1).truncationMode(.middle)
+                        }
+                        if !model.recordingVad.isEmpty {
+                            Text(model.recordingVad).font(.system(size: 10))
+                                .fixedSize(horizontal: false, vertical: true)
+                                .foregroundColor(.white.opacity(0.95))
+                                .accessibilityIdentifier("recordingVad")
                         }
                         Text(L10n.format("recording.audio_time", timeString)).font(.system(size: 14).monospacedDigit())
                         Text(L10n.text("recording.microphone_off")).font(.system(size: 11, weight: .medium))

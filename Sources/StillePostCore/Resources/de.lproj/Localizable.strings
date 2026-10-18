@@ -722,3 +722,22 @@
 "selection.service_origin" = "Ursprung des Diensts nicht verifiziert";
 "selection.service_unverified" = "Der Ursprung der Dienstauswahl lässt sich nicht sicher prüfen. Die Vorschau wird ausschließlich auf diesem Mac verarbeitet. Wähle für das Ersetzen die ursprüngliche App und starte dort die Menüaktion.";
 "selection.origin.rawFallback" = "Rohtext-Rückfall";
+
+// Optionale lokale Sprachaktivitätserkennung.
+"vad.detector" = "Sprachaktivität erkennen";
+"vad.rms" = "Pegel (RMS, Standard)";
+"vad.silero" = "Silero (optional, lokal)";
+"vad.opt_in_help" = "Silero 6.2.1 erkennt Sprache lokal in 256-ms-Fenstern. Das Modell wird nur auf Knopfdruck geladen (1,1 MB von Hugging Face). Ohne nutzbares Modell übernimmt RMS mit der Pegelschwelle darunter. Die Auswahl gilt ab der nächsten Aufnahme. Menschliche Mikrofonabnahme noch offen.";
+"vad.checking" = "Modell wird geprüft …";
+"vad.ready" = "Modell vollständig und SHA-256 geprüft.";
+"vad.download" = "Silero-Modell laden und prüfen";
+"vad.downloading" = "Silero-Modell wird geladen und geprüft …";
+"vad.cancelled" = "Download abgebrochen. RMS bleibt verfügbar.";
+"vad.download_failed" = "Modell konnte nicht installiert werden. Erneut versuchen; RMS bleibt verfügbar.";
+"vad.fallback.missing" = "Modell fehlt";
+"vad.fallback.integrity" = "Modell unvollständig oder beschädigt";
+"vad.fallback.unavailable" = "CoreML-Modell nicht nutzbar";
+"vad.fallback.inference" = "Silero-Verarbeitung fehlgeschlagen";
+"vad.fallback.unprepared" = "Silero nicht vorbereitet";
+"vad.fallback_status" = "RMS-Rückfall: %@";
+"vad.active" = "Silero · lokale Sprachaktivität";

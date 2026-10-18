@@ -722,3 +722,22 @@
 "selection.service_origin" = "Unverified service source";
 "selection.service_unverified" = "The source of the service selection could not be verified. This preview is processed exclusively on this Mac. Return to the original app and use the menu action to replace its selection.";
 "selection.origin.rawFallback" = "Raw-text fallback";
+
+// Optionale lokale Sprachaktivitätserkennung.
+"vad.detector" = "Detect speech activity";
+"vad.rms" = "Level (RMS, default)";
+"vad.silero" = "Silero (optional, local)";
+"vad.opt_in_help" = "Silero 6.2.1 detects speech locally in 256 ms windows. The model downloads only when requested (1.1 MB from Hugging Face). Without a usable model, RMS uses the level threshold below. Your selection applies to the next recording. Human microphone validation is still pending.";
+"vad.checking" = "Checking model …";
+"vad.ready" = "Complete model verified with SHA-256.";
+"vad.download" = "Download and verify Silero model";
+"vad.downloading" = "Downloading and verifying Silero model …";
+"vad.cancelled" = "Download cancelled. RMS remains available.";
+"vad.download_failed" = "Could not install model. Try again; RMS remains available.";
+"vad.fallback.missing" = "Model missing";
+"vad.fallback.integrity" = "Model incomplete or damaged";
+"vad.fallback.unavailable" = "CoreML model unavailable";
+"vad.fallback.inference" = "Silero processing failed";
+"vad.fallback.unprepared" = "Silero not prepared";
+"vad.fallback_status" = "RMS fallback: %@";
+"vad.active" = "Silero · local speech detection";

@@ -222,6 +222,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             else if preview == "raw-preview-resuming" { overlay.show(.starting(hold: false, resuming: true)) }
             else { overlay.show(.recording) }
         }
+        if ProcessInfo.processInfo.environment["STILLEPOST_OVERLAY_PREVIEW"] != nil,
+           ProcessInfo.processInfo.environment["STILLEPOST_CONFIG"] != nil,
+           ProcessInfo.processInfo.environment["STILLEPOST_APP_SUPPORT"] != nil,
+           prospectiveConfiguration.vad.detector == .silero {
+            let vad = prospectiveConfiguration.vad
+            Task { @MainActor [weak self] in
+                let detector = await VadSegmenter.prepared(config: vad)
+                self?.overlay.recordingVad = detector.fallbackReason.map {
+                    L10n.format("vad.fallback_status", $0)
+                } ?? L10n.text("vad.active")
+            }
+        }
         switch ProcessInfo.processInfo.environment["STILLEPOST_OVERLAY_PREVIEW"] {
         case "recording":
             overlay.recordingContext = L10n.format("profiles.recording", prospectiveConfiguration.profileLabel,
@@ -898,6 +910,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 self.playSound(custom: "dictation-stop", fallback: "Bottle")
                 self.overlay.show(.paused)
             case .recording:
+                self.overlay.recordingVad = source.vadStatus
                 self.overlay.recordingContext = L10n.format("profiles.recording", self.engine.sessionConfiguration.profileLabel,
                     self.engine.sessionConfiguration.whisper.language)
                 self.overlay.recordingReason = self.engine.sessionConfiguration.requestProfileSelection?.label ?? ""
@@ -951,6 +964,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             guard let self, self.engine === source, let result = TransientResultStore.Result(text: entry.cleanText,
                 rawFallback: entry.cleanupFellBack == true, note: entry.cleanupFallbackReason, origin: entry.resultOrigin) else { return }
             self.showPreview(result, target: PasteService.captureTarget(), focus: self.canRecallResult, floating: false)
+        }
+
+        engine.onVadFallback = { [weak self, weak source] _ in
+            guard let self, let source, self.engine === source else { return }
+            self.testDictationWindow?.receiveVadStatus(source.vadStatus)
+            if !self.ownsTemporaryResult(source) { self.overlay.recordingVad = source.vadStatus }
         }
 
         // Bereinigung weicht gerade auf einen Fallback-Endpoint aus: im Overlay

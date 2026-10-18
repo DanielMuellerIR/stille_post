@@ -1,0 +1,177 @@
+{
+  "date": "2026-10-18",
+  "productVersion": "0.9.40",
+  "modelRevision": "b419383c55c110e2c9271fa6ee0ea83d03c70d96",
+  "computeUnits": "cpuOnly",
+  "conditions": "Ein gehashter AP17-Korpusdurchgang; frischer Produktdetektor je Datei. Netzwerk gesperrt. Geteilte Hostlast, kein Mikrofonlauf.",
+  "devices": [
+    {
+      "device": "Apple M5 Max (128 GiB)",
+      "results": [
+        {
+          "detector": "rms",
+          "activeSamples": 2883360,
+          "retainedSamples": 2801760,
+          "lostSpeechFiles": [
+            "de-quiet",
+            "en-quiet"
+          ],
+          "acceptedDisturbances": [
+            "noise"
+          ],
+          "secondsIncludingInitialization": 1.1990706245414913,
+          "segmentCounts": {
+            "de-short": 1,
+            "de-terms": 1,
+            "de-names": 1,
+            "de-numbers": 1,
+            "de-negation": 1,
+            "de-versions": 1,
+            "de-correction": 1,
+            "de-commands": 1,
+            "de-quiet": 0,
+            "de-noise-speech": 1,
+            "de-pauses": 8,
+            "de-long": 3,
+            "en-short": 1,
+            "en-terms": 1,
+            "en-names": 1,
+            "en-numbers": 1,
+            "en-negation": 1,
+            "en-versions": 1,
+            "en-correction": 1,
+            "en-commands": 1,
+            "en-quiet": 0,
+            "en-noise-speech": 1,
+            "en-pauses": 8,
+            "en-long": 2,
+            "silence": 0,
+            "noise": 1,
+            "clicks": 0
+          }
+        },
+        {
+          "detector": "silero",
+          "activeSamples": 2883360,
+          "retainedSamples": 2883360,
+          "lostSpeechFiles": [],
+          "acceptedDisturbances": [],
+          "secondsIncludingInitialization": 4.891941040987149,
+          "segmentCounts": {
+            "de-short": 1,
+            "de-terms": 1,
+            "de-names": 1,
+            "de-numbers": 1,
+            "de-negation": 1,
+            "de-versions": 1,
+            "de-correction": 1,
+            "de-commands": 1,
+            "de-quiet": 1,
+            "de-noise-speech": 1,
+            "de-pauses": 8,
+            "de-long": 3,
+            "en-short": 1,
+            "en-terms": 1,
+            "en-names": 1,
+            "en-numbers": 1,
+            "en-negation": 1,
+            "en-versions": 1,
+            "en-correction": 1,
+            "en-commands": 1,
+            "en-quiet": 1,
+            "en-noise-speech": 1,
+            "en-pauses": 8,
+            "en-long": 2,
+            "silence": 0,
+            "noise": 0,
+            "clicks": 0
+          }
+        }
+      ]
+    },
+    {
+      "device": "Apple M1 (16 GiB)",
+      "results": [
+        {
+          "detector": "rms",
+          "activeSamples": 2883360,
+          "retainedSamples": 2801760,
+          "lostSpeechFiles": [
+            "de-quiet",
+            "en-quiet"
+          ],
+          "acceptedDisturbances": [
+            "noise"
+          ],
+          "secondsIncludingInitialization": 1.467444208159577,
+          "segmentCounts": {
+            "de-short": 1,
+            "de-terms": 1,
+            "de-names": 1,
+            "de-numbers": 1,
+            "de-negation": 1,
+            "de-versions": 1,
+            "de-correction": 1,
+            "de-commands": 1,
+            "de-quiet": 0,
+            "de-noise-speech": 1,
+            "de-pauses": 8,
+            "de-long": 3,
+            "en-short": 1,
+            "en-terms": 1,
+            "en-names": 1,
+            "en-numbers": 1,
+            "en-negation": 1,
+            "en-versions": 1,
+            "en-correction": 1,
+            "en-commands": 1,
+            "en-quiet": 0,
+            "en-noise-speech": 1,
+            "en-pauses": 8,
+            "en-long": 2,
+            "silence": 0,
+            "noise": 1,
+            "clicks": 0
+          }
+        },
+        {
+          "detector": "silero",
+          "activeSamples": 2883360,
+          "retainedSamples": 2883360,
+          "lostSpeechFiles": [],
+          "acceptedDisturbances": [],
+          "secondsIncludingInitialization": 4.965005624690093,
+          "segmentCounts": {
+            "de-short": 1,
+            "de-terms": 1,
+            "de-names": 1,
+            "de-numbers": 1,
+            "de-negation": 1,
+            "de-versions": 1,
+            "de-correction": 1,
+            "de-commands": 1,
+            "de-quiet": 1,
+            "de-noise-speech": 1,
+            "de-pauses": 8,
+            "de-long": 3,
+            "en-short": 1,
+            "en-terms": 1,
+            "en-names": 1,
+            "en-numbers": 1,
+            "en-negation": 1,
+            "en-versions": 1,
+            "en-correction": 1,
+            "en-commands": 1,
+            "en-quiet": 1,
+            "en-noise-speech": 1,
+            "en-pauses": 8,
+            "en-long": 2,
+            "silence": 0,
+            "noise": 0,
+            "clicks": 0
+          }
+        }
+      ]
+    }
+  ]
+}

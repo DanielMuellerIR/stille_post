@@ -3,6 +3,42 @@ import XCTest
 
 final class PauseResumeTests: XCTestCase {
     @MainActor
+    func testCancelledModelPreparationCannotOpenMicrophoneOrCreateWav() async throws {
+        let f = try PauseFixture()
+        defer { f.dispose() }
+        let gate = PauseGate()
+        var entered = false
+        f.beforeSegmenter = { entered = true; await gate.wait() }
+        f.engine.start()
+        try await waitUntil { entered }
+        f.engine.cancel()
+        await gate.open()
+        try await waitUntil { !f.segmenters.isEmpty }
+        XCTAssertEqual(f.engine.state, .idle)
+        XCTAssertTrue(f.recorders.isEmpty)
+        XCTAssertNil(f.wavURL)
+        XCTAssertTrue(f.results.isEmpty)
+    }
+
+    @MainActor
+    func testVadSelectionIsFrozenAcrossPauseAndResume() async throws {
+        let f = try PauseFixture()
+        defer { f.dispose() }
+        f.config.vad.detector = .silero
+        f.engine.configure(f.config)
+        try await f.start()
+        f.feed(0.1, count: 8000)
+        f.engine.pause()
+        var changed = f.config
+        changed.vad.detector = .rms
+        f.engine.configure(changed)
+        f.engine.resume()
+        try await waitUntil { f.engine.state == .recording }
+        XCTAssertEqual(f.segmenterConfigurations.map(\.detector), [.silero, .silero])
+        f.engine.cancel()
+    }
+
+    @MainActor
     func testThreePhasesKeepOrderOneWavOneCleanupAndFrozenPolicy() async throws {
         let f = try PauseFixture()
         defer { f.dispose() }
@@ -595,6 +631,8 @@ private final class PauseFixture {
     var realVAD = false
     var permission = true
     var beforePermission: (() async -> Void)?
+    var beforeSegmenter: (() async -> Void)?
+    var segmenterConfigurations: [Config.Vad] = []
     var nextRecorderFailure = false
     var nextRecorderStart: ((PauseRecorder) -> Void)?
     var results: [DictationResult] = []
@@ -615,6 +653,8 @@ private final class PauseFixture {
                 return recorder
             },
             makeSegmenter: { [weak self] config in
+                await self?.beforeSegmenter?()
+                self?.segmenterConfigurations.append(config)
                 if self!.realVAD { return VadSegmenter(config: config) }
                 let segmenter = PauseSegmenter()
                 self!.segmenters.append(segmenter)

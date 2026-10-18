@@ -10,6 +10,18 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.40] — 2026-10-18
+
+### Neu
+
+- Silero 6.2.1 kann in den Aufnahmeeinstellungen ausdrücklich als lokale
+  Sprachaktivitätserkennung gewählt werden. Der separate Modell-Download prüft
+  feste Größen und SHA-256; RMS bleibt Standard und übernimmt bei fehlendem,
+  beschädigtem oder nicht nutzbarem Modell sowie bei Verarbeitungsfehlern.
+- Aufnahmeoverlay und Testdiktat zeigen den RMS-Rückfallgrund. Pause/Fortsetzen,
+  Live-Rohtext und genau eine Gesamtbereinigung bleiben erhalten; macOS 13 bleibt
+  die Untergrenze. Menschliche Mikrofonabnahme ist noch offen.
+
 ## [0.9.39] — 2026-10-18
 
 ### Neu

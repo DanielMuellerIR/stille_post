@@ -9,10 +9,9 @@ import Foundation
 /// Beim Stopp bleibt meist nur noch das letzte Segment übrig —
 /// die Wartezeit ist damit fast konstant kurz, egal wie lange man geredet hat.
 ///
-/// Die Erkennung ist bewusst einfach (Lautstärke-Schwelle statt neuronalem VAD):
-/// Ein Frame (30 ms) gilt als Sprache, wenn sein RMS-Pegel über der Schwelle liegt.
-/// Das reicht, um Pausen zu finden und reine Stille zu verwerfen (gegen die
-/// Whisper-Halluzinationen bei Stille, die OpenWhispr plagen).
+/// Standard ist die RMS-Pegelschwelle in 30-ms-Frames. Optional klassifiziert
+/// Silero 256-ms-Fenster; Segmentierung und Stillekürzung bleiben gemeinsam.
+/// Ein Modellfehler schaltet für diese Aufnahmephase dauerhaft auf RMS zurück.
 public final class VadSegmenter {
 
     /// Ein abgeschlossenes Audio-Segment.
@@ -41,7 +40,12 @@ public final class VadSegmenter {
 
     private let config: Config.Vad
     /// Frame-Größe für die Pegelmessung: 30 ms bei 16 kHz = 480 Samples.
-    private let frameSize = WavCodec.sampleRate * 30 / 1000
+    private let meterFrameSize = WavCodec.sampleRate * 30 / 1000
+    private var meterPending: [Float] = []
+    private var detector: (any SpeechActivityDetector)?
+    private var frameSize: Int { detector?.frameSize ?? meterFrameSize }
+    public private(set) var fallbackReason: String?
+    public var onFallback: ((String) -> Void)?
 
     // Zustand des laufenden Segments:
     private var buffer: [Float] = []          // Samples des aktuellen Segments
@@ -65,34 +69,68 @@ public final class VadSegmenter {
     /// damit Wortanfänge nicht abgeschnitten werden.
     private var preRoll: [Float] = []
 
-    public init(config: Config.Vad) {
+    public convenience init(config: Config.Vad) {
+        self.init(config: config, detector: nil, fallbackReason: config.detector == .silero
+            ? L10n.text("vad.fallback.unprepared") : nil)
+    }
+
+    init(config: Config.Vad, detector: (any SpeechActivityDetector)?, fallbackReason: String? = nil) {
         // Config.save/load validieren bereits. Diese zusätzliche Normalisierung
         // schützt Aufrufer, die Config.Vad direkt konstruieren (und verhindert
         // insbesondere negative/überlaufende Array.suffix-Werte).
         self.config = config.runtimeSafe
+        self.detector = detector
+        self.fallbackReason = fallbackReason
     }
 
     /// Nimmt neue Samples vom Aufnahme-Gerät entgegen (16 kHz mono Float).
     public func process(_ samples: [Float]) {
-        // Samples in ganze 30-ms-Frames zerlegen; Rest bis zum nächsten Aufruf aufheben.
+        // Die Pegelanzeige bleibt unabhängig vom gewählten Detektor bei 30 ms.
+        meterPending.append(contentsOf: samples)
+        while meterPending.count >= meterFrameSize {
+            let frame = Array(meterPending.prefix(meterFrameSize))
+            meterPending.removeFirst(meterFrameSize)
+            levelLock.withLock { levelDbSnapshot = Self.levelDb(frame) }
+        }
         pendingFrame.append(contentsOf: samples)
+        drainFrames()
+    }
+
+    private func drainFrames() {
         while pendingFrame.count >= frameSize {
             let frame = Array(pendingFrame.prefix(frameSize))
             pendingFrame.removeFirst(frameSize)
-            processFrame(frame)
+            classify(frame)
         }
     }
 
-    private func processFrame(_ frame: [Float]) {
-        // RMS-Pegel des Frames berechnen und in dBFS umrechnen.
-        var sumSquares: Double = 0
-        for sample in frame { sumSquares += Double(sample) * Double(sample) }
-        let rms = (sumSquares / Double(frame.count)).squareRoot()
-        let db = rms > 0 ? 20 * log10(rms) : -120
-        levelLock.withLock { levelDbSnapshot = db }
+    private static func levelDb(_ frame: [Float]) -> Double {
+        let sum = frame.reduce(0.0) { $0 + Double($1) * Double($1) }
+        let rms = (sum / Double(frame.count)).squareRoot()
+        return rms > 0 ? 20 * log10(rms) : -120
+    }
 
+    private func classify(_ frame: [Float]) {
+        let isSpeech: Bool
+        if let detector {
+            do { isSpeech = try detector.isSpeech(frame) }
+            catch {
+                // Das fehlgeschlagene Fenster ist noch unverarbeitet. Erneut in
+                // RMS-Frames einreihen, damit weder Samples verloren gehen noch
+                // ein einzelner Klick plötzlich als 256 ms Sprache zählt.
+                self.detector = nil
+                let reason = L10n.text("vad.fallback.inference")
+                fallbackReason = reason
+                onFallback?(reason)
+                pendingFrame.insert(contentsOf: frame, at: 0)
+                return
+            }
+        } else { isSpeech = Self.levelDb(frame) > config.silenceThresholdDb }
+        processFrame(frame, isSpeech: isSpeech)
+    }
+
+    private func processFrame(_ frame: [Float], isSpeech: Bool) {
         let frameSec = Double(frame.count) / Double(WavCodec.sampleRate)
-        let isSpeech = db > config.silenceThresholdDb
 
         buffer.append(contentsOf: frame)
 
@@ -175,10 +213,20 @@ public final class VadSegmenter {
 
     /// Aufnahme-Ende: Das angefangene Segment abschließen und ausliefern.
     public func flush() {
-        // Auch den unvollständigen letzten Frame noch mitnehmen.
+        drainFrames()
         if !pendingFrame.isEmpty {
-            buffer.append(contentsOf: pendingFrame)
+            let tail = pendingFrame
             pendingFrame = []
+            if detector != nil {
+                // Nur die Inferenz polstert auf 256 ms; die Segmentdauer und WAV
+                // enthalten ausschließlich tatsächlich empfangene Samples.
+                classify(tail)
+                drainFrames()
+            } else { buffer.append(contentsOf: tail) }
+            if !pendingFrame.isEmpty {
+                buffer.append(contentsOf: pendingFrame)
+                pendingFrame = []
+            }
         }
         guard !buffer.isEmpty else { return }
         closeSegment(reason: .flush)

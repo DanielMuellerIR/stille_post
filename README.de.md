@@ -11,6 +11,11 @@ Modell-Download und nutzernahe Fehler — ist auf Deutsch und Englisch verfügba
 macOS wählt die Sprache aus den systemweiten oder app-spezifischen
 Spracheinstellungen. Auch die CLI-Diagnosen sind lokalisiert.
 
+Optional erkennt [Silero die Sprachaktivität](docs/silero-vad.md). Auswahl und
+separater, SHA-256-geprüfter Modell-Download stehen unter Einstellungen → Aufnahme.
+RMS bleibt Standard und Rückfall; macOS 13 bleibt unterstützt. Der belegte Nutzen
+stammt aus künstlichen Sprachdateien, menschliche Mikrofonabnahme steht noch aus.
+
 ## Menüleiste & Verlauf
 
 | | |

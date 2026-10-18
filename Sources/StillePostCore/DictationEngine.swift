@@ -75,6 +75,13 @@ public final class DictationEngine {
     /// Die App zeigt das im Overlay an — sonst wirkt ein Fallback nur wie
     /// unerklärliche Wartezeit. Auf Main-Thread.
     public var onCleanupFallback: ((String) -> Void)?
+    /// Auf dem Hauptthread gelesener Detektorzustand der laufenden Aufnahme.
+    public private(set) var vadFallbackReason: String?
+    public var vadStatus: String {
+        guard sessionRequest.config.vad.detector == .silero else { return "" }
+        return vadFallbackReason.map { L10n.format("vad.fallback_status", $0) } ?? L10n.text("vad.active")
+    }
+    public var onVadFallback: ((String) -> Void)?
     /// Der primäre Bereinigungs-Endpoint antwortet gerade nicht, war aber eben
     /// noch da — die Bereinigung wartet ein paar Sekunden auf ihn (Blip-Toleranz).
     /// Auch das gehört ins Overlay. Auf Main-Thread.
@@ -107,7 +114,7 @@ public final class DictationEngine {
     }
     private let serverManager: any DictationServer
     private let makeRecorder: (Config.Audio) -> any DictationRecorder
-    private let makeSegmenter: (Config.Vad) -> any DictationSegmenter
+    private let makeSegmenter: (Config.Vad) async -> any DictationSegmenter
     private let makeWavWriter: (URL) throws -> any DictationWavWriter
     private let requestMicrophoneAccess: () async -> Bool
     private let monotonicTime: () -> TimeInterval
@@ -307,6 +314,7 @@ public final class DictationEngine {
         sessionGeneration &+= 1
         let generation = sessionGeneration
         sessionRequest = requests.snapshot(appBundleID: requestAppBundleID?())
+        vadFallbackReason = nil
         previewSuppressed = false
         previewRevision = 0
         clearTranscriptPreview()
@@ -325,6 +333,10 @@ public final class DictationEngine {
             return
         }
         segmenter?.flush()
+        if let reason = segmenter?.fallbackReason {
+            vadFallbackReason = reason
+            onVadFallback?(reason)
+        }
         segmenter = nil
         recordingFailure = nil
         setState(.paused)
@@ -365,9 +377,11 @@ public final class DictationEngine {
             }
             guard self.canContinueStart(generation: generation, attempt: attempt, resuming: resuming) else { return }
             if !resuming { self.sessionRequest.cleanup.warmUp() }
+            let segmenter = await self.makeSegmenter(self.sessionRequest.config.vad)
+            guard self.canContinueStart(generation: generation, attempt: attempt, resuming: resuming) else { return }
             await self.onBeforeRecordingStart?()
             guard self.canContinueStart(generation: generation, attempt: attempt, resuming: resuming) else { return }
-            self.beginRecording(generation: generation, attempt: attempt, resuming: resuming)
+            self.beginRecording(generation: generation, attempt: attempt, resuming: resuming, segmenter: segmenter)
         }
     }
 
@@ -388,10 +402,18 @@ public final class DictationEngine {
         return true
     }
 
-    private func beginRecording(generation: UInt64, attempt: UInt64, resuming: Bool) {
+    private func beginRecording(generation: UInt64, attempt: UInt64, resuming: Bool, segmenter: any DictationSegmenter) {
         guard canContinueStart(generation: generation, attempt: attempt, resuming: resuming),
               let audioSession else { return }
-        let segmenter = makeSegmenter(sessionRequest.config.vad)
+        vadFallbackReason = segmenter.fallbackReason
+        segmenter.onFallback = { [weak self] reason in
+            DispatchQueue.main.async {
+                guard let self, self.isCurrentSession(generation),
+                      self.startAttemptGeneration == attempt, self.state == .recording else { return }
+                self.vadFallbackReason = reason
+                self.onVadFallback?(reason)
+            }
+        }
         let recorder = makeRecorder(sessionRequest.config.audio)
         let previewEnabled = sessionRequest.config.ui.liveTranscriptPreview
         let reportPreview: ((Int, DictationTranscriptPreview) -> Void)? = previewEnabled ? { [weak self] revision, preview in
@@ -573,6 +595,10 @@ public final class DictationEngine {
         let duration = recordingDuration
         timingStore?.finishRecording(seconds: duration)
         segmenter?.flush()
+        if let reason = segmenter?.fallbackReason {
+            vadFallbackReason = reason
+            onVadFallback?(reason)
+        }
         segmenter = nil
         let writer = wavWriter
         do { try writer?.finish() }

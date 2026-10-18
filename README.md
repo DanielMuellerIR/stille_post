@@ -11,6 +11,11 @@ user-facing errors — is available in English and German. macOS chooses the lan
 from the system or per-app language preferences. CLI diagnostics are localized as
 well.
 
+Optional [Silero speech activity detection](docs/silero-vad.md) is available in
+Settings → Recording with an explicit, SHA-256-verified model download. RMS remains
+the default and fallback; the minimum stays macOS 13. Evidence comes from synthetic
+speech files; human microphone validation is still pending.
+
 ## Menu bar & history
 
 | | |

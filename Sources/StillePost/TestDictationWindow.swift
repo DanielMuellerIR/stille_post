@@ -26,7 +26,11 @@ final class TestDictationWindowController: NSObject, NSWindowDelegate {
     }
     deinit { for token in observers { NSWorkspace.shared.notificationCenter.removeObserver(token) } }
     func owns(_ engine: DictationEngine) -> Bool { model.session?.owns(engine) == true }
-    func receiveState(_ state: DictationState) { model.session?.receiveState(state) }
+    func receiveState(_ state: DictationState) {
+        model.session?.receiveState(state)
+        model.refreshVadStatus()
+    }
+    func receiveVadStatus(_ status: String) { model.vadStatus = status }
     func receiveResult(_ result: DictationResult) { model.session?.receiveResult(result) }
     func cancel() { model.cancel() }
     @discardableResult func releaseForRegularStart() -> Bool { model.session?.releaseForRegularStart() ?? true }
@@ -51,6 +55,8 @@ final class TestDictationWindowController: NSObject, NSWindowDelegate {
 }
 
 final class TestDictationViewModel: ObservableObject {
+    @Published var vadStatus = ""
+    func refreshVadStatus() { vadStatus = engineProvider()?.vadStatus ?? "" }
     @Published private(set) var revision = 0
     @Published private(set) var reviewed: Config?
     @Published private(set) var context = DiagnosticContext()
@@ -158,6 +164,10 @@ struct TestDictationView: View {
             Text(L10n.text("test_dictation.title")).font(.title2.bold())
             Text(model.profile).font(.subheadline).foregroundColor(.secondary)
                 .accessibilityIdentifier("testDictationProfile")
+            if !model.vadStatus.isEmpty {
+                Text(model.vadStatus).font(.caption).fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("testDictationVad")
+            }
             if let reason = model.reviewed?.requestProfileSelection?.label {
                 Text(reason).font(.caption).foregroundColor(.secondary)
             }
