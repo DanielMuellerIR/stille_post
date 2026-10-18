@@ -31,6 +31,7 @@ Profile für Sprache, Wörterbuch, Bereinigung und Aufbewahrung lassen sich in d
 Der Diktier-Hotkey kann umschalten oder zum Sprechen gehalten werden. Siehe [Gedrückthalten](docs/gedrueckthalten.md).
 
 Längere Diktate lassen sich über Menü und Aufnahmefeld pausieren. Siehe [Pause und Fortsetzen](docs/aufnahme-pausieren.md).
+Einrichtung und Fehler lassen sich über die [Diagnose](docs/diagnose.md) prüfen.
 
 ## In fünf Minuten startklar
 

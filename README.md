@@ -31,6 +31,7 @@ Manage profiles for language, dictionary, cleanup and retention in Settings, ass
 Choose Toggle or Hold to talk for the dictation hotkey in Settings. See [hold to talk](docs/gedrueckthalten.md) (German).
 
 Pause and resume longer dictations from the menu or recording overlay. See [pause and resume](docs/aufnahme-pausieren.md) (German).
+Use the [diagnostics window](docs/diagnose.md) to check setup and failures (German).
 
 ## Ready in five minutes
 

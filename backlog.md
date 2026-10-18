@@ -15,7 +15,8 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] App-Zuordnung und eine durchgehend lokale Bereinigungsrichtlinie ergänzen; siehe [Diktierprofile](docs/diktierprofile.md).
 - [x] Zum Sprechen gedrückten Hotkey mit sicherer Freigabe und Startabsicherung ergänzen; siehe [Gedrückthalten](docs/gedrueckthalten.md).
 - [x] Aufnahme pausieren und als ein Diktat fortsetzen; siehe [Pause/Fortsetzen](docs/aufnahme-pausieren.md).
-- [ ] GUI-Diagnose, Testdiktat und laufende Rohtextvorschau ergänzen.
+- [x] Gemeinsame CLI-/GUI-Diagnose mit konkreten Befunden und datensparsamem Bericht ergänzen; siehe [Diagnose](docs/diagnose.md).
+- [ ] Testdiktat und laufende Rohtextvorschau ergänzen.
 - [ ] Audioimport, explizite gesprochene Formatierung und Bereinigung ausgewählten Textes ergänzen.
 - [ ] Parakeet und Silero gegen den bestehenden Weg messen und geeignete Kandidaten evidenzbasiert integrieren.
 - [ ] Native iPhone-App, TLS-/QR-Kopplung und lokales Offline-Diktat aufbauen.
@@ -23,7 +24,7 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
 [docs/ausgangspruefung-2026-10-16.md](docs/ausgangspruefung-2026-10-16.md) dokumentiert.
-Nächster Schritt: gemeinsame Diagnose und Diagnoseansicht, danach Testdiktat. Die offenen
+Nächster Schritt: ausdrückliches Testdiktat mit Vorschau und getrennten Phasenzeiten. Die offenen
 Gerätefälle bleiben bis zu ihrer tatsächlichen Abnahme erhalten.
 
 ## Offene Abnahmen nach dem Review 2026-10-04

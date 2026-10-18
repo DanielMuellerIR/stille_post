@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     private var pendingResults = PendingResults<PreviewDelivery>()
     private var settingsWindow: SettingsWindowController!
+    private var diagnosticsWindow: DiagnosticsWindowController!
     /// Netzwerkzugang für eigene Geräte im Heimnetz; nil = ausgeschaltet.
     private var bridge: BridgeServer?
     private var bridgeTransition: Task<Void, Never>?
@@ -104,7 +105,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             },
             onHotkeyRecording: { [weak self] recording in
                 self?.setHotkeyCaptureActive(recording)
-            }
+            }, onDiagnostics: { [weak self] in self?.showDiagnostics() }
+        )
+        diagnosticsWindow = DiagnosticsWindowController(
+            configuration: { [weak self] in Config.load().resolvedForRequest(appBundleID: self?.targetAppBundleID) },
+            bridgeState: { [weak self] in
+                guard let self, self.bridgeTransition == nil else { return .unknown }
+                return self.bridge?.isRunning == true ? .running : .stopped
+            }, onAction: { [weak self] in self?.performDiagnosticAction($0) }
         )
 
         setupStatusItem()
@@ -137,8 +145,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         // Für automatisierte GUI-Checks (headless-Testweg): Einstellungsfenster
         // sofort öffnen, ohne dass jemand durchs Menü klicken muss.
-        if ProcessInfo.processInfo.environment["STILLEPOST_OPEN_SETTINGS"] != nil {
-            settingsWindow.show()
+        if let tab = ProcessInfo.processInfo.environment["STILLEPOST_OPEN_SETTINGS"] {
+            if tab == "diagnose" { showDiagnostics() }
+            else { settingsWindow.show() }
         }
         // Isolierter Screenshot-/GUI-Testweg fürs Verlaufsfenster. Zusammen mit
         // STILLEPOST_APP_SUPPORT liest er ausschließlich künstliche Testeinträge.
@@ -663,6 +672,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                                      action: #selector(showHistory), keyEquivalent: "")
         historyItem.target = self
         menu.addItem(historyItem)
+        let diagnosisItem = NSMenuItem(title: L10n.text("diagnosis.open"), action: #selector(showDiagnostics), keyEquivalent: "")
+        diagnosisItem.target = self
+        menu.addItem(diagnosisItem)
         let settingsItem = NSMenuItem(title: L10n.text("menu.settings"),
                                       action: #selector(showSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -820,6 +832,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard !terminationPending else { return false }
+        if menuItem.action == #selector(showDiagnostics) { return !isCapturingHotkey }
         if menuItem.action == #selector(togglePauseResume) {
             menuItem.title = L10n.text(engine.state == .paused ? "recording.resume" : "recording.pause")
             return engine.state == .recording || engine.state == .paused
@@ -900,6 +913,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if engine.state == .idle { overlay.hide() }
     }
     @objc private func showHistory() { if !terminationPending { historyWindow.show() } }
+    @MainActor @objc private func showDiagnostics() {
+        guard !terminationPending, !isCapturingHotkey else { return }
+        diagnosticsWindow.show()
+    }
+
+    private func performDiagnosticAction(_ action: DiagnosticFinding.Action) {
+        switch action {
+        case .none: break
+        case .recordingSettings: settingsWindow.show(tab: "aufnahme")
+        case .speechSettings: settingsWindow.show(tab: "spracherkennung")
+        case .cleanupSettings: settingsWindow.show(tab: "bereinigung")
+        case .generalSettings: settingsWindow.show(tab: "allgemein")
+        case .microphonePrivacy:
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+        case .accessibilityPrivacy:
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+        }
+    }
+
     @objc private func showSettings() { if !terminationPending { settingsWindow.show() } }
     @objc private func openConfig() {
         // Config-Datei existiert nach Config.load() immer.

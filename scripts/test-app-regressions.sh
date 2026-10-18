@@ -21,3 +21,7 @@ swiftc -parse-as-library -I "$MODULE_DIR" \
     Sources/StillePost/HistoryEditor.swift Sources/StillePost/HistoryWindow.swift \
     scripts/fixtures/editor-regression.swift "${OBJECTS[@]}" -o "$TEST_DIR/editor-regression"
 "$TEST_DIR/editor-regression"
+swiftc -parse-as-library -I "$MODULE_DIR" \
+    Sources/StillePost/HotkeyManager.swift Sources/StillePost/DiagnosticsWindow.swift \
+    scripts/fixtures/diagnostics-regression.swift "${OBJECTS[@]}" -o "$TEST_DIR/diagnostics-regression"
+"$TEST_DIR/diagnostics-regression"

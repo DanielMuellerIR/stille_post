@@ -39,9 +39,23 @@ public final class WhisperServerManager: DictationServer {
         } catch {
             throw ServerError.notReachable(error.localizedDescription)
         }
-        let reachable = await client.isReachable()
+        let health = await client.health()
         try Task.checkCancellation()
-        if reachable { return }
+        if health == .ready { return }
+        if health == .unexpectedResponse { throw ServerError.unexpectedService }
+        if health == .loading {
+            // Der Port gehört schon einem Whisper mit laufendem Modellstart.
+            // Ein zweiter Prozess würde nur am belegten Port scheitern.
+            for _ in 0..<60 {
+                try await Task.sleep(nanoseconds: 500_000_000)
+                let updated = await client.health()
+                try Task.checkCancellation()
+                if updated == .ready { return }
+                if updated == .unexpectedResponse { throw ServerError.unexpectedService }
+                if updated == .unavailable { throw ServerError.notReachable(config.serverURL) }
+            }
+            throw ServerError.startTimeout
+        }
         guard config.autostart else {
             throw ServerError.notReachable(config.serverURL)
         }
@@ -103,6 +117,7 @@ public final class WhisperServerManager: DictationServer {
     }
 
     public enum ServerError: Error, LocalizedError {
+        case unexpectedService
         case notReachable(String)
         case binaryMissing(String)
         case modelMissing(String)
@@ -111,6 +126,7 @@ public final class WhisperServerManager: DictationServer {
 
         public var errorDescription: String? {
             switch self {
+            case .unexpectedService: return L10n.text("diagnosis.finding.whisper_unexpected")
             case .notReachable(let url):
                 return L10n.format("core.server.not_reachable", url)
             case .binaryMissing(let path):

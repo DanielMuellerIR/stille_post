@@ -185,161 +185,24 @@ switch command {
 
 // MARK: doctor — alle Abhängigkeiten prüfen
 case "doctor":
-    var problems = 0
-    let whisperClient = WhisperClient(config: config.whisper)
-    let whisperEndpoint: WhisperEndpoint?
-    do {
-        whisperEndpoint = try WhisperEndpoint(serverURL: config.whisper.serverURL)
-    } catch {
-        whisperEndpoint = nil
-        problems += 1
-        print(L10n.format("cli.doctor.server_invalid", error.localizedDescription))
+    let report = try runBlocking { try await DiagnosticsService().scan(configuration: config) }
+    for finding in report.findings {
+        let mark: String
+        switch finding.level {
+        case .ready: mark = "✓"
+        case .problem: mark = "✗"
+        case .warning: mark = "!"
+        case .unknown: mark = "?"
+        case .information: mark = "·"
+        }
+        print(mark + " " + finding.message)
     }
-
-    // Reihenfolge wie in `WhisperServerManager.ensureRunning`, und das ist keine
-    // Kosmetik: Dort zählt zuerst, ob der Server ANTWORTET. Tut er das, braucht
-    // Stille Post weder Binary noch Modelldatei — fehlende Startdateien sind dann
-    // kein Problem, sondern ein Hinweis für den nächsten Kaltstart. Läuft er
-    // dagegen nicht und ist der Selbststart aus, scheitert jede Transkription,
-    // auch wenn alle Dateien da sind. Vorher urteilte `doctor` genau andersherum
-    // und lieferte in beiden Lagen den falschen Exit-Code.
-    var serverReachable = false
-    if whisperEndpoint != nil {
-        serverReachable = try runBlocking { await whisperClient.isReachable() }
-        if serverReachable {
-            print(L10n.format("cli.doctor.server_running", config.whisper.serverURL))
-        } else if config.whisper.autostart {
-            print(L10n.text("cli.doctor.server_stopped"))
-        } else {
-            problems += 1
-            print(L10n.format("cli.doctor.server_stopped_no_autostart",
-                              config.whisper.serverURL))
-        }
-    }
-
-    // whisper-server-Binary + Modell-Datei braucht nur der Selbststart. Ist der
-    // Server aus UND autostart abgeschaltet, hat `doctor` den aktiven Blocker
-    // oben bereits genau einmal gemeldet; unbenutzte Startdateien wären keine
-    // weiteren Probleme. Bei einem laufenden Server zeigen wir ihren Zustand
-    // weiterhin als Hinweis für einen möglichen späteren Kaltstart.
-    if config.whisper.autostart || serverReachable {
-        let startFilesNeeded = !serverReachable
-        var startFilesComplete = true
-        let binary = Config.expandPath(config.whisper.binaryPath)
-        if FileManager.default.isExecutableFile(atPath: binary) {
-            print(L10n.format("cli.doctor.binary_ok", binary))
-        } else {
-            startFilesComplete = false
-            if startFilesNeeded { problems += 1 }
-            print(L10n.format("cli.doctor.binary_missing", binary))
-        }
-        // Bewusst über den Zustandsbegriff statt `fileExists`: Letzteres folgt
-        // Symlinks und meldet auch dann "✓ Modell da", wenn hier nur ein Verweis
-        // auf einen fremden Cache liegt — dann ist das Modell weg, sobald das
-        // fremde Programm aufräumt.
-        switch ModelInstaller.state(atPath: config.whisper.modelPath) {
-        case .installed(let path, let bytes):
-            print(L10n.format("cli.doctor.model_ok", path, ByteSize.megabytes(bytes)))
-        case .borrowed(let path, let target):
-            startFilesComplete = false
-            if startFilesNeeded { problems += 1 }
-            print(L10n.format("cli.doctor.model_borrowed", path))
-            print(L10n.format("cli.doctor.model_target", target))
-            print(L10n.text("cli.doctor.model_borrowed_help"))
-            print("  stillepost-cli install-model")
-        case .missing(let path):
-            startFilesComplete = false
-            if startFilesNeeded { problems += 1 }
-            print(L10n.format("cli.doctor.model_missing", path))
-            print(L10n.text("cli.doctor.model_download_help"))
-        }
-        if !startFilesComplete && !startFilesNeeded {
-            print(L10n.text("cli.doctor.start_files_unused"))
-        }
-    }
-
-    // Häufigster Anfänger-Stolperstein: language=auto rät die Sprache pro
-    // Sprech-Segment und ÜBERSETZT bei Fehl-Erkennung ungefragt.
-    if config.whisper.language == "auto" {
-        print(L10n.text("cli.doctor.language_auto"))
-    }
-
-    // Bereinigung: jeden Endpoint der Kette prüfen (primär + Fallbacks).
-    // Ein toter Endpoint ist erst dann ein hartes Problem, wenn die GANZE Kette
-    // tot ist — genau dafür gibt es die Fallbacks ja.
-    if !config.cleanup.enabled {
-        print(L10n.text("cli.doctor.cleanup_off"))
-    } else {
-        // Ein Dienst für die ganze Kette: Er trägt keinen Zustand je Endpunkt,
-        // die zu prüfende Adresse kommt bei jedem Aufruf mit.
-        let cleanupService = CleanupService(config: config.cleanup)
-        /// Prüft einen einzelnen Bereinigungs-Endpoint; true = benutzbar.
-        func checkEndpoint(_ endpoint: Config.Cleanup.Endpoint, name: String) -> Bool {
-            guard CleanupService.endpointAllowed(endpoint, localOnly: config.cleanup.localOnly) else {
-                print(L10n.text("core.cleanup.local_unavailable"))
-                return false
-            }
-            if endpoint.provider == "openai" {
-                let remote = endpoint.remote
-                // Dieselbe Prüfung, die auch die Bereinigung fährt: Sie baut die
-                // Adresse genauso. Ein nichtleerer, aber unbrauchbarer Wert wie
-                // `http://[` galt hier früher als eingerichtet — und jedes Diktat
-                // fiel danach still auf den Rohtext zurück.
-                if CleanupService.remoteChatURL(remote) == nil {
-                    print(L10n.format("cli.doctor.cleanup_remote_config", name))
-                    return false
-                }
-                if !config.cleanup.localOnly && CleanupService.remoteAPIKey(envVar: remote.apiKeyEnvVar) == nil {
-                    print(L10n.format("cli.doctor.cleanup_no_key", name, remote.apiKeyEnvVar))
-                    return false
-                }
-                print(config.cleanup.localOnly ? L10n.text("profiles.local_only") : L10n.format("cli.doctor.cleanup_cloud_ok", name, endpoint.label))
-                return true
-            }
-            // Ollama erreichbar + Modell vorhanden? Die Prüfung liegt im Kern:
-            // Adressbau, Zeitgrenze und die Namensregel für Modell-Tags sind
-            // dieselben, nach denen die Bereinigung später arbeitet. Früher
-            // sprach `doctor` hier selbst HTTP und konnte deshalb „alles gut“
-            // melden, während `clean()` nach anderen Regeln scheiterte.
-            switch (try? runBlocking { await cleanupService.checkOllamaEndpoint(endpoint) })
-                ?? .unreachable {
-            case .ready:
-                print(L10n.format("cli.doctor.cleanup_ollama_ok", name, endpoint.label))
-                return true
-            case .modelMissing:
-                print(L10n.format(
-                    "cli.doctor.cleanup_model_missing",
-                    name,
-                    endpoint.model,
-                    endpoint.model
-                ))
-                return false
-            case .unreachable:
-                print(L10n.format("cli.doctor.cleanup_unreachable", name, endpoint.ollamaURL))
-                return false
-            }
-        }
-        let chain = config.cleanup.chain
-        var usable = 0
-        for (index, endpoint) in chain.enumerated() {
-            let name = index == 0
-                ? L10n.text("cli.doctor.primary")
-                : L10n.format("settings.cleanup.fallback_number", index)
-            if checkEndpoint(endpoint, name: name) { usable += 1 }
-        }
-        if usable == 0 {
-            problems += 1
-            print(L10n.text("cli.doctor.no_cleanup"))
-        }
-    }
-
-    print(problems == 0
-        ? L10n.text("cli.doctor.ready")
-        : L10n.format(
-            problems == 1 ? "cli.doctor.problems.one" : "cli.doctor.problems.other",
-            problems
-        ))
-    exit(problems == 0 ? 0 : 1)
+    if report.problemCount > 0 {
+        print(L10n.format(report.problemCount == 1 ? "cli.doctor.problems.one" : "cli.doctor.problems.other", report.problemCount))
+    } else if report.findings.contains(where: { $0.level == .warning || $0.level == .unknown }) {
+        print(L10n.text("diagnosis.checked"))
+    } else { print(L10n.text("cli.doctor.ready")) }
+    exit(report.problemCount == 0 ? 0 : 1)
 
 // MARK: install-model — Whisper-Modell selbst beschaffen
 case "install-model":

@@ -22,6 +22,11 @@ protocol DictationTranscriber: AnyObject {
     func transcribe(samples: [Float]) async throws -> String
     func transcribe(wavFile: URL) async throws -> String
     func isReachable() async -> Bool
+    func health() async -> WhisperClient.Health
+}
+
+extension DictationTranscriber {
+    func health() async -> WhisperClient.Health { await isReachable() ? .ready : .unavailable }
 }
 
 protocol DictationServer: AnyObject {

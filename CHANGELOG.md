@@ -10,6 +10,17 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.32] — 2026-10-18
+
+### Neu
+
+- Die Diagnoseansicht prüft Mikrofon, Geräteauswahl, Spracherkennung, Modell,
+  Bereinigung, Bedienungshilfen und Brücke ohne Aufnahme. Passende Aktionen führen
+  zu den jeweiligen Einstellungen; ein Bericht lässt sich ohne Adressen,
+  Schlüssel oder Diktate kopieren. CLI und App teilen dieselben Prüfregeln.
+- Whisper-Bereitschaft verlangt eine gültige Health-Antwort. Ein bereits ladender
+  Server wird abgewartet; ein fremder HTTP-Dienst löst keinen zweiten Serverstart aus.
+
 ## [0.9.31] — 2026-10-18
 
 ### Neu

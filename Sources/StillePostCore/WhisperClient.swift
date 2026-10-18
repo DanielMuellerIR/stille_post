@@ -97,14 +97,28 @@ public final class WhisperClient {
         return Self.cleanWhisperArtifacts(text)
     }
 
-    /// Prüft, ob der whisper-server erreichbar ist.
-    public func isReachable() async -> Bool {
-        guard let endpoint = try? WhisperEndpoint(serverURL: config.serverURL) else { return false }
-        var request = URLRequest(url: endpoint.baseURL)
+    public enum Health: Equatable, Sendable { case ready, loading, unavailable, unexpectedResponse }
+
+    /// Ein fremder HTTP-Dienst ist keine geladene Spracherkennung. Dieselbe
+    /// strukturierte Prüfung gilt für Diagnose und den produktiven Selbststart.
+    public func health() async -> Health {
+        guard let endpoint = try? WhisperEndpoint(serverURL: config.serverURL) else { return .unavailable }
+        var request = URLRequest(url: endpoint.baseURL.appendingPathComponent("health"))
         request.timeoutInterval = 2
-        // Jede HTTP-Antwort (auch 404) heißt: Server-Prozess lebt.
-        return (try? await session.data(for: request)) != nil
+        guard let (data, response) = try? await session.data(for: request) else { return .unavailable }
+        return Self.health(data: data, response: response)
     }
+
+    static func health(data: Data, response: URLResponse) -> Health {
+        struct Status: Decodable { let status: String }
+        guard data.count <= 4096, let response = response as? HTTPURLResponse,
+              let status = try? JSONDecoder().decode(Status.self, from: data).status else { return .unexpectedResponse }
+        if response.statusCode == 200 && status == "ok" { return .ready }
+        if response.statusCode == 503 && status == "loading model" { return .loading }
+        return .unexpectedResponse
+    }
+
+    public func isReachable() async -> Bool { await health() == .ready }
 
     /// Entfernt bekannte Whisper-Artefakte: Marker wie [Musik], (Räuspern) und
     /// typische Halluzinations-Phrasen, die Whisper bei (Rest-)Stille erfindet.

@@ -13,13 +13,16 @@ final class SettingsWindowController {
     private let onApply: (Config, Config) throws -> Void
     /// true = registrierte Hotkeys an den aktiven Recorder statt an das Diktat leiten.
     private let onHotkeyRecording: (Bool) -> Void
+    private let onDiagnostics: () -> Void
 
-    init(onApply: @escaping (Config, Config) throws -> Void, onHotkeyRecording: @escaping (Bool) -> Void) {
+    init(onApply: @escaping (Config, Config) throws -> Void, onHotkeyRecording: @escaping (Bool) -> Void,
+         onDiagnostics: @escaping () -> Void = {}) {
         self.onApply = onApply
         self.onHotkeyRecording = onHotkeyRecording
+        self.onDiagnostics = onDiagnostics
     }
 
-    func show() {
+    func show(tab: String? = nil) {
         if window == nil {
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 720, height: 720),
@@ -42,7 +45,8 @@ final class SettingsWindowController {
                 self?.window?.close()
             },
             onCancel: { [weak self] in self?.window?.close() },
-            onHotkeyRecording: { [weak self] recording in self?.onHotkeyRecording(recording) }
+            onHotkeyRecording: { [weak self] recording in self?.onHotkeyRecording(recording) },
+            onDiagnostics: { [weak self] in self?.onDiagnostics() }, requestedTab: tab
         ))
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -76,6 +80,7 @@ struct SettingsView: View {
     @State private var saveError: String?
     let onCancel: () -> Void
     let onHotkeyRecording: (Bool) -> Void
+    let onDiagnostics: () -> Void
 
     private var configValidationError: String? {
         do {
@@ -87,12 +92,14 @@ struct SettingsView: View {
     }
 
     init(config: Config, onApply: @escaping (Config) throws -> Void, onCancel: @escaping () -> Void,
-         onHotkeyRecording: @escaping (Bool) -> Void = { _ in }) {
+         onHotkeyRecording: @escaping (Bool) -> Void = { _ in },
+         onDiagnostics: @escaping () -> Void = {}, requestedTab: String? = nil) {
         _config = State(initialValue: config)
+        self.onDiagnostics = onDiagnostics
         self.onHotkeyRecording = onHotkeyRecording
         // Automatisierte GUI-Checks können über die Env-Var direkt einen
         // bestimmten Bereich öffnen (Wert = Tab-Name, sonst "Allgemein").
-        let requested = ProcessInfo.processInfo.environment["STILLEPOST_OPEN_SETTINGS"] ?? ""
+        let requested = requestedTab ?? ProcessInfo.processInfo.environment["STILLEPOST_OPEN_SETTINGS"] ?? ""
         _tab = State(initialValue: Tab(rawValue: requested) ?? .allgemein)
         self.onApply = onApply
         self.onCancel = onCancel
@@ -110,7 +117,7 @@ struct SettingsView: View {
             switch tab {
             case .apps: AppProfilesTab(config: $config)
             case .profile: ProfilesTab(config: $config)
-            case .allgemein: GeneralTab(config: $config, onHotkeyRecording: onHotkeyRecording)
+            case .allgemein: GeneralTab(config: $config, onHotkeyRecording: onHotkeyRecording, onDiagnostics: onDiagnostics)
             case .bereinigung: CleanupTab(cleanup: $config.cleanup)
             case .spracherkennung: WhisperTab(whisper: $config.whisper)
             case .aufnahme: RecordingTab(audio: $config.audio, vad: $config.vad)
@@ -185,6 +192,7 @@ private struct GeneralTab: View {
     @Binding var config: Config
     /// Meldet der App, dass gerade eine Kombination aufgenommen wird (siehe HotkeyRecorder).
     let onHotkeyRecording: (Bool) -> Void
+    let onDiagnostics: () -> Void
     @State private var activeRecorder: String?
 
     private func recordingChanged(_ recording: Bool, identifier: String) {
@@ -228,6 +236,12 @@ private struct GeneralTab: View {
             }
             Section(L10n.text("settings.bridge.section")) {
                 BridgeRow(bridge: $config.bridge)
+            }
+            Section(L10n.text("diagnosis.title")) {
+                Button(L10n.text("diagnosis.open"), action: onDiagnostics)
+                    .disabled(activeRecorder != nil).accessibilityIdentifier("openDiagnostics")
+                Text(L10n.text("diagnosis.saved_config")).font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Section(L10n.text("settings.interface.section")) {
                 Picker(L10n.text("settings.overlay_position"), selection: $config.ui.overlayPosition) {
