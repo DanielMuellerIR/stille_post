@@ -10,6 +10,19 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.41] — 2026-10-18
+
+### Neu
+
+- Native iPhone-App als Entwicklungsstand: begrenzte Aufnahme, bewusstes Senden
+  an die vorhandene Heimnetzbrücke, Ergebnis und manuelles Kopieren. Fehler
+  erhalten die Aufnahme zum erneuten Senden; Abbruch und Unterbrechungen haben
+  eigene Zustände. Das Token liegt ausschließlich im iPhone-Schlüsselbund.
+- Ein Kurzbefehl kann die App für die Aktionstaste öffnen. HTTP ist nur im
+  Debug-Build nach ausdrücklicher Entwicklungsfreigabe möglich; verschlüsselte
+  Kopplung steht noch aus. Kein fertiger sicherer iPhone-Client.
+- macOS 13, Whisper und Silero als Opt-in mit RMS-Rückfall bleiben erhalten.
+
 ## [0.9.40] — 2026-10-18
 
 ### Neu

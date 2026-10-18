@@ -1,13 +1,21 @@
 # Diktat vom iPhone über das Heimnetz
 
-Stand: 2026-07-29 (Stufe 0 gebaut und am iPhone verifiziert: Aktionstaste →
-Diktat → Text in der Zwischenablage, zwei Durchläufe).
+Stand: 2026-10-18. Der Kurzbefehl aus Stufe 0 wurde am 2026-07-29 am iPhone
+verifiziert. Zusätzlich gibt es einen nativen Entwicklungsclient; verschlüsselte
+Kopplung steht noch aus.
 
 Ziel: auf dem iPhone in beliebigen Apps mit der Diktatqualität von Stille Post
 arbeiten, solange man im eigenen Heimnetz ist. Der Mac erledigt Spracherkennung
 und Textbereinigung, das iPhone nimmt auf und fügt den fertigen Text ein.
 
 ## Getroffene Entscheidungen
+
+Die native iPhone-App und ihr Build-/Prüfweg stehen unter [iOS/](../iOS/README.md).
+Sie trennt Aufnahme, bewusstes Senden und manuelles Kopieren, speichert das Token
+im iPhone-Schlüsselbund und erhält Aufnahmen bei Versandfehlern. HTTP ist dabei
+nur im Debug-Build nach ausdrücklicher Entwicklungsfreigabe möglich; der
+Release-Build sperrt es. Der bisherige Kurzbefehl bleibt nutzbar. Die Mac-App
+bleibt reiner Audioempfänger und behält ihre bestehenden Schutzgrenzen.
 
 Diese Punkte sind bewusst entschieden und nicht erneut zu diskutieren, solange
 sich die Lage bei Apple nicht ändert:

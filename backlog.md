@@ -27,7 +27,8 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Übernahme des geprüften Parakeet-v3-Kandidaten begründet ablehnen: zusätzliche Namens-, Fachbegriffs- und Versionsfehler auf beiden Geräten; Whisper und macOS 13 bleiben erhalten. Siehe [Übernahmeabschluss](docs/asr-vad-vergleich.md#übernahmeabschluss).
 - [x] Silero als Opt-in mit festem, SHA-256-geprüftem Modell und RMS-Rückfall integrieren; siehe [Silero](docs/silero-vad.md).
 - [ ] Silero mit menschlichen Mikrofonaufnahmen abnehmen (kurze/leise Wörter, Klicks, Rauschen, lange Pausen und Pause/Fortsetzen).
-- [ ] Native iPhone-App, TLS-/QR-Kopplung und lokales Offline-Diktat aufbauen.
+- [x] Native iPhone-App mit Aufnahme, Brückenzugriff und manuellem Kopieren umsetzen und am echten Gerät prüfen; [Entwicklungsclient](iOS/README.md), HTTP ausschließlich für ausdrücklich freigegebene Debug-Tests.
+- [ ] TLS-/QR-Kopplung und lokales Offline-Diktat aufbauen.
 - [ ] Die wesentlichen Kombinationen auf realen Geräten abnehmen und beide Nutzungsanleitungen aktualisieren.
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
@@ -85,8 +86,9 @@ iPhone für unterwegs. Auf dem iPhone 16 Pro Max ist `large-v3-turbo` über Whis
 realistisch (quantisiert 550–630 MB, etwa fünffache Echtzeit). Das spätere lokale
 iPhone-Modell braucht eine gesonderte Auswahl; der geprüfte Parakeet-v3-Kandidat
 ist nach dem Mac-Vergleich für die Übernahme abgelehnt.
-Für App-Erweiterungen bräuchte das ein Xcode-Projekt — `*.xcodeproj` ist derzeit
-ignoriert, das wäre dann anzupassen.
+Der native Entwicklungsclient besitzt inzwischen ein versioniertes Xcode-Projekt
+unter [iOS/](iOS/README.md). HTTP ist dort nur im Debug-Build nach ausdrücklicher
+Entwicklungsfreigabe möglich; TLS-/QR-Kopplung und Offline-Erkennung bleiben offen.
 
 ## Whisper-Modell selbst beschaffen (gebaut in 0.8.0, READMEs offen)
 

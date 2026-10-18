@@ -1,0 +1,520 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1A6860387349C4142936FBE6 /* DictationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F0F32476467D0854C719820 /* DictationView.swift */; };
+		336D6673DB48814C58428AB0 /* MobileUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0127830708A30EAE69B3A169 /* MobileUITests.swift */; };
+		37486ABF9019F271B649FB12 /* BridgeKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5362D1576E3D96F54F5759F1 /* BridgeKeychain.swift */; };
+		47AF1D7F1F08BBEA6250D97C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9622957C6036238FBBE5B896 /* Assets.xcassets */; };
+		47F6797FA98E4E6003558188 /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6CAD3EDFB7433B901B59502 /* ConnectionView.swift */; };
+		4945EE60FF70E4EB582A66B4 /* StillePostClientCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4A529D3144E9EB3133CD5B8A /* StillePostClientCore */; };
+		68984823C60FB0B705FE78C0 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AC322A0862AFA1EE62F3DCE /* AudioRecorder.swift */; };
+		736717626C995B9D3F4CD852 /* MobileModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6A10B3737D73B271C0FA896 /* MobileModel.swift */; };
+		7F89FEB727EA9F08426E9B3F /* OpenDictationIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24F69C404FE43D366CE10B20 /* OpenDictationIntent.swift */; };
+		A233B700CA007CD4265081F2 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E4A9CC529B734562338227CC /* Localizable.strings */; };
+		AA438B26BF551895EE259CF9 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 7CD4944A7D9AFE23E0613903 /* InfoPlist.strings */; };
+		D7ECB363B510F12DDC7681F3 /* StillePostMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42C76D231F7B233EC15D2B17 /* StillePostMobileApp.swift */; };
+		EA058326EBA9B3F409E0A394 /* SimulatorAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43B42341349C186782F25A8A /* SimulatorAudioCapture.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B08A276D76CD425727C66018 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0F8F3F11F9EFDD029E3B9822 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 51B89AF0E0C1C36C9A7EA91C;
+			remoteInfo = StillePostMobile;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		0127830708A30EAE69B3A169 /* MobileUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileUITests.swift; sourceTree = "<group>"; };
+		0AC322A0862AFA1EE62F3DCE /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
+		24F69C404FE43D366CE10B20 /* OpenDictationIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenDictationIntent.swift; sourceTree = "<group>"; };
+		27CDCF629869B40E85F7304E /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		42C76D231F7B233EC15D2B17 /* StillePostMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StillePostMobileApp.swift; sourceTree = "<group>"; };
+		43B42341349C186782F25A8A /* SimulatorAudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulatorAudioCapture.swift; sourceTree = "<group>"; };
+		4785956BC8C2D64ABD3A33BD /* StillePostClientCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = StillePostClientCore; path = StillePostClientCore; sourceTree = SOURCE_ROOT; };
+		5362D1576E3D96F54F5759F1 /* BridgeKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeKeychain.swift; sourceTree = "<group>"; };
+		6F0F32476467D0854C719820 /* DictationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationView.swift; sourceTree = "<group>"; };
+		75F3A6BC982AAF119B09082B /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
+		7BB26DE619B93836665B19C9 /* StillePostMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = StillePostMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		8742557D3F9733B4C11755F0 /* StillePostMobileUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = StillePostMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		9622957C6036238FBBE5B896 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A6A10B3737D73B271C0FA896 /* MobileModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileModel.swift; sourceTree = "<group>"; };
+		A8AC392F56C15FA13C257591 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		B6CAD3EDFB7433B901B59502 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
+		CA3BF9FC86E35513D5CDB018 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		F6EF84BAED1FEDC5A322F88A /* StillePostMobile.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StillePostMobile.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		54A86E5611F9B0FFAADAF5A5 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4945EE60FF70E4EB582A66B4 /* StillePostClientCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0414423968ED685F20F0BDA0 /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				0127830708A30EAE69B3A169 /* MobileUITests.swift */,
+			);
+			path = UITests;
+			sourceTree = "<group>";
+		};
+		6A764BEAFB7FEB2654139822 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				7BB26DE619B93836665B19C9 /* StillePostMobile.app */,
+				8742557D3F9733B4C11755F0 /* StillePostMobileUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		869E16C7F5D3150B4222555A = {
+			isa = PBXGroup;
+			children = (
+				8FB6E2E8B80B8497D7BAA022 /* App */,
+				E87EDAC09C3631117247774B /* Packages */,
+				0414423968ED685F20F0BDA0 /* UITests */,
+				6A764BEAFB7FEB2654139822 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8FB6E2E8B80B8497D7BAA022 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				9622957C6036238FBBE5B896 /* Assets.xcassets */,
+				0AC322A0862AFA1EE62F3DCE /* AudioRecorder.swift */,
+				5362D1576E3D96F54F5759F1 /* BridgeKeychain.swift */,
+				B6CAD3EDFB7433B901B59502 /* ConnectionView.swift */,
+				6F0F32476467D0854C719820 /* DictationView.swift */,
+				A6A10B3737D73B271C0FA896 /* MobileModel.swift */,
+				24F69C404FE43D366CE10B20 /* OpenDictationIntent.swift */,
+				43B42341349C186782F25A8A /* SimulatorAudioCapture.swift */,
+				F6EF84BAED1FEDC5A322F88A /* StillePostMobile.entitlements */,
+				42C76D231F7B233EC15D2B17 /* StillePostMobileApp.swift */,
+				7CD4944A7D9AFE23E0613903 /* InfoPlist.strings */,
+				E4A9CC529B734562338227CC /* Localizable.strings */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		E87EDAC09C3631117247774B /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				4785956BC8C2D64ABD3A33BD /* StillePostClientCore */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		2D5DA5F41EA5960F85862624 /* StillePostMobileUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EF2CCC94ADBA1BCDC33607B9 /* Build configuration list for PBXNativeTarget "StillePostMobileUITests" */;
+			buildPhases = (
+				38A33B088FCC1274AD797D05 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8973F72AB4B39FA3243DBCE5 /* PBXTargetDependency */,
+			);
+			name = StillePostMobileUITests;
+			packageProductDependencies = (
+			);
+			productName = StillePostMobileUITests;
+			productReference = 8742557D3F9733B4C11755F0 /* StillePostMobileUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		51B89AF0E0C1C36C9A7EA91C /* StillePostMobile */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1422FF17F14992E29C9F2483 /* Build configuration list for PBXNativeTarget "StillePostMobile" */;
+			buildPhases = (
+				4C5DDC75281794126EBACB85 /* Sources */,
+				1D0EC3659ADC43DD3F39BBCB /* Resources */,
+				54A86E5611F9B0FFAADAF5A5 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = StillePostMobile;
+			packageProductDependencies = (
+				4A529D3144E9EB3133CD5B8A /* StillePostClientCore */,
+			);
+			productName = StillePostMobile;
+			productReference = 7BB26DE619B93836665B19C9 /* StillePostMobile.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0F8F3F11F9EFDD029E3B9822 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					2D5DA5F41EA5960F85862624 = {
+						ProvisioningStyle = Automatic;
+						TestTargetID = 51B89AF0E0C1C36C9A7EA91C;
+					};
+					51B89AF0E0C1C36C9A7EA91C = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 2E43030763199A58CC0EFB5F /* Build configuration list for PBXProject "StillePostMobile" */;
+			developmentRegion = de;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				de,
+				en,
+			);
+			mainGroup = 869E16C7F5D3150B4222555A;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				EE33683F489175CF241220DE /* XCLocalSwiftPackageReference "StillePostClientCore" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 6A764BEAFB7FEB2654139822 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				51B89AF0E0C1C36C9A7EA91C /* StillePostMobile */,
+				2D5DA5F41EA5960F85862624 /* StillePostMobileUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1D0EC3659ADC43DD3F39BBCB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				47AF1D7F1F08BBEA6250D97C /* Assets.xcassets in Resources */,
+				AA438B26BF551895EE259CF9 /* InfoPlist.strings in Resources */,
+				A233B700CA007CD4265081F2 /* Localizable.strings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		38A33B088FCC1274AD797D05 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				336D6673DB48814C58428AB0 /* MobileUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		4C5DDC75281794126EBACB85 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				68984823C60FB0B705FE78C0 /* AudioRecorder.swift in Sources */,
+				37486ABF9019F271B649FB12 /* BridgeKeychain.swift in Sources */,
+				47F6797FA98E4E6003558188 /* ConnectionView.swift in Sources */,
+				1A6860387349C4142936FBE6 /* DictationView.swift in Sources */,
+				736717626C995B9D3F4CD852 /* MobileModel.swift in Sources */,
+				7F89FEB727EA9F08426E9B3F /* OpenDictationIntent.swift in Sources */,
+				EA058326EBA9B3F409E0A394 /* SimulatorAudioCapture.swift in Sources */,
+				D7ECB363B510F12DDC7681F3 /* StillePostMobileApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		8973F72AB4B39FA3243DBCE5 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 51B89AF0E0C1C36C9A7EA91C /* StillePostMobile */;
+			targetProxy = B08A276D76CD425727C66018 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		7CD4944A7D9AFE23E0613903 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				27CDCF629869B40E85F7304E /* de */,
+				A8AC392F56C15FA13C257591 /* en */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		E4A9CC529B734562338227CC /* Localizable.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				75F3A6BC982AAF119B09082B /* de */,
+				CA3BF9FC86E35513D5CDB018 /* en */,
+			);
+			name = Localizable.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		466F53BC48BFF8E463C28B06 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/StillePostMobile.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MOBILE_APP_NAME = "Stille Post";
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.danielmuellerir.stillepost.ios;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		64464F0165238D3E92B304B5 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/StillePostMobile.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = App/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MOBILE_APP_NAME = "Stille Post Dev";
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.danielmuellerir.stillepost.ios;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		78E3E75BEC79A9A101C5EFC1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.danielmuellerir.stillepost.ios.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = StillePostMobile;
+			};
+			name = Debug;
+		};
+		839F79052FA024187D6FE1A1 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.9.41;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		B4E9AF06BDB3664121DD8335 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.9.41;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		DD5776061B75DA5299B25AF0 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.danielmuellerir.stillepost.ios.uitests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = StillePostMobile;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1422FF17F14992E29C9F2483 /* Build configuration list for PBXNativeTarget "StillePostMobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				64464F0165238D3E92B304B5 /* Debug */,
+				466F53BC48BFF8E463C28B06 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		2E43030763199A58CC0EFB5F /* Build configuration list for PBXProject "StillePostMobile" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B4E9AF06BDB3664121DD8335 /* Debug */,
+				839F79052FA024187D6FE1A1 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		EF2CCC94ADBA1BCDC33607B9 /* Build configuration list for PBXNativeTarget "StillePostMobileUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				78E3E75BEC79A9A101C5EFC1 /* Debug */,
+				DD5776061B75DA5299B25AF0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		EE33683F489175CF241220DE /* XCLocalSwiftPackageReference "StillePostClientCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = StillePostClientCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4A529D3144E9EB3133CD5B8A /* StillePostClientCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = StillePostClientCore;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 0F8F3F11F9EFDD029E3B9822 /* Project object */;
+}
