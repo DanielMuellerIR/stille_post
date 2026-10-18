@@ -165,10 +165,13 @@ public final class DictationEngine {
 
     // MARK: - Aufnahme starten
 
-    public func start() {
+    /// Die optionale Haltbedingung wird mehrfach gelesen und muss eine reine
+    /// Zustandsabfrage sein. false bricht den noch laufenden Start ab.
+    public func start(onlyWhile shouldContinue: @escaping () -> Bool = { true }) {
         guard state == .idle || {
             if case .error = state { return true } else { return false }
         }() else { return }
+        guard shouldContinue() else { return }
         sessionTask?.cancel()
         sessionTask = nil
         sessionGeneration &+= 1
@@ -177,26 +180,26 @@ public final class DictationEngine {
         setState(.starting)
 
         Task { @MainActor in
+            guard self.canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
             // 1. Mikrofon-Berechtigung sicherstellen (System fragt beim ersten Mal).
-            guard await self.requestMicrophoneAccess() else {
-                guard self.isCurrentSession(generation) else { return }
+            let permitted = await self.requestMicrophoneAccess()
+            guard self.canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
+            guard permitted else {
                 self.setState(.error(L10n.text("core.dictation.microphone_permission")))
                 return
             }
-            guard self.isCurrentSession(generation), !Task.isCancelled else { return }
             // 2. whisper-server sicherstellen (läuft er schon, kostet das nur einen Ping).
             do {
                 try await self.serverManager.ensureRunning(reachability: self.sessionRequest.transcriber)
             } catch {
-                guard self.isCurrentSession(generation), !Task.isCancelled else { return }
+                guard self.canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
                 self.setState(.error(error.localizedDescription))
                 return
             }
             // shutdown()/Einstellungswechsel kann während des Server-Starts den
             // Zustand zurücksetzen. Dann weder Modell noch Startton der alten Engine
             // unnötig auslösen.
-            guard self.state == .starting, self.isCurrentSession(generation),
-                  !Task.isCancelled else { return }
+            guard self.canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
             // 3. Bereinigungs-Modell VORWÄRMEN — lädt parallel, während man spricht.
             self.sessionRequest.cleanup.warmUp()
             // 4. Startsignal vollständig VOR der Aufnahme abspielen. Unsere kurzen
@@ -205,15 +208,22 @@ public final class DictationEngine {
             await self.onBeforeRecordingStart?()
             // Wurde die Engine während des asynchronen Startsignals beendet oder
             // neu aufgebaut, darf der alte Startvorgang kein Mikrofon mehr öffnen.
-            guard self.state == .starting, self.isCurrentSession(generation),
-                  !Task.isCancelled else { return }
+            guard self.canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
             // 5. Aufnahme wirklich starten.
-            self.beginRecording(generation: generation)
+            self.beginRecording(generation: generation, onlyWhile: shouldContinue)
         }
     }
 
-    private func beginRecording(generation: UInt64) {
-        guard isCurrentSession(generation) else { return }
+    private func canContinueStart(generation: UInt64, onlyWhile shouldContinue: () -> Bool) -> Bool {
+        guard isCurrentSession(generation), state == .starting, !Task.isCancelled else { return false }
+        // Carbon-Freigabe und Poll-Timer können hinter einer Startfortsetzung
+        // liegen. Die physische Bedingung gilt auch ohne zugestellten Callback.
+        guard shouldContinue() else { cancel(); return false }
+        return true
+    }
+
+    private func beginRecording(generation: UInt64, onlyWhile shouldContinue: () -> Bool) {
+        guard canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
         let segmenter = makeSegmenter(sessionRequest.config.vad)
         let recorder = makeRecorder(sessionRequest.config.audio)
         let collector = SegmentCollector()
@@ -289,6 +299,7 @@ public final class DictationEngine {
             }
         }
 
+        guard canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
         do {
             try recorder.start()
         } catch {
@@ -316,6 +327,7 @@ public final class DictationEngine {
 
         self.recorder = recorder
         self.segmenter = segmenter
+        guard canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
         self.recordingStart = Date()
         setState(.recording)
         if let error = recordingFailure.error {

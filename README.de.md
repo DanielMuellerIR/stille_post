@@ -28,6 +28,8 @@ Im Editor übernimmt **Ins Wörterbuch …** ausdrücklich bestätigte Schreibwe
 
 Profile für Sprache, Wörterbuch, Bereinigung und Aufbewahrung lassen sich in den Einstellungen verwalten, Apps zuordnen und im Menü manuell wechseln. Geerbte Bereiche verwenden globale Einstellungen; laufende Aufträge behalten ihren Startstand. Eine lokale Richtlinie begrenzt auch sämtliche Textanfragen auf Loopback. Siehe [Diktierprofile](docs/diktierprofile.md).
 
+Der Diktier-Hotkey kann umschalten oder zum Sprechen gehalten werden. Siehe [Gedrückthalten](docs/gedrueckthalten.md).
+
 ## In fünf Minuten startklar
 
 Das fertige, signierte App-Paket läuft auf **Apple-Silicon-Macs ab macOS 13**.

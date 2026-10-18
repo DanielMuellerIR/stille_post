@@ -28,6 +28,8 @@ In the editor, **Add to dictionary …** adopts explicitly confirmed spellings f
 
 Manage profiles for language, dictionary, cleanup and retention in Settings, assign them to apps, or select them manually from the menu. Inherited areas use global settings; running requests keep their initial configuration. A local policy also confines every text request to loopback. See [dictation profiles](docs/diktierprofile.md) (German).
 
+Choose Toggle or Hold to talk for the dictation hotkey in Settings. See [hold to talk](docs/gedrueckthalten.md) (German).
+
 ## Ready in five minutes
 
 The signed app package runs on **Apple Silicon Macs with macOS 13 or later**.

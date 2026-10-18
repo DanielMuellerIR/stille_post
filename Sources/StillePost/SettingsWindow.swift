@@ -200,6 +200,14 @@ private struct GeneralTab: View {
     var body: some View {
         Form {
             Section(L10n.text("settings.hotkey.section")) {
+                Picker(L10n.text("hotkey.mode"), selection: $config.hotkeyMode) {
+                    Text(L10n.text("hotkey.mode.toggle")).tag(Config.HotkeyMode.toggle)
+                    Text(L10n.text("hotkey.mode.hold")).tag(Config.HotkeyMode.hold)
+                }
+                .accessibilityIdentifier("dictationHotkeyMode")
+                .disabled(activeRecorder != nil)
+                Text(L10n.text("hotkey.mode.help")).font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 HotkeyRecorder(hotkey: $config.hotkey) {
                     recordingChanged($0, identifier: "dictationHotkey")
                 }

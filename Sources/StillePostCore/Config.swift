@@ -14,7 +14,7 @@ public struct Config: Codable, Equatable {
     public static func == (lhs: Config, rhs: Config) -> Bool {
         lhs.whisper == rhs.whisper && lhs.cleanup == rhs.cleanup && lhs.bridge == rhs.bridge
             && lhs.vad == rhs.vad && lhs.audio == rhs.audio && lhs.ui == rhs.ui && lhs.history == rhs.history
-            && lhs.hotkey == rhs.hotkey && lhs.lastResultHotkey == rhs.lastResultHotkey
+            && lhs.hotkey == rhs.hotkey && lhs.lastResultHotkey == rhs.lastResultHotkey && lhs.hotkeyMode == rhs.hotkeyMode
             && lhs.profiles == rhs.profiles && lhs.defaultProfileID == rhs.defaultProfileID
             && lhs.selectedProfileID == rhs.selectedProfileID && lhs.appProfiles == rhs.appProfiles
     }
@@ -238,7 +238,9 @@ public struct Config: Codable, Equatable {
         public init() {}
     }
 
-    /// Einstellungen für den globalen Hotkey (Aufnahme ein/aus, Toggle).
+    public enum HotkeyMode: String, Codable, CaseIterable { case toggle, hold }
+
+    /// Einstellungen für eine globale Tastenkombination.
     public struct Hotkey: Codable, Equatable {
         /// Virtueller Keycode (Carbon). 2 = Taste "D" auf ANSI-Tastaturen.
         public var keyCode: Int = 2
@@ -294,6 +296,7 @@ public struct Config: Codable, Equatable {
     public var ui: UI = UI()
     public var history: History = History()
     public var hotkey: Hotkey = Hotkey()
+    public var hotkeyMode: HotkeyMode = .toggle
     public var lastResultHotkey: Hotkey = .lastResultDefault
 
     public init() {}
@@ -393,7 +396,7 @@ public struct Config: Codable, Equatable {
 
     // MARK: - Tolerantes Dekodieren (fehlende Felder -> Defaults)
 
-    private enum CodingKeys: String, CodingKey { case whisper, cleanup, bridge, vad, audio, ui, history, hotkey, lastResultHotkey, profiles, defaultProfileID, selectedProfileID, appProfiles }
+    private enum CodingKeys: String, CodingKey { case whisper, cleanup, bridge, vad, audio, ui, history, hotkey, hotkeyMode, lastResultHotkey, profiles, defaultProfileID, selectedProfileID, appProfiles }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -423,6 +426,7 @@ public struct Config: Codable, Equatable {
         if c.contains(.history) { historyFallback.storeText = false }
         history = c.decodeOrDefault(History.self, forKey: .history, default: historyFallback)
         hotkey = c.decodeOrDefault(Hotkey.self, forKey: .hotkey, default: Hotkey())
+        hotkeyMode = c.decodeOrDefault(HotkeyMode.self, forKey: .hotkeyMode, default: .toggle)
         lastResultHotkey = c.decodeOrDefault(Hotkey.self, forKey: .lastResultHotkey,
                                               default: .lastResultDefault)
         if let id = defaultProfileID, !profiles.contains(where: { $0.id == id }) { defaultProfileID = nil }

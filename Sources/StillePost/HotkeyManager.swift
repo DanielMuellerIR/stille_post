@@ -11,11 +11,53 @@ final class HotkeyManager {
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
     private let onPress: () -> Void
+    private let onRelease: () -> Void
+    private let onInterruption: () -> Void
+    private let onHoldLimit: () -> Void
     private let identifier: UInt32
+    private let keyCode: CGKeyCode
+    private let requiredFlags: CGEventFlags
+    private let maximumHoldDuration: TimeInterval
+    private var readsKeyState = false
+    private var isDown = false
+    private var waitsForKeyUp = false
+    private var pressedAt: TimeInterval = 0
+    private var reachedLimit = false
+    private var releaseTimer: Timer?
+    private var interruptionObservers: [NSObjectProtocol] = []
 
-    init(config: Config.Hotkey, identifier: UInt32 = 1, onPress: @escaping () -> Void) throws {
+    static var canReadKeyboardState: Bool {
+        AXIsProcessTrusted() || CGPreflightListenEventAccess()
+    }
+
+    var isCombinationHeld: Bool {
+        CGEventSource.keyState(.combinedSessionState, key: keyCode)
+            && CGEventSource.flagsState(.combinedSessionState).isSuperset(of: requiredFlags)
+    }
+
+    init(config: Config.Hotkey, identifier: UInt32 = 1,
+         onRelease: @escaping () -> Void = {}, onInterruption: @escaping () -> Void = {},
+         onHoldLimit: @escaping () -> Void = {},
+         maximumHoldDuration: TimeInterval = DictationHotkeyState.maximumHoldDuration,
+         onPress: @escaping () -> Void) throws {
         self.onPress = onPress
+        self.onRelease = onRelease
+        self.onInterruption = onInterruption
+        self.onHoldLimit = onHoldLimit
         self.identifier = identifier
+        keyCode = CGKeyCode(clamping: config.keyCode)
+        self.maximumHoldDuration = maximumHoldDuration
+        var flags: CGEventFlags = []
+        for name in config.modifiers {
+            switch name.lowercased() {
+            case "cmd", "command": flags.insert(.maskCommand)
+            case "opt", "option", "alt": flags.insert(.maskAlternate)
+            case "ctrl", "control": flags.insert(.maskControl)
+            case "shift": flags.insert(.maskShift)
+            default: break
+            }
+        }
+        requiredFlags = flags
         guard config.isUsableGlobally, (0...127).contains(config.keyCode) else {
             throw RegistrationError.hotKey(OSStatus(paramErr))
         }
@@ -32,9 +74,12 @@ final class HotkeyManager {
             }
         }
 
-        // Handler für "Hotkey wurde gedrückt" installieren. Der C-Callback bekommt
+        // Handler für Drücken und Loslassen installieren. Der C-Callback bekommt
         // `self` als rohen Zeiger durchgereicht (übliches Carbon-Muster).
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        var eventTypes = [
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed)),
+            EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyReleased)),
+        ]
         let selfPointer = Unmanaged.passUnretained(self).toOpaque()
         let handlerStatus = InstallEventHandler(GetApplicationEventTarget(), { _, event, userData in
             guard let event, let userData else { return OSStatus(eventNotHandledErr) }
@@ -45,9 +90,12 @@ final class HotkeyManager {
                                     MemoryLayout<EventHotKeyID>.size, nil, &hotkeyID) == noErr,
                   hotkeyID.signature == OSType(0x5350_4F53),
                   hotkeyID.id == manager.identifier else { return OSStatus(eventNotHandledErr) }
-            DispatchQueue.main.async { manager.onPress() }
+            let pressed = GetEventKind(event) == UInt32(kEventHotKeyPressed)
+            DispatchQueue.main.async { [weak manager] in
+                if pressed { manager?.pressed() } else { manager?.released() }
+            }
             return noErr
-        }, 1, &eventType, selfPointer, &eventHandler)
+        }, eventTypes.count, &eventTypes, selfPointer, &eventHandler)
         guard handlerStatus == noErr else {
             throw RegistrationError.eventHandler(handlerStatus)
         }
@@ -64,6 +112,60 @@ final class HotkeyManager {
             self.eventHandler = nil
             throw RegistrationError.hotKey(registrationStatus)
         }
+        let center = NSWorkspace.shared.notificationCenter
+        interruptionObservers = [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification,
+                                  NSWorkspace.sessionDidResignActiveNotification].map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                guard let self, self.isDown else { return }
+                self.onInterruption()
+            }
+        }
+        // Eine bei Registrierung schon gehaltene Taste ist keine neue Betätigung.
+        readsKeyState = Self.canReadKeyboardState
+        waitsForKeyUp = readsKeyState && CGEventSource.keyState(.combinedSessionState, key: keyCode)
+        if waitsForKeyUp { startReleaseTimer() }
+    }
+
+    private func pressed() {
+        guard !isDown, !waitsForKeyUp else { return }
+        readsKeyState = Self.canReadKeyboardState
+        isDown = true
+        reachedLimit = false
+        pressedAt = ProcessInfo.processInfo.systemUptime
+        onPress()
+        startReleaseTimer()
+    }
+
+    private func startReleaseTimer() {
+        guard releaseTimer == nil else { return }
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in self?.checkRelease() }
+        releaseTimer = timer
+        // Auch ein geöffnetes Menü darf Freigabe und Sicherheitsfrist nicht aufhalten.
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func released() {
+        let mainKeyDown = readsKeyState && CGEventSource.keyState(.combinedSessionState, key: keyCode)
+        waitsForKeyUp = mainKeyDown
+        if isDown {
+            isDown = false
+            onRelease()
+        }
+        if !waitsForKeyUp {
+            releaseTimer?.invalidate()
+            releaseTimer = nil
+        }
+    }
+
+    private func checkRelease() {
+        let keyDown = !readsKeyState || CGEventSource.keyState(.combinedSessionState, key: keyCode)
+        let flags = CGEventSource.flagsState(.combinedSessionState)
+        if !keyDown || !flags.isSuperset(of: requiredFlags) {
+            released()
+        } else if isDown && !reachedLimit && ProcessInfo.processInfo.systemUptime - pressedAt >= maximumHoldDuration {
+            reachedLimit = true
+            onHoldLimit()
+        }
     }
 
     enum RegistrationError: Error {
@@ -78,6 +180,8 @@ final class HotkeyManager {
     }
 
     deinit {
+        releaseTimer?.invalidate()
+        for observer in interruptionObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
         if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
         if let eventHandler { RemoveEventHandler(eventHandler) }
     }

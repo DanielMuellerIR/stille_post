@@ -501,3 +501,14 @@
 "core.cleanup.local_unavailable" = "Nur lokal: kein zulässiger Dienst verfügbar. Rohtext verwendet.";
 "core.history.recleanup_local_unavailable" = "Nur lokal: kein zulässiger Dienst verfügbar. Die bisherige Fassung bleibt erhalten.";
 "profiles.local_no_key" = "Lokale Dienste werden ohne API-Key und ohne Schlüsselbundzugriff verwendet.";
+
+"hotkey.mode" = "Hotkey-Betriebsart";
+"hotkey.mode.toggle" = "Umschalten";
+"hotkey.mode.hold" = "Zum Sprechen gedrückt halten";
+"hotkey.mode.help" = "Umschalten: einmal starten, erneut stoppen. Gedrückthalten: Loslassen der Taste oder einer Zusatztaste beendet die Aufnahme; während der Vorbereitung wird abgebrochen. Sicherheitsstopp nach 5 Minuten. Menü und Overlay bleiben bedienbar. Gedrückthalten verwendet die vorhandene Bedienungshilfenfreigabe.";
+"hotkey.hold.release" = "Zum Beenden loslassen";
+"hotkey.hold.release_start" = "Loslassen bricht die Vorbereitung ab";
+"hotkey.hold.limit" = "Sicherheitsstopp: Hotkey seit 5 Minuten gehalten.";
+"hotkey.hold.menu" = "Hotkey gedrückt halten: %@";
+"overlay.starting" = "Vorbereitung …";
+"hotkey.hold.unavailable" = "Für Gedrückthalten die Bedienungshilfenfreigabe erlauben oder Umschalten verwenden.";

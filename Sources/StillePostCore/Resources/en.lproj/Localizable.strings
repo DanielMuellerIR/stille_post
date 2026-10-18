@@ -501,3 +501,14 @@
 "core.cleanup.local_unavailable" = "Local only: no permitted service available. Raw text used.";
 "core.history.recleanup_local_unavailable" = "Local only: no permitted service available. The previous version is retained.";
 "profiles.local_no_key" = "Local services are used without an API key or keychain access.";
+
+"hotkey.mode" = "Hotkey mode";
+"hotkey.mode.toggle" = "Toggle";
+"hotkey.mode.hold" = "Hold to talk";
+"hotkey.mode.help" = "Toggle: press to start, then press again to stop. Hold: releasing the key or a modifier ends recording; releasing during preparation cancels. Safety stop after 5 minutes. Menu and overlay controls remain available. Hold uses the existing Accessibility permission.";
+"hotkey.hold.release" = "Release to finish";
+"hotkey.hold.release_start" = "Release to cancel preparation";
+"hotkey.hold.limit" = "Safety stop: hotkey held for 5 minutes.";
+"hotkey.hold.menu" = "Hold hotkey to talk: %@";
+"overlay.starting" = "Preparing …";
+"hotkey.hold.unavailable" = "Allow Accessibility for Stille Post to use Hold to talk, or use Toggle.";

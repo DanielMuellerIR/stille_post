@@ -10,6 +10,25 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.30] — 2026-10-18
+
+### Neu
+
+- Der Diktier-Hotkey kann wahlweise umschalten oder zum Sprechen gehalten werden.
+  Loslassen der Haupttaste oder einer benötigten Zusatztaste beendet Hold;
+  während der Vorbereitung wird der Start abgebrochen.
+- Vorbereitung und Hold-Aufnahme zeigen passende Hinweise. Wiederholungen lösen
+  keine weiteren Starts aus. Tastenstatus-Prüfung und ein Sicherheitsstopp nach
+  fünf Minuten begrenzen verlorene Freigaben; Schlaf, Sitzungswechsel und
+  Hotkey-Aufzeichnung brechen eigene Hold-Aufnahmen ab.
+- Fehlender Tastenzugriff wird beim Gedrückthalten verständlich gemeldet, ohne Audio zu starten.
+- Alte Konfigurationen verwenden weiterhin Umschalten. Modus- und
+  Kombinationswechsel benötigen keinen Whisper-Neustart und keinen Neuaufbau der Engine.
+
+### Behoben
+
+- Ein beim Abbrechen gemeldeter Audio-Aufbewahrungsfehler bleibt sichtbar.
+
 ## [0.9.29] — 2026-10-18
 
 ### Neu

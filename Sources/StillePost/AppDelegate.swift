@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var hotkey: HotkeyManager!
     private var lastResultHotkey: HotkeyManager?
     private var isCapturingHotkey = false
+    private var dictationHotkeyState = DictationHotkeyState()
     private var overlay: OverlayController!
     private var historyWindow: HistoryWindowController!
     private var pasteTarget: PasteService.Target?
@@ -151,7 +152,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             overlay.recordingContext = L10n.format("profiles.recording", prospectiveConfiguration.profileLabel,
                 prospectiveConfiguration.whisper.language)
             overlay.recordingReason = prospectiveConfiguration.requestProfileSelection?.label ?? ""
+            overlay.recordingInstruction = config.hotkeyMode == .hold ? L10n.text("hotkey.hold.release") : ""
             overlay.show(.recording)
+        case "hold-unavailable":
+            overlay.show(.failure(L10n.text("hotkey.hold.unavailable")))
+        case "starting":
+            overlay.show(.starting(hold: config.hotkeyMode == .hold))
         case "processing-fallback":
             overlay.show(.processing(detail: L10n.format(
                 "app.cleanup_fallback",
@@ -263,7 +269,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         // Klick aufs Overlay stoppt ebenfalls.
         overlay.onClickStop = { [weak self] in
-            self?.engine.toggle()
+            guard let self else { return }
+            if self.engine.state == .starting { self.cancelDictation() }
+            else { self.engine.toggle() }
         }
         overlay.levelProvider = { [weak self] in
             guard let self else { return (-120, 0) }
@@ -347,12 +355,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// kurz zwei identische globale Hotkeys und lehnt den neuen ab. Anschließend würde
     /// deinit den alten abmelden — übrig bliebe gar keiner.
     private func registerHotkey() {
+        handleDictationHotkey(.interrupted)
+        dictationHotkeyState = DictationHotkeyState()
         hotkey = nil
         lastResultHotkey = nil
         func register(_ combination: Config.Hotkey, identifier: UInt32,
+                      release: @escaping () -> Void = {}, interruption: @escaping () -> Void = {},
+                      limit: @escaping () -> Void = {},
                       action: @escaping () -> Void) -> HotkeyManager? {
             do {
-                return try HotkeyManager(config: combination, identifier: identifier, onPress: action)
+                return try HotkeyManager(config: combination, identifier: identifier,
+                    onRelease: release, onInterruption: interruption, onHoldLimit: limit, onPress: action)
             } catch {
                 let status = (error as? HotkeyManager.RegistrationError)?.status ?? -1
                 overlay.show(.failure(L10n.format("app.hotkey_registration_failed",
@@ -362,9 +375,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         let dictationCombination = config.hotkey
         let recallCombination = config.lastResultHotkey
-        hotkey = register(dictationCombination, identifier: 1) { [weak self] in
+        hotkey = register(dictationCombination, identifier: 1,
+            release: { [weak self] in self?.handleDictationHotkey(.released) },
+            interruption: { [weak self] in self?.handleDictationHotkey(.interrupted) },
+            limit: { [weak self] in self?.handleDictationHotkey(.deadline) }) { [weak self] in
             guard let self else { return }
-            self.routeHotkey(dictationCombination) { self.engine.toggle() }
+            self.routeHotkey(dictationCombination) { self.handleDictationHotkey(.pressed) }
         }
         lastResultHotkey = register(recallCombination, identifier: 2) { [weak self] in
             guard let self else { return }
@@ -376,7 +392,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// der Aufnahme gehen sie an den Recorder; nach einem Abmelden könnte das
     /// System sie abfangen, bevor der lokale NSEvent-Monitor sie erhält.
     private func setHotkeyCaptureActive(_ active: Bool) {
+        if active { handleDictationHotkey(.interrupted) }
         isCapturingHotkey = active
+    }
+
+    private func handleDictationHotkey(_ input: DictationHotkeyState.Input) {
+        guard let engine, !terminationPending else { return }
+        switch dictationHotkeyState.handle(input, mode: config.hotkeyMode, state: engine.state,
+            canReadKeyboardState: input != .pressed || HotkeyManager.canReadKeyboardState) {
+        case .unavailable: overlay.show(.failure(L10n.text("hotkey.hold.unavailable")))
+        case .none: break
+        case .toggle: engine.toggle()
+        case .start:
+            engine.start(onlyWhile: { [weak self] in
+                self?.dictationHotkeyState.ownsHold == true && self?.hotkey?.isCombinationHeld == true
+            })
+        case .stop: engine.stop()
+        case .cancel, .cancelAtLimit:
+            cancelDictation()
+            if input == .deadline && engine.state == .idle { overlay.show(.failure(L10n.text("hotkey.hold.limit"))) }
+        case .stopAtLimit:
+            engine.stop()
+            if engine.state == .processing { overlay.show(.processing(detail: L10n.text("hotkey.hold.limit"))) }
+        }
     }
 
     private func routeHotkey(_ combination: Config.Hotkey, perform action: () -> Void) {
@@ -517,13 +555,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         requestOnly.profiles = newConfig.profiles
         requestOnly.defaultProfileID = newConfig.defaultProfileID
         requestOnly.selectedProfileID = newConfig.selectedProfileID
+        requestOnly.hotkeyMode = newConfig.hotkeyMode
+        requestOnly.hotkey = newConfig.hotkey
+        requestOnly.lastResultHotkey = newConfig.lastResultHotkey
         let needsRebuild = requestOnly != newConfig
-        if needsRebuild && (engine.hasInFlightRequests || bridge?.hasInFlightRequests == true || !pendingResults.isEmpty) {
+        let changesBindings = config.hotkey != newConfig.hotkey || config.lastResultHotkey != newConfig.lastResultHotkey
+        let changesInput = config.hotkeyMode != newConfig.hotkeyMode || changesBindings
+        if (needsRebuild || changesInput) && (engine.hasInFlightRequests || bridge?.hasInFlightRequests == true || !pendingResults.isEmpty) {
             throw NSError(domain: "StillePost", code: 1, userInfo: [NSLocalizedDescriptionKey: L10n.text("profiles.busy_settings")])
         }
         try newConfig.save(expected: expected)
         if !needsRebuild {
             config = newConfig
+            if changesBindings { registerHotkey() }
             updateRequestConfiguration()
             return
         }
@@ -564,6 +608,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                                     action: #selector(toggleDictation), keyEquivalent: "")
         toggleItem.target = self
         menu.addItem(toggleItem)
+        if config.hotkeyMode == .hold {
+            menu.addItem(NSMenuItem(title: L10n.format("hotkey.hold.menu", HotkeyManager.describe(config.hotkey)),
+                action: nil, keyEquivalent: ""))
+        }
         let cancelItem = NSMenuItem(title: L10n.text("menu.cancel_recording"),
                                     action: #selector(cancelDictation), keyEquivalent: "")
         cancelItem.target = self
@@ -664,6 +712,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func setupEngineCallbacks() {
         let source = engine!
+        var previousState = source.state
         // Der Startton wird vollständig vor dem Öffnen des Mikrofons abgespielt.
         // Gerade das iPhone als Continuity-Mikrofon hört den Mac-Lautsprecher sehr
         // klar; der Ton darf deshalb nicht Teil des Whisper-Segments werden.
@@ -673,14 +722,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         engine.onStateChange = { [weak self, weak source] state in
             guard let self, self.engine === source else { return }
+            let priorState = previousState
+            previousState = state
+            self.dictationHotkeyState.didChangeState(state)
             self.updateStatusIcon(for: state)
             switch state {
             case .starting:
                 self.pasteTarget = PasteService.captureTarget()
+                self.overlay.show(.starting(hold: self.dictationHotkeyState.ownsHold))
             case .recording:
                 self.overlay.recordingContext = L10n.format("profiles.recording", self.engine.sessionConfiguration.profileLabel,
                     self.engine.sessionConfiguration.whisper.language)
                 self.overlay.recordingReason = self.engine.sessionConfiguration.requestProfileSelection?.label ?? ""
+                self.overlay.recordingInstruction = self.dictationHotkeyState.ownsHold ? L10n.text("hotkey.hold.release") : ""
                 self.overlay.show(.recording)
             case .processing:
                 // Tieferer Whoosh/Ding: deutlich ANDERES "Aufnahme beendet"-Signal.
@@ -690,7 +744,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 self.playSound(custom: nil, fallback: "Basso")  // Fehler-Sound
                 self.overlay.show(.failure(message))
             case .idle:
-                break
+                // Erfolgreiche Ergebnisse kommen nach idle und brauchen ihr Ziel
+                // noch. Nur ein abgebrochener Start gibt es hier bereits frei.
+                if priorState == .starting { self.pasteTarget = nil }
+                self.overlay.hidePreparation()
             }
         }
 
@@ -814,7 +871,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func cancelDictation() {
         pasteTarget = nil
         engine.cancel()
-        overlay.hide()
+        if engine.state == .idle { overlay.hide() }
     }
     @objc private func showHistory() { if !terminationPending { historyWindow.show() } }
     @objc private func showSettings() { if !terminationPending { settingsWindow.show() } }

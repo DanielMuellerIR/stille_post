@@ -389,8 +389,11 @@ private final class ProfileTranscriber: DictationTranscriber {
 private final class ProfileRecorder: DictationRecorder {
     var onSamples: (([Float]) -> Void)?
     var onFailure: ((Error) -> Void)?
-    func start() throws { onSamples?([0.1]) }
-    func stop() {}
+    var starts = 0
+    var stops = 0
+    var onStart: (() -> Void)?
+    func start() throws { starts += 1; onStart?(); onSamples?([0.1]) }
+    func stop() { stops += 1 }
 }
 private final class ProfileSegmenter: DictationSegmenter {
     var onSegment: ((VadSegmenter.Segment) -> Void)?
@@ -434,5 +437,158 @@ private final class ProfileTransport: CleanupTransport {
         await beforeClean?()
         let data = try JSONSerialization.data(withJSONObject: ["message": ["content": text], "done": true])
         return (AsyncThrowingStream { $0.yield(String(data: data, encoding: .utf8)!); $0.finish() }, response(request))
+    }
+}
+
+final class HoldEngineTests: XCTestCase {
+    @MainActor
+    func testReleaseAtEveryAsynchronousStartBoundaryNeverCreatesRecorder() async throws {
+        for boundary in ["permission", "server", "sound"] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let gate = ProfileGate()
+            let entered = expectation(description: boundary)
+            let server = HoldServer()
+            var recorderCreations = 0
+            var config = Config(); config.cleanup.enabled = false
+            let engine = DictationEngine(config: config, history: HistoryStore(baseDir: directory), dependencies: .init(
+                transcriber: ProfileTranscriber(language: "en"), server: server,
+                cleanup: CleanupService(config: config.cleanup),
+                makeRecorder: { _ in recorderCreations += 1; return ProfileRecorder() },
+                makeSegmenter: { _ in ProfileSegmenter() }, makeWavWriter: { try WavFileWriter(url: $0) },
+                requestMicrophoneAccess: {
+                    if boundary == "permission" { entered.fulfill(); await gate.wait() }
+                    return true
+                }))
+            if boundary == "server" { server.beforeEnsure = { entered.fulfill(); await gate.wait() } }
+            if boundary == "sound" { engine.onBeforeRecordingStart = { entered.fulfill(); await gate.wait() } }
+            var input = DictationHotkeyState()
+            engine.onStateChange = { input.didChangeState($0) }
+            XCTAssertEqual(input.handle(.pressed, mode: .hold, state: engine.state), .start)
+            engine.start(onlyWhile: { input.ownsHold })
+            await fulfillment(of: [entered], timeout: 2)
+            XCTAssertEqual(input.handle(.released, mode: .hold, state: engine.state), .cancel)
+            engine.cancel()
+            await gate.release()
+            for _ in 0..<10 { await Task.yield() }
+            XCTAssertEqual(engine.state, .idle, boundary)
+            XCTAssertEqual(recorderCreations, 0, boundary)
+            XCTAssertTrue(try engine.history.list().isEmpty)
+            await engine.shutdown().value
+        }
+    }
+
+    @MainActor
+    func testNewPressBeforeOldStartSignalFinishesOnlyOpensNewRecorder() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let gate = ProfileGate(), entered = expectation(description: "Erstes Startsignal")
+        let recording = expectation(description: "Nur zweite Aufnahme")
+        recording.assertForOverFulfill = true
+        var first = true, recorderCreations = 0
+        var config = Config(); config.cleanup.enabled = false
+        let engine = DictationEngine(config: config, history: HistoryStore(baseDir: directory), dependencies: .init(
+            transcriber: ProfileTranscriber(language: "en"), server: HoldServer(), cleanup: CleanupService(config: config.cleanup),
+            makeRecorder: { _ in recorderCreations += 1; return ProfileRecorder() },
+            makeSegmenter: { _ in ProfileSegmenter() }, makeWavWriter: { try WavFileWriter(url: $0) }, requestMicrophoneAccess: { true }))
+        engine.onBeforeRecordingStart = {
+            if first { first = false; entered.fulfill(); await gate.wait() }
+        }
+        var input = DictationHotkeyState()
+        engine.onStateChange = { state in input.didChangeState(state); if state == .recording { recording.fulfill() } }
+        _ = input.handle(.pressed, mode: .hold, state: engine.state); engine.start(onlyWhile: { input.ownsHold })
+        await fulfillment(of: [entered], timeout: 2)
+        XCTAssertEqual(input.handle(.released, mode: .hold, state: engine.state), .cancel); engine.cancel()
+        XCTAssertEqual(input.handle(.pressed, mode: .hold, state: engine.state), .start); engine.start(onlyWhile: { input.ownsHold })
+        await fulfillment(of: [recording], timeout: 2)
+        await gate.release()
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(recorderCreations, 1)
+        XCTAssertEqual(engine.state, .recording)
+        engine.cancel(); await engine.shutdown().value
+    }
+
+    @MainActor
+    func testHoldReleaseProcessesCompleteSegmentsOnceWithFrozenPolicy() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var config = Config(); config.hotkeyMode = .hold; config.whisper.language = "en"; config.cleanup.localOnly = true
+        let recorder = ProfileRecorder(), segmenter = ProfileSegmenter(), server = ProfileServer(), transport = ProfileTransport()
+        let engine = DictationEngine(config: config, history: HistoryStore(baseDir: directory), dependencies: .init(
+            transcriber: ProfileTranscriber(language: "en"), server: server,
+            cleanup: CleanupService(config: config.cleanup, transport: transport),
+            makeRecorder: { _ in recorder }, makeSegmenter: { _ in segmenter }, makeWavWriter: { try WavFileWriter(url: $0) }, requestMicrophoneAccess: { true }))
+        var input = DictationHotkeyState()
+        let recording = expectation(description: "Hold-Aufnahme"), finished = expectation(description: "Ein vollständiges Ergebnis")
+        finished.assertForOverFulfill = true
+        engine.onStateChange = { state in input.didChangeState(state); if state == .recording { recording.fulfill() } }
+        engine.onResult = { _ in finished.fulfill() }
+        _ = input.handle(.pressed, mode: .hold, state: engine.state); engine.start(onlyWhile: { input.ownsHold })
+        await fulfillment(of: [recording], timeout: 2)
+        segmenter.emit(); segmenter.emit()
+        config.hotkeyMode = .toggle; config.cleanup.localOnly = false; config.whisper.language = "de"
+        engine.configure(config)
+        XCTAssertTrue(engine.sessionConfiguration.cleanup.localOnly)
+        XCTAssertEqual(engine.sessionConfiguration.hotkeyMode, .hold)
+        XCTAssertEqual(input.handle(.released, mode: .hold, state: engine.state), .stop); engine.stop()
+        XCTAssertEqual(input.handle(.released, mode: .hold, state: engine.state), .none)
+        await fulfillment(of: [finished], timeout: 2)
+        XCTAssertEqual(transport.inputs, ["The number stays 128. The number stays 128."])
+        XCTAssertEqual(server.stops, 0)
+        await engine.shutdown().value
+    }
+}
+
+private final class HoldServer: DictationServer {
+    var beforeEnsure: (() async -> Void)?
+    func ensureRunning(reachability: any DictationTranscriber) async throws { await beforeEnsure?() }
+    func stop() {}
+}
+
+extension HoldEngineTests {
+    @MainActor
+    func testPhysicalReleaseWithoutCallbackPreventsPermissionAndLateRecorderStart() async throws {
+        for boundary in ["scheduled", "permission", "server", "sound", "writer", "hardware"] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            var held = true, permissions = 0
+            var writerURL: URL?
+            let gate = ProfileGate(), recorder = ProfileRecorder(), server = HoldServer()
+            let entered = ["permission", "server", "sound"].contains(boundary) ? expectation(description: boundary) : nil
+            var config = Config(); config.cleanup.enabled = false
+            let engine = DictationEngine(config: config, history: HistoryStore(baseDir: directory), dependencies: .init(
+                transcriber: ProfileTranscriber(language: "en"), server: server, cleanup: CleanupService(config: config.cleanup),
+                makeRecorder: { _ in recorder }, makeSegmenter: { _ in ProfileSegmenter() },
+                makeWavWriter: { url in
+                    writerURL = url
+                    let writer = try WavFileWriter(url: url)
+                    if boundary == "writer" { held = false }
+                    return writer
+                }, requestMicrophoneAccess: {
+                    permissions += 1
+                    if boundary == "permission" { entered?.fulfill(); await gate.wait() }
+                    return true
+                }))
+            if boundary == "server" { server.beforeEnsure = { entered?.fulfill(); await gate.wait() } }
+            if boundary == "sound" { engine.onBeforeRecordingStart = { entered?.fulfill(); await gate.wait() } }
+            if boundary == "hardware" { recorder.onStart = { held = false } }
+            var states: [DictationState] = []
+            engine.onStateChange = { states.append($0) }
+            engine.onResult = { _ in XCTFail("Abbruch darf kein Ergebnis liefern") }
+            engine.start(onlyWhile: { held })
+            if ["permission", "server", "sound"].contains(boundary) {
+                await fulfillment(of: [entered!], timeout: 2)
+                held = false; await gate.release()
+            } else if boundary == "scheduled" { held = false }
+            for _ in 0..<200 where engine.state != .idle { try await Task.sleep(nanoseconds: 10_000_000) }
+            XCTAssertEqual(engine.state, .idle, boundary)
+            XCTAssertFalse(states.contains(.recording), boundary)
+            XCTAssertEqual(recorder.starts, boundary == "hardware" ? 1 : 0, boundary)
+            XCTAssertEqual(recorder.stops, boundary == "hardware" ? 1 : 0, boundary)
+            if boundary == "scheduled" { XCTAssertEqual(permissions, 0) }
+            XCTAssertTrue(try engine.history.list().isEmpty)
+            if let writerURL { XCTAssertFalse(FileManager.default.fileExists(atPath: writerURL.path), boundary) }
+            await engine.shutdown().value
+        }
     }
 }

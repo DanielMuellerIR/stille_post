@@ -16,6 +16,7 @@ final class OverlayController {
 
     /// Anzeige-Zustände des Overlays.
     enum Display {
+        case starting(hold: Bool)
         case recording                       // rot, pulsierend, Pegel + Uhr
         case processing(detail: String? = nil)  // orange, "Transkribiere …" (+ Zusatzzeile, z. B. Fallback-Hinweis)
         case success(note: String? = nil)    // grün, kurz "Eingefügt ✓" (+ Hinweis, z. B. "Rohtext"), blendet selbst aus
@@ -31,6 +32,7 @@ final class OverlayController {
     private let config: Config.UI
     var recordingContext: String = "" { didSet { model.recordingContext = recordingContext } }
     var recordingReason: String = "" { didSet { model.recordingReason = recordingReason } }
+    var recordingInstruction: String = "" { didSet { model.recordingInstruction = recordingInstruction } }
     var onClickStop: (() -> Void)?
 
     init(config: Config.UI) {
@@ -47,6 +49,10 @@ final class OverlayController {
         hideTimer = nil
 
         switch display {
+        case .starting(let hold):
+            model.mode = .starting(hold: hold)
+            stopLevelUpdates()
+            presentPanel()
         case .recording:
             model.mode = .recording
             startLevelUpdates()
@@ -88,6 +94,10 @@ final class OverlayController {
         panel = nil
     }
 
+    func hidePreparation() {
+        if case .starting = model.mode { hide() }
+    }
+
     private func scheduleHide(after seconds: TimeInterval) {
         hideTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
             self?.hide()
@@ -100,12 +110,13 @@ final class OverlayController {
         if panel == nil {
             panel = makePanel()
         }
+        panel?.setContentSize(NSSize(width: 340, height: model.panelHeight))
         positionPanel()
         panel?.orderFrontRegardless()
     }
 
     private func makePanel() -> NSPanel {
-        let size = NSSize(width: 340, height: 110)
+        let size = NSSize(width: 340, height: model.panelHeight)
         // .nonactivatingPanel: Das Overlay stiehlt der Ziel-App NIE den Fokus —
         // sonst würde der diktierte Text am Ende ins Leere eingefügt.
         let panel = ClickThroughPanel(
@@ -185,6 +196,7 @@ final class ClickThroughPanel: NSPanel {
 /// Beobachtbares Modell, das der Controller mit Live-Daten füttert.
 final class OverlayModel: ObservableObject {
     enum Mode {
+        case starting(hold: Bool)
         case recording, silence
         case processing(detail: String?)
         case success(note: String?)
@@ -195,7 +207,12 @@ final class OverlayModel: ObservableObject {
     @Published var levelDb: Double = -120
     @Published var recordingContext = ""
     @Published var recordingReason = ""
+    @Published var recordingInstruction = ""
     @Published var duration: TimeInterval = 0
+    var panelHeight: CGFloat {
+        if case .recording = mode, !recordingInstruction.isEmpty { return 132 }
+        return 110
+    }
 }
 
 struct OverlayView: View {
@@ -211,6 +228,16 @@ struct OverlayView: View {
                 .strokeBorder(borderColor, lineWidth: 4)
 
             switch model.mode {
+            case .starting(let hold):
+                VStack(spacing: 6) {
+                    HStack(spacing: 12) {
+                        ProgressView().controlSize(.large).tint(.white)
+                        Text(L10n.text("overlay.starting")).font(.system(size: 19, weight: .bold)).foregroundColor(.white)
+                    }
+                    if hold {
+                        Text(L10n.text("hotkey.hold.release_start")).font(.system(size: 11)).foregroundColor(.white.opacity(0.9))
+                    }
+                }
             case .recording:
                 HStack(spacing: 14) {
                     // Großer pulsierender Punkt: DAS Signal "es läuft wirklich".
@@ -237,6 +264,10 @@ struct OverlayView: View {
                         Text(timeString)
                             .font(.system(size: 14, weight: .medium).monospacedDigit())
                             .foregroundColor(.white.opacity(0.85))
+                        if !model.recordingInstruction.isEmpty {
+                            Text(model.recordingInstruction).font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.white).accessibilityIdentifier("recordingHoldInstruction")
+                        }
                     }
                     Spacer(minLength: 4)
                     LevelMeter(levelDb: model.levelDb)
@@ -305,13 +336,13 @@ struct OverlayView: View {
                 .padding(.horizontal, 14)
             }
         }
-        .frame(width: 340, height: 110)
+        .frame(width: 340, height: model.panelHeight)
     }
 
     private var background: Color {
         switch model.mode {
         case .recording: return Color(red: 0.55, green: 0.05, blue: 0.05).opacity(0.94)
-        case .processing: return Color(red: 0.55, green: 0.33, blue: 0).opacity(0.94)
+        case .starting, .processing: return Color(red: 0.55, green: 0.33, blue: 0).opacity(0.94)
         case .success: return Color(red: 0.05, green: 0.42, blue: 0.1).opacity(0.94)
         case .clipboard: return Color(red: 0.1, green: 0.25, blue: 0.45).opacity(0.94)
         case .silence: return Color(white: 0.22).opacity(0.94)
@@ -322,7 +353,7 @@ struct OverlayView: View {
     private var borderColor: Color {
         switch model.mode {
         case .recording: return .red
-        case .processing: return .orange
+        case .starting, .processing: return .orange
         case .success: return .green
         case .clipboard: return .blue
         case .silence: return .gray
