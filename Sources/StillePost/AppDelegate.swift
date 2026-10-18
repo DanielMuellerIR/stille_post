@@ -53,6 +53,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var audioImportWindow: AudioImportWindowController!
     /// Netzwerkzugang für eigene Geräte im Heimnetz; nil = ausgeschaltet.
     private var bridge: BridgeServer?
+    private var bridgeCredentialsObserver: NSObjectProtocol?
     private var bridgeTransition: Task<Void, Never>?
     private var bridgeGeneration = 0
     /// Protokoll der Brücke, das einen Neustart überlebt: `bridge.log` neben
@@ -381,6 +382,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return (self.engine.currentLevelDb, self.engine.recordingDuration)
         }
 
+        if bridgeCredentialsObserver == nil {
+            bridgeCredentialsObserver = NotificationCenter.default.addObserver(forName: .bridgeCredentialsChanged, object: nil, queue: .main) { [weak self] _ in
+                self?.startBridgeIfEnabled()
+            }
+        }
         startBridgeIfEnabled()
 
         // Bereinigungs-Modell einmal beim Start vorwärmen, damit schon das erste

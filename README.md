@@ -281,34 +281,22 @@ by `stillepost-cli cleanup` and in the history window.
 
 ## Dictation From Your iPhone (Home Network)
 
-Stille Post can accept dictations from your own devices on the same network: the
-iPhone records, the Mac transcribes and cleans up, and the finished text lands on
-the iPhone's clipboard, ready to paste into any app — including a text field in
-Firefox. A shortcut on the Action button is all it takes; no app and no custom
-keyboard are involved.
+Stille Post accepts dictations from your iPhone on your home network. The native
+[iPhone app](iOS/README.md) records locally; you explicitly stop and send, then
+copy the finished text yourself. The Mac transcribes with local Whisper and
+cleans up the complete text once.
 
-Switch it on under Settings -> General -> "Dictation From Your Own Devices (Home
-Network)". The same place has the button that copies the access token to the
-clipboard; the token itself is never displayed. Access is off by default.
+Enable Settings → General → Dictation From Your Own Devices, then pair the
+phone by scanning the QR code directly from your own Mac. HTTPS requires the
+pinned certificate identity and a token; the bridge is off by default. Unknown
+identities, redirects and public peers are rejected. The Mac remains only an
+audio receiver; no WAN bridge or custom keyboard is provided.
 
-```bash
-curl -s -H "Authorization: Bearer <token>" \
-     --data-binary @recording.m4a http://<mac-name>.local:8188/v1/dictate
-```
-
-Three routes: `GET /v1/health`, `POST /v1/dictate` (audio -> finished text, `?raw=1`
-skips the cleanup) and `POST /v1/cleanup` (raw text -> cleaned text, for devices
-that transcribe on their own).
-
-**Privacy and limits.** The Mac is only a receiver here: audio is processed on this
-machine, and speech recognition still runs exclusively on loopback. Access is
-restricted to private/link-local ranges and to global IPv6 addresses inside a
-prefix currently used by one of this Mac's active interfaces; every request also
-requires the token. The connection is **unencrypted**, though - anyone listening
-on the same Wi-Fi can read your dictations. It is not meant for use away from home.
-
-Shortcut instructions, measurements, and the decisions behind this are in
-[docs/ios-bridge.md](docs/ios-bridge.md) (German).
+Version 0.9.42 removes HTTP, including the development exception. Existing HTTP
+shortcuts must switch to the Open Dictation app action and the phone must pair
+again. Token rotation and certificate renewal also require new pairing.
+See [the bridge guide](docs/ios-bridge.md) for migration, certificate lifetime,
+limits and verification. Device acceptance of the current candidate is pending.
 
 ## Scriptable without the GUI
 

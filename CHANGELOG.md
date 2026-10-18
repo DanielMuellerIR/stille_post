@@ -10,6 +10,31 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.42] — 2026-10-18
+
+Entwicklungskandidat: Die reale iPhone-TLS-/QR-Abnahme steht noch aus.
+
+### Neu
+
+- Die Heimnetzbrücke verwendet ausschließlich TLS ab Version 1.2 mit einer
+  dauerhaften Mac-Identität aus dem Schlüsselbund. Die iPhone-App übernimmt
+  Adresse, Zertifikatsfingerabdruck und Token per QR-Code direkt vom eigenen Mac
+  und prüft die Identität vor dem Versand. Abweichung und Ablauf sperren den
+  Zugriff und verlangen eine ausdrückliche neue Kopplung.
+- Tokenwechsel widerruft bestehende Brückenverbindungen. Das ein Jahr gültige
+  Zertifikat lässt sich ausdrücklich erneuern. QR-Zugangsdaten erscheinen nur
+  nach Anforderung und werden nach zwei Minuten oder beim Ausblenden ausgeblendet.
+
+### Geändert
+
+- HTTP ist auch im Entwicklungsclient gesperrt. Bestehende HTTP-Kurzbefehle
+  müssen auf die App-Aktion „Diktat öffnen“ umgestellt werden; ein automatischer
+  Klartext-Rückfall findet nicht statt. Aufnehmen, Stoppen, Senden und Kopieren
+  bleiben bewusste Aktionen.
+- Ein TLS-Verbindungsende vor der Antwort storniert die Verarbeitung. Grenzen
+  für Heimnetz, Token, Warteschlange und Speicher sowie lokale Erkennung und
+  genau eine Gesamtbereinigung bleiben erhalten.
+
 ## [0.9.41] — 2026-10-18
 
 ### Neu

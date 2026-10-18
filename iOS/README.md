@@ -1,28 +1,37 @@
 # Stille Post auf dem iPhone
 
-Native SwiftUI-App ab iOS 17. Der aktuelle Stand ist ein **Entwicklungsclient**
-für die vorhandene Mac-Brücke. Verschlüsselte Kopplung steht noch aus; HTTP ist
-ausschließlich im Debug-Build und nach ausdrücklicher Freigabe in der App möglich.
-Der Release-Build verweigert diesen Transport.
+Native SwiftUI-App ab iOS 17. Der Kandidat 0.9.42 verbindet sich ausschließlich
+verschlüsselt mit der Mac-Brücke und übernimmt deren Identität direkt per QR-Code.
+Die reale TLS-/Kopplungsabnahme ist noch offen; vorher keine Freigabe als fertiger
+sicherer Client. HTTP wird in Debug und Release abgewiesen.
 
-## Benutzung im Entwicklungstest
+## Benutzung und sichere Kopplung
 
-1. Auf dem Mac die Heimnetzbrücke ausdrücklich aktivieren und deren Adresse und
-   Token über die vorhandenen Einstellungen übernehmen.
-2. Auf dem iPhone „Verbindung zum Mac“ öffnen, die vollständige Adresse
-   `http://<mac-name>.local:8188` und das Token einfügen. Den unverschlüsselten
-   Entwicklungstest bewusst erlauben, speichern und die Verbindung prüfen.
-3. „Aufnehmen“ antippen und den Mikrofonzugriff erlauben. Das Satzende stoppt die
-   Aufnahme nicht automatisch. Nach dem Sprechen „Aufnahme stoppen“ antippen.
-   Das Audio liegt weiterhin nur auf dem iPhone. Erst „An meinen Mac senden“
-   startet die Übertragung; dabei benötigt iOS die lokale Netzwerkfreigabe.
+1. Mac: Heimnetzbrücke ausdrücklich aktivieren, speichern und „iPhone koppeln …“
+   öffnen. Sie verwendet ausschließlich HTTPS, etwa `https://<mac-name>.local:8188`.
+2. iPhone: „Verbindung zum Mac“ → „QR-Code scannen“. Ausschließlich direkt vom
+   eigenen Mac-Bildschirm scannen. Adresse und SHA-256-Fingerabdruck vergleichen,
+   dann „Kopplung bestätigen“ und „Verbindung prüfen“. Der Scan allein speichert
+   nichts und sendet keine Aufnahme.
+3. „Aufnehmen“, nach dem Sprechen „Aufnahme stoppen“ und erst danach „An meinen
+   Mac senden“. Das Satzende stoppt die Aufnahme nicht automatisch.
 4. Den fertigen Text ausdrücklich kopieren und in der gewünschten App einsetzen.
    Die Zwischenablage bleibt lokal auf diesem Gerät und läuft nach zwei Minuten ab.
 
-In Kurzbefehle ist „Diktat öffnen“ als App-Aktion vorbereitet. Ein entsprechender
-Kurzbefehl kann der Aktionstaste zugewiesen werden. Er öffnet die App; das Mikrofon
-startet erst nach dem Antippen. Es gibt keine Tastatur-Erweiterung und keinen
-Hintergrund-Recorder.
+Die App-Aktion „Diktat öffnen“ kann der Aktionstaste zugewiesen werden. Sie öffnet
+nur die App. Kamera, Mikrofon und lokales Netzwerk benötigen jeweils ihre eigene
+Freigabe. Keine Tastatur-Erweiterung und kein Hintergrund-Recorder.
+
+Die Verbindung ist TLS ab Version 1.2 mit dem direkt vom Mac übernommenen
+Zertifikats-Pin. Die Identität wird vor Token und Audio geprüft; Redirects und
+unbekannte Identitäten bleiben gesperrt. Es gibt keine HTTP-Ausnahme, auch nicht
+im Debug-Build. Alte HTTP-Einträge verlangen Neu-Kopplung. Tokenwechsel,
+Zertifikatserneuerung und bekannte Identitätswechsel verlangen ebenfalls einen
+neuen Scan direkt am Mac. Ein Netz-Fingerabdruck wird niemals ungeprüft übernommen.
+QR-Codes enthalten Zugangsdaten und gehören weder in Screenshots noch Protokolle.
+
+Migration vorhandener Kurzbefehle und Zertifikatslebenszyklus:
+[Heimnetzbrücke](../docs/ios-bridge.md).
 
 ## Grenzen und Dateiverhalten
 
@@ -37,7 +46,7 @@ Hintergrund-Recorder.
   automatische Fortsetzung oder Wiederholung. Ein Abbruch kann bereits auf dem
   Mac begonnene Verarbeitung nicht rückgängig machen.
 - Audio liegt unter dem iOS-Dateischutz und wird von Backups ausgeschlossen.
-  Das Token liegt im gerätegebundenen Schlüsselbund, nur bei entsperrtem Gerät
+  Adresse, Pin und Token liegen gemeinsam und atomar im gerätegebundenen Schlüsselbund, nur bei entsperrtem Gerät
   zugänglich und ohne Synchronisation. Es steht nicht in den Einstellungen-Dateien.
 - Zulässig sind `.local`-Namen sowie private IPv4-, ULA-, Link-Local- und
   Loopback-Literaladressen. Öffentliche Ziele, URL-Zugangsdaten und Weiterleitungen
@@ -47,10 +56,6 @@ Hintergrund-Recorder.
   vollständigen Textes und ihre bestehenden Token-, Netz- und Warteschlangengrenzen.
   macOS 13 und die bisherigen Mac-Detektoren bleiben erhalten.
 
-HTTP schützt Audio und Token nicht gegen Mitlesen im Heimnetz. Dieser Stand ist
-für bewusste Entwicklungsprüfungen bestimmt und wird nicht als fertiger sicherer
-Client veröffentlicht. Einzelheiten zur Mac-Seite: [Heimnetzbrücke](../docs/ios-bridge.md).
-
 ## Bauen
 
 Das versionierte Xcode-Projekt benötigt keine Projektgenerierung zum Bauen.
@@ -59,7 +64,7 @@ vorhandene SDK-/Gerätestand; daraus folgt kein Test aller unterstützten iOS-Ve
 
 ```bash
 ./iOS/build.sh                 # Simulator, Debug, lokale Signatur
-./iOS/build.sh --release       # Simulator, HTTP gesperrt
+./iOS/build.sh --release       # Simulator, ausschließlich HTTPS
 DEVELOPMENT_TEAM='<team-id>' ./iOS/build.sh --device
 ```
 
@@ -85,6 +90,11 @@ rsvg-convert --width=1024 --height=1024 --background-color='#4338ca' \
 ```
 
 ## Prüfung
+
+Der TLS-/QR-Kandidat benötigt zusätzlich zur automatisierten Prüfung die echte
+Kopplungs- und AAC-Abnahme am iPhone. Der folgende AP20-Beleg betrifft den früheren
+Entwicklungstransport und ist keine TLS-Abnahme.
+
 
 Auf einem iPhone 16 Pro Max mit iOS 26.6.2 wurden Mikrofon- und lokale
 Netzwerkfreigabe, echtes AAC-Diktat über `.local`, Ergebnis und Kopieren geprüft.
@@ -114,10 +124,10 @@ Testdaten und ihre jeweilige Buildvariable:
 
 Der Debug-Testimport liest bei
 `STILLEPOST_MOBILE_IMPORT_TEST_CONNECTION=1` eine höchstens 4 KiB große
-`Documents/development-connection.json` mit `address` und `token`, speichert das
-Token im Schlüsselbund und entfernt die Datei. Echte Tokens niemals in
+`Documents/development-connection.json` mit `address`, `fingerprint` und `token`, speichert die
+Kopplung im Schlüsselbund und entfernt die Datei. Echte Tokens niemals in
 Kommandozeilen oder UI-Test-Texte einsetzen. Für automatisierte Tests einen
-eigenen kurzlebigen Testserver mit eigenem Token verwenden.
+eigenen kurzlebigen TLS-Testserver mit eigenem Token und eigener Identität verwenden.
 
 `STILLEPOST_MOBILE_SYNTHETIC_CAPTURE=1` existiert ausschließlich in
 Simulator-Debug-Builds. Es benutzt künstliches AAC aus

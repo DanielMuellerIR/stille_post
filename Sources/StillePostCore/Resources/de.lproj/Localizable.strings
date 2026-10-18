@@ -49,12 +49,12 @@
 "settings.interface.section" = "Oberfläche";
 "settings.bridge.section" = "Diktat von eigenen Geräten (Heimnetz)";
 "settings.bridge.enabled" = "Diktate aus dem Heimnetz annehmen";
-"settings.bridge.description" = "Öffnet einen Port für eigene Geräte im gleichen Netz — etwa einen Kurzbefehl auf dem iPhone. Audio wird hier auf diesem Mac verarbeitet und verlässt ihn nicht. Der Zugang gilt nur im Heimnetz und nur mit Token; die Verbindung ist unverschlüsselt, Text und Aufnahme sind also für andere Geräte im gleichen WLAN mitlesbar.";
+"settings.bridge.description" = "Nimmt verschlüsselte Diktate eigener Geräte im Heimnetz an. Audio wird nur auf diesem Mac verarbeitet. Kopple die iPhone-App per QR-Code direkt an diesem Bildschirm. Bisherige HTTP-Kurzbefehle benötigen die App-Aktion „Diktat öffnen“.";
 "settings.bridge.port" = "Port";
 "settings.bridge.address" = "Adresse fürs iPhone";
 "settings.bridge.token_copy" = "Token in die Zwischenablage";
 "settings.bridge.token_new" = "Neues Token";
-"settings.bridge.token_hint" = "Das Token wird nie angezeigt. Aus der Zwischenablage lässt es sich per Handoff direkt auf dem iPhone einfügen.";
+"settings.bridge.token_hint" = "Der QR-Code enthält Zugangsdaten. Zeige ihn nur deinem eigenen iPhone. Tokenwechsel und Zertifikatserneuerung verlangen erneute Kopplung.";
 "settings.bridge.token_working" = "Einen Moment …";
 "settings.bridge.token_created" = "Neues Token liegt in der Zwischenablage — schon eingerichtete Geräte müssen es neu eintragen.";
 "settings.bridge.token_copied" = "Token liegt in der Zwischenablage.";
@@ -741,3 +741,29 @@
 "vad.fallback.unprepared" = "Silero nicht vorbereitet";
 "vad.fallback_status" = "RMS-Rückfall: %@";
 "vad.active" = "Silero · lokale Sprachaktivität";
+
+"core.bridge.identity_failed" = "Die TLS-Identität konnte nicht aus dem Schlüsselbund geladen oder gespeichert werden. Entsperre den Schlüsselbund; ersetze eine vorhandene Identität nicht ungeprüft.";
+
+"settings.bridge.pair" = "iPhone koppeln …";
+
+"settings.bridge.pair_title" = "iPhone sicher koppeln";
+
+"settings.bridge.pair_instruction" = "Öffne in der iPhone-App „Verbindung zum Mac“ → „QR-Code scannen“. Scanne ausschließlich direkt von deinem eigenen Mac. Prüfe danach Adresse und Fingerabdruck und bestätige die Kopplung.";
+
+"settings.bridge.qr_accessibility" = "Kopplungs-QR-Code mit geheimen Zugangsdaten";
+
+"settings.bridge.fingerprint" = "Zertifikatsfingerabdruck (SHA-256)";
+
+"settings.bridge.qr_secret" = "Nicht fotografieren, weitergeben oder in Diagnosebelegen speichern. Diese Anzeige schließt nach zwei Minuten oder beim ausdrücklichen Ausblenden.";
+
+"settings.bridge.pair_ready" = "QR-Kopplung bereit. Einstellungen speichern, damit der Listener mit diesem Port läuft.";
+
+"settings.bridge.rotate_confirm" = "Alle bisher gekoppelten Geräte verlieren den Zugang. Laufende Brückenanfragen werden abgebrochen. Danach jedes Gerät neu koppeln.";
+
+"settings.bridge.renew" = "TLS-Zertifikat erneuern …";
+
+"settings.bridge.renew_confirm" = "Das neue Zertifikat gilt ein Jahr und ändert den Fingerabdruck. Laufende Brückenanfragen werden abgebrochen. Danach jedes Gerät direkt am Mac neu koppeln.";
+
+"settings.bridge.renewed" = "Zertifikat erneuert. Kopple jedes iPhone erneut per QR-Code.";
+
+"common.close" = "Schließen";

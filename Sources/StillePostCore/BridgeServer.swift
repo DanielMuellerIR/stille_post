@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import Security
 import SystemConfiguration
 
 /// Produktversion zur Anzeige. Im App-Bundle steht sie in der Info.plist; die
@@ -26,7 +27,7 @@ public enum BridgeAddress {
             .flatMap { $0.isEmpty ? nil : $0 }
             ?? localName.flatMap { $0.isEmpty ? nil : "\($0).local" }
             ?? "mac.local"
-        return "http://\(host.isEmpty ? "mac.local" : host):\(port)"
+        return "https://\(host.isEmpty ? "mac.local" : host):\(port)"
     }
 }
 
@@ -55,6 +56,7 @@ public final class BridgeServer: @unchecked Sendable {
     private let router: BridgeRouter
     private let queue = DispatchQueue(label: "de.stillepost.bridge")
     private var listener: NWListener?
+    private var credentialObserver: NSObjectProtocol?
     private var running = false
     private var stoppingListener: NWListener?
     private var stopCallbacks: [@Sendable () -> Void] = []
@@ -89,18 +91,25 @@ public final class BridgeServer: @unchecked Sendable {
     /// Woher der Grund kommt, wenn kein gültiges Token vorliegt. Nur für Tests
     /// einspeisbar; produktiv liest es denselben Schlüsselbund wie der Router.
     private let tokenStatus: @Sendable () -> BridgeToken.LoadOutcome
+    private let identityProvider: @Sendable () throws -> BridgeIdentity
 
     public init(config: Config.Bridge, router: BridgeRouter,
                 vocabularyUpdate: (@Sendable (Config.Cleanup) -> Void)? = nil,
                 configurationUpdate: (@Sendable (Config) -> Void)? = nil,
                 tokenStatus: @escaping @Sendable () -> BridgeToken.LoadOutcome
-                    = { BridgeToken.loadOutcome() }) {
+                    = { BridgeToken.loadOutcome() },
+                identityProvider: @escaping @Sendable () throws -> BridgeIdentity
+                    = { try BridgeIdentity.loadOrCreate() }) {
         self.config = config
         self.router = router
         self.vocabularyUpdate = vocabularyUpdate
         self.configurationUpdate = configurationUpdate
         self.tokenStatus = tokenStatus
+        self.identityProvider = identityProvider
         queue.setSpecific(key: queueKey, value: true)
+        credentialObserver = DistributedNotificationCenter.default().addObserver(
+            forName: BridgeToken.rotationNotification, object: BridgeToken.keychainService, queue: nil
+        ) { [weak self] _ in self?.restartForCredentialChange() }
     }
 
     public convenience init(config: Config, version: String = AppVersion.current) {
@@ -118,6 +127,7 @@ public final class BridgeServer: @unchecked Sendable {
     public func configureVocabulary(_ config: Config.Cleanup) { vocabularyUpdate?(config) }
 
     deinit {
+        if let credentialObserver { DistributedNotificationCenter.default().removeObserver(credentialObserver) }
         let cleanup = {
             self.listener?.newConnectionHandler = nil
             self.listener?.stateUpdateHandler = nil
@@ -159,7 +169,14 @@ public final class BridgeServer: @unchecked Sendable {
                   let port = NWEndpoint.Port(rawValue: UInt16(config.port)) else {
                 throw ServeError.badPort(config.port)
             }
-            let parameters = NWParameters.tcp
+            let identity = try identityProvider()
+            guard let localIdentity = sec_identity_create(identity.identity) else {
+                throw BridgeIdentity.IdentityError.invalid
+            }
+            let tls = NWProtocolTLS.Options()
+            sec_protocol_options_set_local_identity(tls.securityProtocolOptions, localIdentity)
+            sec_protocol_options_set_min_tls_protocol_version(tls.securityProtocolOptions, .TLSv12)
+            let parameters = NWParameters(tls: tls)
             parameters.allowLocalEndpointReuse = true
             parameters.includePeerToPeer = false
             let created = try NWListener(using: parameters, on: port)
@@ -194,6 +211,19 @@ public final class BridgeServer: @unchecked Sendable {
             created.start(queue: queue)
         } catch {
             stopOnQueue(startError: error)
+        }
+    }
+
+    /// Auch eine Tokenrotation aus der eingebetteten CLI widerruft bereits
+    /// angenommene Aufträge. Die Nachricht enthält ausschließlich die Service-ID.
+    func restartForCredentialChange() {
+        queue.async { [self] in
+            guard running || listener != nil else { return }
+            stopOnQueue(startError: CancellationError())
+            startCallbacks.append { [weak self] result in
+                if case .failure = result { self?.log(L10n.text("core.bridge.identity_failed")) }
+            }
+            if stoppingListener == nil { beginStartOnQueue() }
         }
     }
 
@@ -400,6 +430,7 @@ public final class BridgeServer: @unchecked Sendable {
             case .failure(let response):
                 self.send(response, on: session)
             case .complete(let request):
+                guard !isComplete else { session.connection.cancel(); self.finish(session); return }
                 session.timeout?.cancel()
                 // Der Body steckt jetzt in `request`; der Rohpuffer daneben wird
                 // nicht mehr gebraucht und hielte den Inhalt sonst ein zweites
@@ -408,9 +439,6 @@ public final class BridgeServer: @unchecked Sendable {
                 // dieselben Nutzdaten weiterhin im Speicher.
                 self.transferBufferToRequestReservation(session)
                 self.onRequestAcceptedForTesting?()
-                // Empfangs-EOF beendet nur die Senderichtung des Clients.
-                // Der vollständige Request darf weiterhin beantwortet werden.
-                session.receivedEOF = isComplete
                 self.handle(request, on: session)
             }
         }
@@ -467,8 +495,8 @@ public final class BridgeServer: @unchecked Sendable {
         // war danach nicht mehr erreichbar.
         session.timeout?.cancel()
         session.timeout = nil
-        // `.finalMessage` schließt die Senderichtung ordentlich (TCP-FIN), sobald die
-        // Antwort draußen ist — genau das verspricht `Connection: close`.
+        // `.finalMessage` beendet die TLS-Senderichtung nach der Antwort.
+        // Der Client liest Content-Length und schließt danach seine Sitzung.
         session.connection.send(
             content: response.httpData(), contentContext: .finalMessage, isComplete: true,
             completion: .contentProcessed { [weak self] error in
@@ -511,8 +539,7 @@ public final class BridgeServer: @unchecked Sendable {
     }
 
     /// Überwacht nach dem vollständigen Request weiter die Empfangsrichtung.
-    /// EOF beendet nur die Empfangsrichtung. Echte Fehler stornieren die Arbeit;
-    /// ein Client darf nach seinem FIN weiterhin auf die Antwort warten.
+    /// TLS-EOF vor der Antwort storniert die Arbeit genauso wie ein Netzfehler.
     private func monitorDisconnect(_ session: Session) {
         guard !session.monitoringDisconnect, !session.receivedEOF else { return }
         session.monitoringDisconnect = true
@@ -530,8 +557,14 @@ public final class BridgeServer: @unchecked Sendable {
             }
             if isComplete {
                 session.receivedEOF = true
-                // Nach dem Antwort-FIN ist auch diese Richtung geschlossen;
-                // während der Arbeit bedeutet EOF dagegen keinen Abbruch.
+                if !session.responseSent {
+                    // TLS-close_notify bedeutet hier Versandabbruch. Ein TCP-
+                    // Halbschluss aus der früheren HTTP-Brücke ist kein TLS-Vertrag.
+                    session.connection.cancel()
+                    self.finish(session)
+                    return
+                }
+                // Die Antwort ist bereits draußen; jetzt beide Richtungen freigeben.
                 if session.responseSent {
                     // Den bereits geplanten Transport-Timeout weiterlaufen
                     // lassen, ohne die logische Session dafür festzuhalten.

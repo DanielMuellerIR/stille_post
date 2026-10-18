@@ -49,12 +49,12 @@
 "settings.interface.section" = "Interface";
 "settings.bridge.section" = "Dictation From Your Own Devices (Home Network)";
 "settings.bridge.enabled" = "Accept dictations from the home network";
-"settings.bridge.description" = "Opens a port for your own devices on the same network, such as a shortcut on your iPhone. Audio is processed on this Mac and never leaves it. Access is limited to the home network and requires a token; the connection is unencrypted, so text and recording are readable by other devices on the same Wi-Fi.";
+"settings.bridge.description" = "Accepts encrypted dictations from your devices on the home network. Audio is processed only on this Mac. Pair the iPhone app by scanning the QR code directly from this screen. Existing HTTP shortcuts need the Open Dictation app action.";
 "settings.bridge.port" = "Port";
 "settings.bridge.address" = "Address for the iPhone";
 "settings.bridge.token_copy" = "Copy token to clipboard";
 "settings.bridge.token_new" = "New token";
-"settings.bridge.token_hint" = "The token is never displayed. From the clipboard you can paste it straight into your iPhone via Handoff.";
+"settings.bridge.token_hint" = "The QR code contains credentials. Show it only to your own iPhone. Pair again after rotating the token or renewing the certificate.";
 "settings.bridge.token_working" = "One moment …";
 "settings.bridge.token_created" = "The new token is on the clipboard — devices you already set up must be updated.";
 "settings.bridge.token_copied" = "The token is on the clipboard.";
@@ -741,3 +741,29 @@
 "vad.fallback.unprepared" = "Silero not prepared";
 "vad.fallback_status" = "RMS fallback: %@";
 "vad.active" = "Silero · local speech detection";
+
+"core.bridge.identity_failed" = "The TLS identity could not be loaded or saved in Keychain. Unlock Keychain; do not replace an existing identity without checking it.";
+
+"settings.bridge.pair" = "Pair iPhone…";
+
+"settings.bridge.pair_title" = "Securely Pair iPhone";
+
+"settings.bridge.pair_instruction" = "In the iPhone app, open Connection to Mac → Scan QR Code. Scan directly from your own Mac only. Check the address and fingerprint, then confirm pairing.";
+
+"settings.bridge.qr_accessibility" = "Pairing QR code containing secret credentials";
+
+"settings.bridge.fingerprint" = "Certificate Fingerprint (SHA-256)";
+
+"settings.bridge.qr_secret" = "Do not photograph, share, or save in diagnostic records. This view closes after two minutes or when explicitly hiding the app.";
+
+"settings.bridge.pair_ready" = "QR pairing is ready. Save Settings to run the listener on this port.";
+
+"settings.bridge.rotate_confirm" = "All paired devices will lose access. Running bridge requests will be cancelled. Pair each device again.";
+
+"settings.bridge.renew" = "Renew TLS Certificate…";
+
+"settings.bridge.renew_confirm" = "The new certificate is valid for one year and changes the fingerprint. Running bridge requests will be cancelled. Pair every device again directly at the Mac.";
+
+"settings.bridge.renewed" = "Certificate renewed. Pair every iPhone again using the QR code.";
+
+"common.close" = "Close";

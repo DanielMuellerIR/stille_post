@@ -7,7 +7,7 @@ public struct HTTPReply: Sendable {
 }
 
 public protocol BridgeTransport: Sendable {
-    func perform(_ request: URLRequest, file: URL?,
+    func perform(_ request: URLRequest, file: URL?, fingerprint: String?,
                  progress: @escaping @Sendable (Double) -> Void) async throws -> HTTPReply
 }
 
@@ -27,7 +27,7 @@ public struct BridgeClient: BridgeAccess {
 
     public func health(_ credentials: BridgeCredentials) async throws -> BridgeHealth {
         let request = try request(credentials, route: "health", method: "GET", timeout: 10)
-        let reply: BridgeHealth = try await decode { try await transport.perform(request, file: nil, progress: { _ in }) }
+        let reply: BridgeHealth = try await decode { try await transport.perform(request, file: nil, fingerprint: credentials.configuration.fingerprint, progress: { _ in }) }
         guard reply.ok else { throw ClientFailure.invalidResponse }
         return reply
     }
@@ -43,7 +43,7 @@ public struct BridgeClient: BridgeAccess {
         var request = try request(credentials, route: "dictate", method: "POST", timeout: 180)
         request.setValue("audio/mp4", forHTTPHeaderField: "Content-Type")
         request.setValue(String(bytes.intValue), forHTTPHeaderField: "Content-Length")
-        return try await decode { try await transport.perform(request, file: recording.url, progress: progress) }
+        return try await decode { try await transport.perform(request, file: recording.url, fingerprint: credentials.configuration.fingerprint, progress: progress) }
     }
 
     private func request(_ credentials: BridgeCredentials, route: String, method: String,

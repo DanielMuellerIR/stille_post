@@ -3,17 +3,18 @@ import XCTest
 
 final class ClientTests: XCTestCase {
     func testLocalEndpointsAndClosedDefault() throws {
-        for address in ["http://mac.local:8188", "http://MAC.local.:8188/", "http://10.2.3.4:8188", "http://192.168.1.9", "http://172.16.0.1", "http://[fd00::1]", "http://127.0.0.1", "http://[::1]"] {
-            XCTAssertNoThrow(try BridgeConfiguration(address: address, allowInsecureDevelopment: true).endpoint(), address)
+        let pin = String(repeating: "a", count: 64)
+        for address in ["https://mac.local:8188", "https://MAC.local.:8188/", "https://10.2.3.4:8188", "https://192.168.1.9", "https://172.16.0.1", "https://[fd00::1]", "https://127.0.0.1", "https://[::1]"] {
+            XCTAssertNoThrow(try BridgeConfiguration(address: address, fingerprint: pin).endpoint())
         }
-        for address in ["https://mac.local", "http://example.org", "http://mac.local.example.org", "http://8.8.8.8", "http://172.32.0.1", "http://[2001:db8::1]", "http://mac.local/path", "http://mac.local?raw=1", "http://mac.local#fragment", "http://.local", "http://bad_name.local", "http://localhost", "http://mac.local:0"] {
-            XCTAssertThrowsError(try BridgeConfiguration(address: address, allowInsecureDevelopment: true).endpoint(), address)
+        for address in ["http://mac.local", "https://example.org", "https://mac.local.example.org", "https://8.8.8.8", "https://172.32.0.1", "https://[2001:db8::1]", "https://mac.local/path", "https://mac.local?raw=1", "https://mac.local#fragment", "https://.local", "https://bad_name.local", "https://localhost", "https://mac.local:0", "https://user:password@mac.local"] {
+            XCTAssertThrowsError(try BridgeConfiguration(address: address, fingerprint: pin).endpoint())
         }
-        var withCredentials = URLComponents(string: "http://mac.local")!
-        withCredentials.user = "fixture-user"; withCredentials.password = "fixture-password"
-        XCTAssertThrowsError(try BridgeConfiguration(address: withCredentials.string!, allowInsecureDevelopment: true).endpoint())
-        XCTAssertThrowsError(try BridgeConfiguration(address: "http://mac.local").endpoint()) {
-            XCTAssertEqual($0 as? ClientFailure, .insecureDisabled)
+        XCTAssertThrowsError(try BridgeConfiguration(address: "https://mac.local").endpoint()) {
+            XCTAssertEqual($0 as? ClientFailure, .pairingRequired)
+        }
+        for pin in ["", "a", String(repeating: "A", count: 64), String(repeating: "z", count: 64)] {
+            XCTAssertThrowsError(try BridgeConfiguration(address: "https://mac.local", fingerprint: pin).endpoint())
         }
     }
 
@@ -85,7 +86,7 @@ final class ClientTests: XCTestCase {
     }
 
     private func credentials() -> BridgeCredentials {
-        BridgeCredentials(configuration: BridgeConfiguration(address: "http://mac.local:8188", allowInsecureDevelopment: true), token: "fixture-token")
+        BridgeCredentials(configuration: BridgeConfiguration(address: "https://mac.local:8188", fingerprint: String(repeating: "a", count: 64)), token: "fixture-token")
     }
     private func file(bytes: Int) throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
@@ -100,7 +101,7 @@ actor StubTransport: BridgeTransport {
     private var reply: HTTPReply
     init(reply: HTTPReply) { self.reply = reply }
     func setReply(_ reply: HTTPReply) { self.reply = reply }
-    func perform(_ request: URLRequest, file: URL?, progress: @escaping @Sendable (Double) -> Void) async throws -> HTTPReply {
+    func perform(_ request: URLRequest, file: URL?, fingerprint: String?, progress: @escaping @Sendable (Double) -> Void) async throws -> HTTPReply {
         requests.append(request); files.append(file); progress(1)
         return reply
     }

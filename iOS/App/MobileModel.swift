@@ -34,8 +34,11 @@ import UniformTypeIdentifiers
     }
 
     func load() async {
-        do { hasToken = try await keychain.load() != nil }
-        catch { setupFailure = .storageFailed }
+        do {
+            if let credentials = try await keychain.load() {
+                configuration = credentials.configuration; hasToken = true
+            }
+        } catch { setupFailure = error as? ClientFailure ?? .storageFailed }
         #if DEBUG
         if ProcessInfo.processInfo.environment["STILLEPOST_MOBILE_IMPORT_TEST_CONNECTION"] == "1" {
             await importDevelopmentConnection()
@@ -48,15 +51,15 @@ import UniformTypeIdentifiers
         connectionTask?.cancel()
         pendingAction = true; defer { pendingAction = false }
         do {
-            var validation = configuration; validation.allowInsecureDevelopment = true
-            _ = try validation.endpoint()
+            _ = try configuration.endpoint()
             let newToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !newToken.isEmpty {
-                guard newToken.utf8.allSatisfy({ $0 >= 0x21 && $0 <= 0x7e }) else { throw ClientFailure.missingToken }
-                try await keychain.save(newToken)
-            }
-            hasToken = try await keychain.load() != nil
-            UserDefaults.standard.set(try JSONEncoder().encode(configuration), forKey: configurationKey)
+            let stored = try? await keychain.load()
+            let chosenToken = newToken.isEmpty ? stored?.token ?? "" : newToken
+            guard !chosenToken.isEmpty, chosenToken.utf8.count <= 256,
+                  chosenToken.utf8.allSatisfy({ $0 >= 0x21 && $0 <= 0x7e }) else { throw ClientFailure.missingToken }
+            try await keychain.save(BridgeCredentials(configuration: configuration, token: chosenToken))
+            hasToken = true
+            UserDefaults.standard.removeObject(forKey: configurationKey)
             self.configuration = configuration; setupFailure = nil; connection = .unchecked
             return true
         } catch { setupFailure = error as? ClientFailure ?? .storageFailed; return false }
@@ -131,18 +134,19 @@ import UniformTypeIdentifiers
     }
 
     private func credentials(_ configuration: BridgeConfiguration) async throws -> BridgeCredentials {
-        guard let token = try await keychain.load(), !token.isEmpty else { throw ClientFailure.missingToken }
-        return BridgeCredentials(configuration: configuration, token: token)
+        guard let credentials = try await keychain.load() else { throw ClientFailure.missingToken }
+        guard credentials.configuration == configuration else { throw ClientFailure.pairingRequired }
+        return credentials
     }
 
     #if DEBUG
     private func importDevelopmentConnection() async {
-        struct Fixture: Decodable { let address: String; let token: String }
+        struct Fixture: Decodable { let address: String; let token: String; let fingerprint: String }
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("development-connection.json")
         guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size <= 4096,
               let data = try? Data(contentsOf: url), let fixture = try? JSONDecoder().decode(Fixture.self, from: data) else { return }
-        if await save(configuration: BridgeConfiguration(address: fixture.address, allowInsecureDevelopment: true), token: fixture.token) {
+        if await save(configuration: BridgeConfiguration(address: fixture.address, fingerprint: fixture.fingerprint), token: fixture.token) {
             try? FileManager.default.removeItem(at: url)
         }
     }

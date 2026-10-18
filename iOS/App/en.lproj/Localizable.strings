@@ -39,8 +39,8 @@
 "connection.tokenReplace" = "New token (optional)";
 "connection.tokenHint" = "Paste the token from your Mac's bridge settings.";
 "connection.tokenStored" = "A token is stored in this iPhone's keychain. Leave this field empty to keep it.";
-"connection.save" = "Save connection";
-"connection.savedChanges" = "Saved";
+"connection.save" = "Confirm Pairing";
+"connection.savedChanges" = "Pairing Saved";
 "connection.check" = "Check connection";
 "connection.unchecked" = "Not checked yet.";
 "connection.checking" = "Connecting to your Mac …";
@@ -55,7 +55,7 @@
 "shortcut.description" = "Opens Stille Post. You explicitly start recording in the app.";
 "shortcut.hint" = "Choose Stille Post's Open dictation action in Shortcuts. Assign that shortcut to the Action Button. It opens the app; recording starts only when you tap Record.";
 "error.invalidAddress" = "Enter a valid local Mac address with http:// and an optional port.";
-"error.insecureDisabled" = "The unencrypted development test is not enabled. An encrypted connection will follow later.";
+"error.insecureDisabled" = "Unencrypted HTTP is no longer supported. Pair the HTTPS bridge by scanning the QR code directly at the Mac.";
 "error.missingToken" = "Save a valid bridge token from your Mac settings.";
 "error.microphoneDenied" = "Microphone access is missing. Allow it for Stille Post in iPhone settings.";
 "error.recordingFailed" = "The recording could not be completed. Check the audio input and try again.";
@@ -63,7 +63,7 @@
 "error.noAudio" = "The recording contains no usable audio data.";
 "error.recordingTooLarge" = "The recording exceeds the limit of 3 minutes or 5 MB. Your Mac may impose a smaller limit.";
 "error.unavailable" = "Your Mac is unreachable or the connection was interrupted. Check Wi-Fi, the address, the bridge, and local-network permission.";
-"error.unauthorized" = "Your Mac rejected the token. Copy it again from your Mac settings.";
+"error.unauthorized" = "The access token was rejected. If it was rotated on the Mac, pair this iPhone again using its QR code.";
 "error.busy" = "The bridge is busy or not ready. Try again later.";
 "error.serverFailed" = "Your Mac could not process the dictation. Check its diagnostics and try again.";
 "error.invalidResponse" = "Your Mac did not return a valid response.";
@@ -71,3 +71,25 @@
 "error.redirected" = "The bridge requested a redirect. It was rejected to protect your audio and token.";
 "error.storageFailed" = "The recording or token could not be safely saved or removed. Unlock your iPhone and check its free storage.";
 "error.interrupted" = "The app or audio input was interrupted. Review the retained recording before sending.";
+
+"connection.scan" = "Scan QR Code";
+
+"connection.scanHint" = "Scan the code directly in Stille Post on your own Mac. Codes from messages or other websites are not a secure first pairing.";
+
+"connection.confirmHint" = "Compare the address and SHA-256 fingerprint with your Mac before saving. Saving replaces the previous connection. No audio is sent yet.";
+
+"connection.fingerprint" = "SHA-256 Fingerprint";
+
+"connection.encrypted" = "HTTPS with a pinned Mac identity";
+
+"error.pairingRequired" = "This connection needs pairing again. Scan the QR code directly from your Mac; old HTTP connections cannot be reused.";
+
+"error.invalidPairing" = "This QR code does not contain valid Stille Post pairing details. Open pairing on your own Mac.";
+
+"error.identityChanged" = "The Mac identity does not match your pairing. No credentials or recordings were sent. Check the Mac and pair again directly there; never accept a fingerprint from the network.";
+
+"error.invalidCertificate" = "The paired Mac certificate is invalid or expired. Renew it in Mac Settings, then pair again.";
+
+"error.cameraUnavailable" = "The QR scanner is unavailable. Allow camera access in iPhone Settings or transfer the address, fingerprint, and token directly from your own Mac.";
+
+"common.cancel" = "Cancel";

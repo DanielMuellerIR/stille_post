@@ -2,14 +2,20 @@ import Foundation
 
 /// Zugangs-Token der Netzwerk-Brücke.
 ///
-/// Das Token ist das einzige Geheimnis, mit dem ein Gerät im Heimnetz die Brücke
+/// Das Token ist die Zugangsberechtigung, mit der ein Gerät im Heimnetz die Brücke
 /// benutzen darf. Es liegt deshalb im macOS-Schlüsselbund und NIE in
 /// `config.json`, in Logs oder in einem Kommandozeilenargument — genau wie der
 /// Cleanup-API-Key.
 public enum BridgeToken {
+    public static let rotationNotification = Notification.Name("StillePost.bridgeTokenRotated")
 
     /// Schlüsselbund-Kennung des Brücken-Tokens.
-    public static let keychainService = "StillePost Bridge Token"
+    public static var keychainService: String {
+        let production = "StillePost Bridge Token"
+        if let value = ProcessInfo.processInfo.environment["STILLEPOST_BRIDGE_TOKEN_SERVICE"],
+           value.hasPrefix(production + ".test."), value.utf8.count < 200 { return value }
+        return production
+    }
 
     /// Umgebungsvariable für Tests und skriptierte Läufe. Sie hat Vorrang, damit
     /// ein Testlauf nie den persönlichen Schlüsselbund anfassen muss.
@@ -104,6 +110,7 @@ public enum BridgeToken {
     public static func regenerate() throws -> String {
         let token = generate()
         try store(token)
+        DistributedNotificationCenter.default().postNotificationName(rotationNotification, object: keychainService, userInfo: nil, deliverImmediately: true)
         return token
     }
 

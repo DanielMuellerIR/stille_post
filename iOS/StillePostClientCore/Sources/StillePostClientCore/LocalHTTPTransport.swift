@@ -1,10 +1,13 @@
 import Foundation
+import Security
+import CryptoKit
 
 public struct LocalHTTPTransport: BridgeTransport {
     public init() {}
-    public func perform(_ request: URLRequest, file: URL?,
+    public func perform(_ request: URLRequest, file: URL?, fingerprint: String?,
                         progress: @escaping @Sendable (Double) -> Void) async throws -> HTTPReply {
-        let transfer = Transfer(progress: progress)
+        guard request.url?.scheme?.lowercased() == "https", let fingerprint, BridgeConfiguration.validFingerprint(fingerprint) else { throw ClientFailure.pairingRequired }
+        let transfer = Transfer(fingerprint: fingerprint, progress: progress)
         return try await withTaskCancellationHandler {
             try Task.checkCancellation()
             return try await withCheckedThrowingContinuation { transfer.start(request, file: file, continuation: $0) }
@@ -22,15 +25,17 @@ private final class Transfer: NSObject, URLSessionDataDelegate, @unchecked Senda
     private var body = Data()
     private var status = 0
     private var failure: ClientFailure?
+    private let fingerprint: String
     private let progress: @Sendable (Double) -> Void
 
-    init(progress: @escaping @Sendable (Double) -> Void) { self.progress = progress }
+    init(fingerprint: String, progress: @escaping @Sendable (Double) -> Void) { self.fingerprint = fingerprint; self.progress = progress }
 
     func start(_ request: URLRequest, file: URL?, continuation: CheckedContinuation<HTTPReply, Error>) {
         lock.lock()
         guard !cancelled else { lock.unlock(); continuation.resume(throwing: CancellationError()); return }
         self.continuation = continuation
         let config = URLSessionConfiguration.ephemeral
+        config.tlsMinimumSupportedProtocolVersion = .TLSv12
         config.urlCache = nil
         config.httpCookieStorage = nil
         config.httpShouldSetCookies = false
@@ -50,6 +55,21 @@ private final class Transfer: NSObject, URLSessionDataDelegate, @unchecked Senda
     func cancel() {
         lock.lock(); cancelled = true; let task = task; lock.unlock()
         task?.cancel()
+    }
+
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
+                    completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              let trust = challenge.protectionSpace.serverTrust else {
+            completionHandler(.performDefaultHandling, nil); return
+        }
+        do {
+            try PinnedTrust.validate(trust, fingerprint: fingerprint)
+            completionHandler(.useCredential, URLCredential(trust: trust))
+        } catch {
+            failure = error as? ClientFailure ?? .invalidCertificate
+            completionHandler(.cancelAuthenticationChallenge, nil)
+        }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,

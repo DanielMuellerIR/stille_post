@@ -1,4 +1,5 @@
 import Network
+import Security
 import XCTest
 @testable import StillePostClientCore
 
@@ -10,7 +11,7 @@ final class TransportTests: XCTestCase {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
         defer { try? FileManager.default.removeItem(at: url) }
         try Data(repeating: 7, count: 256_000).write(to: url)
-        let credentials = BridgeCredentials(configuration: BridgeConfiguration(address: server.address, allowInsecureDevelopment: true), token: "fixture-token")
+        let credentials = BridgeCredentials(configuration: BridgeConfiguration(address: server.address, fingerprint: server.identity.fingerprint), token: "fixture-token")
         let reply = try await BridgeClient().dictate(Recording(url: url, duration: 2, bytes: 256_000), credentials: credentials, progress: { _ in })
         XCTAssertEqual(reply.text, "Network test.")
         let request = server.received()
@@ -30,7 +31,7 @@ final class TransportTests: XCTestCase {
         for (response, expected) in responses {
             let server = try HTTPFixture(response: response)
             defer { server.stop() }
-            let credentials = BridgeCredentials(configuration: BridgeConfiguration(address: server.address, allowInsecureDevelopment: true), token: "fixture-token")
+            let credentials = BridgeCredentials(configuration: BridgeConfiguration(address: server.address, fingerprint: server.identity.fingerprint), token: "fixture-token")
             do { _ = try await BridgeClient().health(credentials); XCTFail("Erwarteter Transportfehler") }
             catch { XCTAssertEqual(error as? ClientFailure, expected) }
         }
@@ -42,13 +43,34 @@ final class TransportTests: XCTestCase {
         defer { server.stop() }
         var request = URLRequest(url: URL(string: server.address)!)
         request.timeoutInterval = 3
-        let task = Task { try await LocalHTTPTransport().perform(request, file: nil, progress: { _ in }) }
+        let task = Task { try await LocalHTTPTransport().perform(request, file: nil, fingerprint: server.identity.fingerprint, progress: { _ in }) }
         let deadline = Date().addingTimeInterval(3)
         while server.received().isEmpty && Date() < deadline { try await Task.sleep(nanoseconds: 5_000_000) }
         XCTAssertFalse(server.received().isEmpty)
         task.cancel()
         do { _ = try await task.value; XCTFail("Storno fehlt") }
         catch { XCTAssertTrue(error is CancellationError) }
+    }
+
+    func testWrongFingerprintSendsNoHTTPBytes() async throws {
+        let server = try HTTPFixture(response: nil)
+        defer { server.stop() }
+        let credentials = BridgeCredentials(configuration: BridgeConfiguration(address: server.address, fingerprint: String(repeating: "0", count: 64)), token: "fixture-token")
+        do { _ = try await BridgeClient().health(credentials); XCTFail("Falscher Pin wurde akzeptiert") }
+        catch { XCTAssertEqual(error as? ClientFailure, .identityChanged) }
+        XCTAssertTrue(server.received().isEmpty, "Token und Audio dürfen erst nach Pin-Prüfung gesendet werden")
+    }
+
+    func testPinnedCertificateStillChecksExpiry() throws {
+        let identity = try TestTLSIdentity()
+        var trust: SecTrust?
+        SecTrustCreateWithCertificates(identity.certificate, SecPolicyCreateSSL(true, nil), &trust)
+        let checked = try XCTUnwrap(trust)
+        try PinnedTrust.validate(checked, fingerprint: identity.fingerprint)
+        SecTrustSetVerifyDate(checked, Date().addingTimeInterval(366 * 86400) as CFDate)
+        XCTAssertThrowsError(try PinnedTrust.validate(checked, fingerprint: identity.fingerprint)) {
+            XCTAssertEqual($0 as? ClientFailure, .invalidCertificate)
+        }
     }
 
     #if !DEBUG
@@ -69,11 +91,16 @@ private final class HTTPFixture: @unchecked Sendable {
     private let lock = NSLock()
     private var bytes = Data()
     private var connections: [NWConnection] = []
-    var address: String { "http://127.0.0.1:\(listener.port!.rawValue)" }
+    let identity: TestTLSIdentity
+    var address: String { "https://127.0.0.1:\(listener.port!.rawValue)" }
 
     init(response: Data?) throws {
         self.response = response
-        let parameters = NWParameters.tcp
+        identity = try TestTLSIdentity()
+        let tls = NWProtocolTLS.Options()
+        sec_protocol_options_set_local_identity(tls.securityProtocolOptions, sec_identity_create(identity.identity)!)
+        sec_protocol_options_set_min_tls_protocol_version(tls.securityProtocolOptions, .TLSv12)
+        let parameters = NWParameters(tls: tls)
         parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
         listener = try NWListener(using: parameters, on: .any)
         listener.newConnectionHandler = { [weak self] connection in

@@ -28,7 +28,7 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Silero als Opt-in mit festem, SHA-256-geprüftem Modell und RMS-Rückfall integrieren; siehe [Silero](docs/silero-vad.md).
 - [ ] Silero mit menschlichen Mikrofonaufnahmen abnehmen (kurze/leise Wörter, Klicks, Rauschen, lange Pausen und Pause/Fortsetzen).
 - [x] Native iPhone-App mit Aufnahme, Brückenzugriff und manuellem Kopieren umsetzen und am echten Gerät prüfen; [Entwicklungsclient](iOS/README.md), HTTP ausschließlich für ausdrücklich freigegebene Debug-Tests.
-- [ ] TLS-/QR-Kopplung und lokales Offline-Diktat aufbauen.
+- [ ] TLS-/QR-Kopplung: 0.9.42 implementiert und automatisiert geprüft; reale iPhone-Kopplungs-/TLS-Abnahme noch offen. Danach lokales Offline-Diktat aufbauen.
 - [ ] Die wesentlichen Kombinationen auf realen Geräten abnehmen und beide Nutzungsanleitungen aktualisieren.
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
@@ -57,8 +57,8 @@ einschalten, Port ändern, stoppen und zurücksetzen. Die Gerätefälle bleiben 
 
 Entscheidungen, Aufbau, Kurzbefehl-Anleitung und Messwerte stehen in
 [docs/ios-bridge.md](docs/ios-bridge.md). Kurz: Die Brücke im Mac nimmt Audio oder
-Rohtext von eigenen Geräten an, das iPhone bedient sie über einen Kurzbefehl am
-Action-Button und fügt den Text aus der Zwischenablage ein. Keine
+Rohtext von eigenen Geräten an, die native iPhone-App nimmt auf und sendet ausdrücklich. Die App-Aktion
+„Diktat öffnen“ kann am Action-Button liegen; Text wird manuell kopiert. Keine
 Tastatur-Erweiterung, kein Fernzugriff — beides bewusst verworfen.
 
 Am 2026-07-29 am iPhone verifiziert: Kurzbefehl an der Aktionstaste, zwei
@@ -78,17 +78,18 @@ Offen:
   aufwachen" reicht, damit ein Diktat den Mac weckt, oder ob der Kurzbefehl dann
   einfach scheitert.
 
-Stufe 1 (erst wenn Stufe 0 im Alltag trägt): eigene kleine iPhone-App in diesem
-Repo. Sie bringt drei Dinge, die ein Kurzbefehl nicht kann — TLS mit gemerktem
-Zertifikats-Fingerabdruck (heute läuft die Verbindung im Klartext durchs WLAN),
-eine Kopplung per QR-Code statt Token-Einfügen, und später Whisper lokal auf dem
-iPhone für unterwegs. Auf dem iPhone 16 Pro Max ist `large-v3-turbo` über WhisperKit
-realistisch (quantisiert 550–630 MB, etwa fünffache Echtzeit). Das spätere lokale
-iPhone-Modell braucht eine gesonderte Auswahl; der geprüfte Parakeet-v3-Kandidat
-ist nach dem Mac-Vergleich für die Übernahme abgelehnt.
-Der native Entwicklungsclient besitzt inzwischen ein versioniertes Xcode-Projekt
-unter [iOS/](iOS/README.md). HTTP ist dort nur im Debug-Build nach ausdrücklicher
-Entwicklungsfreigabe möglich; TLS-/QR-Kopplung und Offline-Erkennung bleiben offen.
+Die native iPhone-App besitzt ein versioniertes Xcode-Projekt unter
+[iOS/](iOS/README.md). 0.9.42 implementiert TLS ab 1.2 mit dauerhaftem
+Schlüsselbundzertifikat, direkter QR-Erstkopplung, Zertifikats-Pinning,
+Tokenrotation und ausdrücklicher Neu-Kopplung. HTTP samt Entwicklungsausnahme
+ist entfernt. Vorhandene Heimnetz-Kurzbefehle müssen zur App-Aktion
+„Diktat öffnen“ wechseln; Einzelheiten in der Brückenanleitung.
+
+Die echte TLS-/QR-Kopplung und verschlüsselte AAC-Sprechprobe am iPhone stehen
+noch aus. Bis dahin Entwicklungsstand und keine Freigabe als fertiger sicherer
+Client. Simulator und lokale TLS-/AAC-Prüfungen ersetzen diese Abnahme nicht.
+Anschließend folgen getrennt Modell-/Ressourcenverwaltung und Offline-Diktat;
+die vorhandene Whisper-Engine und Silero als Opt-in mit RMS bleiben unverändert.
 
 ## Whisper-Modell selbst beschaffen (gebaut in 0.8.0, READMEs offen)
 

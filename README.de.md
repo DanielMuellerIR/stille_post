@@ -293,35 +293,23 @@ zum Zug kam, zeigt `stillepost-cli cleanup` an und das Verlaufsfenster.
 
 ## Diktat vom iPhone (Heimnetz)
 
-Stille Post kann Diktate von eigenen Geräten im gleichen Netz annehmen: Das iPhone
-nimmt auf, der Mac transkribiert und bereinigt, der fertige Text landet in der
-Zwischenablage des iPhones und lässt sich in jede App einsetzen — auch in ein
-Textfeld in Firefox. Auf dem iPhone genügt ein Kurzbefehl am Action-Button; es
-braucht keine App und keine eigene Tastatur.
+Stille Post nimmt Diktate vom iPhone im eigenen Heimnetz an. Die native
+[iPhone-App](iOS/README.md) nimmt lokal auf; Stoppen, Senden und Kopieren bleiben
+bewusste Aktionen. Der Mac transkribiert mit lokalem Whisper und bereinigt genau
+einmal den vollständigen Text.
 
-Einschalten in den Einstellungen unter „Allgemein → Diktat von eigenen Geräten
-(Heimnetz)". Dort liegt auch der Knopf, der das Zugangs-Token in die Zwischenablage
-legt; angezeigt wird es nie. Standardmäßig ist der Zugang aus.
+Einstellungen → Allgemein → Diktat von eigenen Geräten aktivieren, danach den
+QR-Code direkt vom eigenen Mac scannen. HTTPS verlangt die fest geprüfte
+Zertifikatsidentität und ein Token; die Brücke bleibt standardmäßig aus.
+Unbekannte Identitäten, Weiterleitungen und öffentliche Gegenstellen werden
+abgewiesen. Der Mac bleibt reiner Audioempfänger; kein WAN und keine Tastatur-
+Erweiterung.
 
-```bash
-curl -s -H "Authorization: Bearer <token>" \
-     --data-binary @aufnahme.m4a http://<mac-name>.local:8188/v1/dictate
-```
-
-Die drei Routen: `GET /v1/health`, `POST /v1/dictate` (Audio → fertiger Text,
-`?raw=1` ohne Bereinigung) und `POST /v1/cleanup` (Rohtext → bereinigter Text, für
-Geräte, die selbst transkribieren).
-
-**Datenschutz und Grenzen.** Der Mac ist hier nur Empfänger: Das Audio wird auf
-diesem Rechner verarbeitet, die Spracherkennung läuft weiter ausschließlich lokal.
-Der Zugang gilt nur für private/Link-Local-Adressbereiche sowie für globale
-IPv6-Adressen in einem Präfix, das gerade eine aktive Schnittstelle dieses Macs
-verwendet; zusätzlich ist immer das Token nötig. Die Verbindung ist allerdings
-**unverschlüsselt** — wer im gleichen WLAN mitliest, kann Diktate mitlesen. Von
-unterwegs ist der Zugang nicht gedacht.
-
-Anleitung für den Kurzbefehl, Messwerte und die getroffenen Entscheidungen:
-[docs/ios-bridge.md](docs/ios-bridge.md).
+0.9.42 entfernt HTTP samt Entwicklungsausnahme. Vorhandene HTTP-Kurzbefehle
+müssen auf die App-Aktion „Diktat öffnen“ wechseln; das iPhone muss neu gekoppelt
+werden. Tokenwechsel und Zertifikatserneuerung verlangen ebenfalls neue Kopplung.
+Migration, Zertifikatslebensdauer, Grenzen und Prüfung stehen in der
+[Brückenanleitung](docs/ios-bridge.md). Die Geräteabnahme des Kandidaten steht noch aus.
 
 ## Steuerbar ohne GUI
 

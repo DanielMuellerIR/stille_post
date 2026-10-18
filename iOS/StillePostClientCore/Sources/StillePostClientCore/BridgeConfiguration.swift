@@ -2,6 +2,7 @@ import Foundation
 import Darwin
 
 public enum ClientFailure: String, Error, Equatable, Sendable {
+    case pairingRequired, invalidPairing, identityChanged, invalidCertificate, cameraUnavailable
     case invalidAddress, insecureDisabled, missingToken, microphoneDenied, recordingFailed
     case recordingExists, noAudio, recordingTooLarge, unavailable, unauthorized, busy
     case serverFailed, invalidResponse, responseTooLarge, redirected, storageFailed, interrupted
@@ -12,25 +13,27 @@ public enum ClientFailure: String, Error, Equatable, Sendable {
 public struct BridgeConfiguration: Codable, Equatable, Sendable {
     public var address: String
     public var allowInsecureDevelopment: Bool
+    public var fingerprint: String?
 
-    public init(address: String = "", allowInsecureDevelopment: Bool = false) {
+    public init(address: String = "", allowInsecureDevelopment: Bool = false, fingerprint: String? = nil) {
         self.address = address
         self.allowInsecureDevelopment = allowInsecureDevelopment
+        self.fingerprint = fingerprint
     }
 
     public func endpoint() throws -> URL {
-        #if DEBUG
-        guard allowInsecureDevelopment else { throw ClientFailure.insecureDisabled }
-        guard let parts = URLComponents(string: address.trimmingCharacters(in: .whitespacesAndNewlines)),
-              parts.scheme?.lowercased() == "http", let host = parts.host,
+        guard let parts = URLComponents(string: address.trimmingCharacters(in: .whitespacesAndNewlines)) else { throw ClientFailure.invalidAddress }
+        guard parts.scheme?.lowercased() == "https" else { throw ClientFailure.insecureDisabled }
+        guard let host = parts.host,
               parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
-              parts.path.isEmpty || parts.path == "/", (1...65535).contains(parts.port ?? 80),
+              parts.path.isEmpty || parts.path == "/", (1...65535).contains(parts.port ?? 443),
               Self.isLocalHost(host), let url = parts.url else { throw ClientFailure.invalidAddress }
+        guard let fingerprint, Self.validFingerprint(fingerprint) else { throw ClientFailure.pairingRequired }
         return url
-        #else
-        // HTTP gehört ausschließlich zum ausdrücklich freigegebenen Entwicklungstest.
-        throw ClientFailure.insecureDisabled
-        #endif
+    }
+
+    public static func validFingerprint(_ value: String) -> Bool {
+        value.utf8.count == 64 && value.utf8.allSatisfy { (48...57).contains($0) || (97...102).contains($0) }
     }
 
     private static func isLocalHost(_ host: String) -> Bool {
@@ -56,7 +59,7 @@ public struct BridgeConfiguration: Codable, Equatable, Sendable {
     }
 }
 
-public struct BridgeCredentials: Sendable {
+public struct BridgeCredentials: Codable, Sendable {
     public let configuration: BridgeConfiguration
     public let token: String
 

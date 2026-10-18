@@ -625,6 +625,15 @@ private struct APIKeyRow: View {
 /// auf ausdrücklichen Knopfdruck — ein modaler Berechtigungsdialog mitten im
 /// Layout würde das Fenster blockieren.
 private struct BridgeRow: View {
+    private struct PairingDisplay: Identifiable {
+        let id = UUID()
+        let address: String
+        let fingerprint: String
+        let image: NSImage
+    }
+    @State private var pairing: PairingDisplay?
+    @State private var rotateToken = false
+    @State private var renewIdentity = false
     @Binding var bridge: Config.Bridge
     @State private var status: String?
     /// Läuft gerade eine Schlüsselbund-Aktion? Sperrt beide Buttons und macht
@@ -648,16 +657,58 @@ private struct BridgeRow: View {
             LabeledContent(L10n.text("settings.bridge.address")) {
                 Text(address).textSelection(.enabled).font(.caption)
             }
+            Button(L10n.text("settings.bridge.pair")) { showPairing() }.disabled(busy)
+                .sheet(item: $pairing) { display in
+                    BridgePairingView(address: display.address, fingerprint: display.fingerprint, image: display.image)
+                }
             HStack {
                 Button(L10n.text("settings.bridge.token_copy")) { copyToken(forceNew: false) }
                     .disabled(busy)
-                Button(L10n.text("settings.bridge.token_new")) { copyToken(forceNew: true) }
+                Button(L10n.text("settings.bridge.token_new")) { rotateToken = true }
                     .disabled(busy)
             }
+            Button(L10n.text("settings.bridge.renew")) { renewIdentity = true }.disabled(busy)
+                .confirmationDialog(L10n.text("settings.bridge.renew_confirm"), isPresented: $renewIdentity) {
+                    Button(L10n.text("settings.bridge.renew"), role: .destructive) { renewTLS() }
+                }
+                .confirmationDialog(L10n.text("settings.bridge.rotate_confirm"), isPresented: $rotateToken) {
+                    Button(L10n.text("settings.bridge.token_new"), role: .destructive) { copyToken(forceNew: true) }
+                }
             Text(status ?? L10n.text("settings.bridge.token_hint"))
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    @MainActor private func showPairing() {
+        guard !busy else { return }
+        busy = true; status = L10n.text("settings.bridge.token_working")
+        let port = bridge.port
+        Task {
+            defer { busy = false }
+            do {
+                let outcome = try await Self.loadOrCreateToken(forceNew: false)
+                let token = outcome.token
+                if outcome.created { NotificationCenter.default.post(name: .bridgeCredentialsChanged, object: nil) }
+                let identity = try await Task.detached { try BridgeIdentity.loadOrCreate() }.value
+                let data = try BridgePairing(port: port, identity: identity, token: token).encoded()
+                pairing = PairingDisplay(address: address, fingerprint: identity.fingerprint, image: try BridgePairingView.qrImage(data: data))
+                status = L10n.text("settings.bridge.pair_ready")
+            } catch { status = error.localizedDescription }
+        }
+    }
+
+    @MainActor private func renewTLS() {
+        guard !busy else { return }
+        busy = true
+        Task {
+            defer { busy = false }
+            do {
+                _ = try await Task.detached { try BridgeIdentity.renew() }.value
+                NotificationCenter.default.post(name: .bridgeCredentialsChanged, object: nil)
+                status = L10n.text("settings.bridge.renewed")
+            } catch { status = error.localizedDescription }
         }
     }
 

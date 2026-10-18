@@ -39,8 +39,8 @@
 "connection.tokenReplace" = "Neues Token (optional)";
 "connection.tokenHint" = "Füge das Token aus den Brücken-Einstellungen deines Macs ein.";
 "connection.tokenStored" = "Ein Token liegt im Schlüsselbund dieses iPhones. Leer lassen, um es zu behalten.";
-"connection.save" = "Verbindung speichern";
-"connection.savedChanges" = "Gespeichert";
+"connection.save" = "Kopplung bestätigen";
+"connection.savedChanges" = "Kopplung gespeichert";
 "connection.check" = "Verbindung prüfen";
 "connection.unchecked" = "Noch nicht geprüft.";
 "connection.checking" = "Mac wird erreicht …";
@@ -55,7 +55,7 @@
 "shortcut.description" = "Öffnet Stille Post. Die Aufnahme startest du ausdrücklich in der App.";
 "shortcut.hint" = "Wähle in Kurzbefehle „Diktat öffnen“ von Stille Post. Diesen Kurzbefehl kannst du der Aktionstaste zuweisen. Er öffnet die App; die Aufnahme startet erst beim Antippen.";
 "error.invalidAddress" = "Gib eine gültige lokale Mac-Adresse mit http:// und optionalem Port ein.";
-"error.insecureDisabled" = "Der unverschlüsselte Entwicklungstest ist nicht freigegeben. Die verschlüsselte Verbindung folgt später.";
+"error.insecureDisabled" = "Unverschlüsseltes HTTP wird nicht mehr unterstützt. Kopple die HTTPS-Brücke per QR-Code direkt am Mac.";
 "error.missingToken" = "Speichere ein gültiges Brücken-Token aus den Mac-Einstellungen.";
 "error.microphoneDenied" = "Der Mikrofonzugriff fehlt. Erlaube ihn für Stille Post in den iPhone-Einstellungen.";
 "error.recordingFailed" = "Die Aufnahme konnte nicht abgeschlossen werden. Prüfe den Audioeingang und versuche es erneut.";
@@ -63,7 +63,7 @@
 "error.noAudio" = "Die Aufnahme enthält keine verwendbaren Audiodaten.";
 "error.recordingTooLarge" = "Die Aufnahme überschreitet die Grenze. Erlaubt sind 3 Minuten und 5 MB; dein Mac kann eine kleinere Grenze setzen.";
 "error.unavailable" = "Der Mac ist nicht erreichbar oder die Verbindung wurde unterbrochen. Prüfe WLAN, Adresse, Brücke und die Freigabe für das lokale Netzwerk.";
-"error.unauthorized" = "Der Mac hat das Token abgewiesen. Übernimm es erneut aus den Mac-Einstellungen.";
+"error.unauthorized" = "Das Zugangstoken wurde abgewiesen. Wurde es auf dem Mac gewechselt, kopple dieses iPhone erneut per QR-Code.";
 "error.busy" = "Die Brücke ist ausgelastet oder noch nicht bereit. Versuche es später erneut.";
 "error.serverFailed" = "Der Mac konnte das Diktat nicht verarbeiten. Prüfe dort die Diagnose und versuche es erneut.";
 "error.invalidResponse" = "Der Mac hat keine gültige Antwort geliefert.";
@@ -71,3 +71,25 @@
 "error.redirected" = "Die Brücke möchte die Anfrage weiterleiten. Das wurde zum Schutz von Audio und Token abgewiesen.";
 "error.storageFailed" = "Die Aufnahme oder das Token konnte nicht sicher gespeichert oder entfernt werden. Entsperre das iPhone und prüfe den freien Speicher.";
 "error.interrupted" = "Die App oder der Audioeingang wurde unterbrochen. Prüfe die erhaltene Aufnahme vor dem Senden.";
+
+"connection.scan" = "QR-Code scannen";
+
+"connection.scanHint" = "Scanne den Code direkt in Stille Post auf deinem eigenen Mac. Codes aus Nachrichten oder fremden Webseiten sind keine sichere Erstkopplung.";
+
+"connection.confirmHint" = "Vergleiche Adresse und SHA-256-Fingerabdruck mit deinem Mac, bevor du die Kopplung speicherst. Speichern ersetzt die bisherige Verbindung. Es wird noch kein Audio gesendet.";
+
+"connection.fingerprint" = "SHA-256-Fingerabdruck";
+
+"connection.encrypted" = "HTTPS mit fest geprüfter Mac-Identität";
+
+"error.pairingRequired" = "Diese Verbindung muss neu gekoppelt werden. Scanne den QR-Code direkt auf deinem Mac; alte HTTP-Verbindungen werden nicht übernommen.";
+
+"error.invalidPairing" = "Dieser QR-Code enthält keine gültige Stille-Post-Kopplung. Öffne die Kopplungsanzeige auf deinem eigenen Mac.";
+
+"error.identityChanged" = "Die Identität des Macs stimmt nicht mit deiner Kopplung überein. Es wurden keine Zugangsdaten oder Aufnahmen gesendet. Prüfe den Mac und kopple nur dort erneut; übernimm keinen Fingerabdruck aus dem Netz.";
+
+"error.invalidCertificate" = "Das gekoppelte Mac-Zertifikat ist ungültig oder abgelaufen. Erneuere es in den Mac-Einstellungen und kopple danach erneut.";
+
+"error.cameraUnavailable" = "Der QR-Scanner ist nicht verfügbar. Erlaube den Kamerazugriff in den iPhone-Einstellungen oder übertrage Adresse, Fingerabdruck und Token direkt von deinem eigenen Mac.";
+
+"common.cancel" = "Abbrechen";

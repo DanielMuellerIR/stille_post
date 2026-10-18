@@ -10,14 +10,15 @@ final class MobileUITests: XCTestCase {
         app.buttons["connection.open"].tap()
         XCTAssertTrue(app.textFields["connection.address"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.secureTextFields["connection.token"].exists)
-        XCTAssertTrue(app.switches["connection.development"].exists)
+        XCTAssertTrue(app.buttons["connection.scan"].exists)
+        XCTAssertTrue(app.textFields["connection.fingerprint"].exists)
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = "connection-de"; attachment.lifetime = .keepAlways; add(attachment)
     }
 
     func testRecordingRetryRecoveryCopyAndCancel() throws {
         guard ProcessInfo.processInfo.environment["STILLEPOST_RUN_BRIDGE_UI_TEST"] == "1" else {
-            throw XCTSkip("Benötigt vorbereiteten isolierten HTTP-Testserver und private Container-Konfiguration.")
+            throw XCTSkip("Benötigt vorbereiteten isolierten TLS-Testserver und private Container-Konfiguration.")
         }
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(de)", "-AppleLocale", "de_DE"]

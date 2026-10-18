@@ -6,32 +6,37 @@ struct ConnectionView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var address = ""
     @State private var token = ""
-    @State private var development = false
+    @State private var fingerprint = ""
+    @State private var scanner = false
+    @State private var scanFailure: ClientFailure?
     @State private var saved = false
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("connection.address", text: $address, prompt: Text("http://mac-name.local:8188"))
+                    Button("connection.scan") { scanner = true }.disabled(model.busy)
+                        .accessibilityIdentifier("connection.scan")
+                    Text("connection.scanHint").font(.footnote).foregroundStyle(.secondary)
+                }
+                Section {
+                    TextField("connection.address", text: $address, prompt: Text("https://mac-name.local:8188"))
                         .textContentType(.URL).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
                         .accessibilityIdentifier("connection.address")
+                    TextField("connection.fingerprint", text: $fingerprint)
+                        .textInputAutocapitalization(.never).autocorrectionDisabled().font(.caption.monospaced())
+                        .accessibilityIdentifier("connection.fingerprint")
                     SecureField(model.hasToken ? "connection.tokenReplace" : "connection.token", text: $token)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
                         .accessibilityIdentifier("connection.token")
                     Text(model.hasToken ? "connection.tokenStored" : "connection.tokenHint").font(.footnote).foregroundStyle(.secondary)
-                } header: { Text("connection.mac") } footer: { Text("connection.addressHint") }
-                Section {
-                    #if DEBUG
-                    Toggle("development.allow", isOn: $development).accessibilityIdentifier("connection.development")
-                    #endif
-                    Text("development.explanation").font(.footnote).foregroundStyle(.secondary)
-                }
+                } header: { Text("connection.mac") } footer: { Text("connection.confirmHint") }
+                if let scanFailure { Section { Text(LocalizedStringKey(scanFailure.messageKey)).foregroundStyle(.red) } }
                 if let failure = model.setupFailure { Section { Text(LocalizedStringKey(failure.messageKey)).foregroundStyle(.red) } }
                 Section {
                     Button(saved ? "connection.savedChanges" : "connection.save") {
                         Task {
-                            saved = await model.save(configuration: BridgeConfiguration(address: address, allowInsecureDevelopment: development), token: token)
+                            saved = await model.save(configuration: BridgeConfiguration(address: address, fingerprint: fingerprint), token: token)
                             if saved { token = "" }
                         }
                     }.disabled(model.busy).accessibilityIdentifier("connection.save")
@@ -42,22 +47,33 @@ struct ConnectionView: View {
                 if model.hasToken {
                     Section {
                         Button("connection.forget", role: .destructive) {
-                            Task { await model.forgetConnection(); address = model.configuration.address; token = ""; development = false; saved = false }
+                            Task { await model.forgetConnection(); address = model.configuration.address; token = ""; fingerprint = ""; saved = false }
                         }.disabled(model.busy)
                     }
                 }
                 Section { Text("shortcut.hint").font(.footnote).foregroundStyle(.secondary) }
             }.navigationTitle("connection.title").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("common.done") { token = ""; dismiss() } } }
-                .onAppear { address = model.configuration.address; development = model.configuration.allowInsecureDevelopment }
+                .sheet(isPresented: $scanner) {
+                    PairingScanner { payload in
+                        scanner = false
+                        do {
+                            let credentials = try BridgePairing.decode(payload)
+                            address = credentials.configuration.address
+                            fingerprint = credentials.configuration.fingerprint ?? ""
+                            token = credentials.token; saved = false; scanFailure = nil
+                        } catch { scanFailure = error as? ClientFailure ?? .invalidPairing }
+                    }
+                }
+                .onAppear { address = model.configuration.address; fingerprint = model.configuration.fingerprint ?? "" }
                 .onChange(of: address) { _, _ in saved = false }
                 .onChange(of: token) { _, value in if !value.isEmpty { saved = false } }
-                .onChange(of: development) { _, _ in saved = false }
+                .onChange(of: fingerprint) { _, _ in saved = false }
         }
     }
 
     private var savedConfigurationMatches: Bool {
-        address == model.configuration.address && development == model.configuration.allowInsecureDevelopment && token.isEmpty
+        address == model.configuration.address && fingerprint == model.configuration.fingerprint && token.isEmpty
     }
 
     @ViewBuilder private var connectionStatus: some View {

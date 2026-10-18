@@ -1,2 +1,4 @@
 "NSMicrophoneUsageDescription" = "Stille Post records your dictation on this iPhone. Audio is sent to your Mac only when you tap Send.";
 "NSLocalNetworkUsageDescription" = "Stille Post sends your recording to the Mac you configure on your home network.";
+
+"NSCameraUsageDescription" = "Stille Post scans the pairing code on your own Mac to securely connect to its dictation bridge.";

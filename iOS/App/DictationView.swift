@@ -69,15 +69,8 @@ struct DictationView: View {
         }
     }
 
-    @ViewBuilder private var developmentNotice: some View {
-        #if DEBUG
-        Label("development.notice", systemImage: "lock.open")
-            .font(.footnote).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
-            .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.orange.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
-        #else
-        Label("development.releaseBlocked", systemImage: "lock.shield").font(.callout).foregroundStyle(.secondary)
-        #endif
+    private var developmentNotice: some View {
+        Label("connection.encrypted", systemImage: "lock.shield").font(.footnote).foregroundStyle(.secondary)
     }
 
     @ViewBuilder private var actions: some View {
