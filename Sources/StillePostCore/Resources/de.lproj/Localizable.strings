@@ -626,3 +626,12 @@
 "test_dictation.processing_text" = "Audio bleibt auf diesem Mac. Nur der fertige Text kann an konfigurierte Bereinigungsdienste übertragen werden.";
 "test_dictation.copy_report" = "Phasenbericht kopieren";
 "test_dictation.copied" = "Phasenbericht ohne Testtext oder private Konfigurationsdaten kopiert.";
+
+"settings.live_preview" = "Laufenden Rohtext anzeigen";
+"settings.live_preview.help" = "Zeigt vorläufige abgeschlossene Segmente ohne Fokuswechsel. Gilt ab dem nächsten Diktat; bei langem Sprechen ohne Pause kann die Anzeige warten.";
+"overlay.live_preview.title" = "Vorläufiger Rohtext · letzte Zeilen";
+"overlay.live_preview.waiting" = "Warte auf das erste abgeschlossene Segment …";
+"overlay.live_preview.failed" = "Ein Segment fehlt. Die Vorschau endet vor dieser Lücke.";
+"overlay.live_preview.sample" = "Der Server wird morgen aktualisiert. Bitte heute nicht neu starten.";
+"overlay.live_preview.sample_end" = "Letzter Satz: 128, nicht 256.";
+"overlay.live_preview.no_prefix" = "Kein Text vor der Segmentlücke verfügbar.";

@@ -10,6 +10,17 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.34] — 2026-10-18
+
+### Neu
+
+- Eine zuschaltbare Rohtextvorschau im fokusfreien Aufnahmeoverlay zeigt bereits
+  erkannte Segmente in Aufnahme-Reihenfolge. Sie bleibt in Pausen sichtbar und
+  kennzeichnet fehlende Segmente, ohne Wörter über eine Lücke zusammenzufügen.
+- Die Vorschau ist vorläufig und begrenzt. Profilwechsel entfernen sie für den
+  laufenden Auftrag; dessen eingefrorene Verarbeitung läuft unverändert weiter.
+  Es entstehen keine zusätzlichen Whisper- oder Bereinigungsanfragen.
+
 ## [0.9.33] — 2026-10-18
 
 ### Neu

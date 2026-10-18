@@ -34,6 +34,10 @@ final class OverlayController {
     var recordingContext: String = "" { didSet { model.recordingContext = recordingContext } }
     var recordingReason: String = "" { didSet { model.recordingReason = recordingReason } }
     var recordingInstruction: String = "" { didSet { model.recordingInstruction = recordingInstruction } }
+    var liveTranscriptPreview: Bool = false { didSet { model.liveTranscriptPreview = liveTranscriptPreview } }
+    var transcriptPreview: DictationTranscriptPreview? {
+        didSet { model.transcriptPreview = transcriptPreview }
+    }
     var onClickStop: (() -> Void)?
     var onPauseResume: (() -> Void)?
 
@@ -222,12 +226,22 @@ final class OverlayModel: ObservableObject {
     @Published var recordingReason = ""
     @Published var recordingInstruction = ""
     @Published var duration: TimeInterval = 0
-    var panelHeight: CGFloat {
+    @Published var liveTranscriptPreview = false
+    @Published var transcriptPreview: DictationTranscriptPreview?
+    var showsTranscriptPreview: Bool {
+        guard liveTranscriptPreview else { return false }
         switch mode {
-        case .recording, .paused: return 180
+        case .recording, .paused, .starting(_, resuming: true): return true
+        default: return false
+        }
+    }
+    var panelHeight: CGFloat {
+        let previewHeight: CGFloat = showsTranscriptPreview ? 150 : 0
+        switch mode {
+        case .recording, .paused: return 180 + previewHeight
         default: break
         }
-        return 110
+        return 110 + previewHeight
     }
 }
 
@@ -245,150 +259,184 @@ struct OverlayView: View {
             RoundedRectangle(cornerRadius: 22)
                 .strokeBorder(borderColor, lineWidth: 4)
 
-            switch model.mode {
-            case .starting(let hold, let resuming):
-                VStack(spacing: 6) {
-                    HStack(spacing: 12) {
-                        ProgressView().controlSize(.large).tint(.white)
-                        Text(L10n.text(resuming ? "overlay.resuming" : "overlay.starting")).font(.system(size: 19, weight: .bold)).foregroundColor(.white)
-                    }
-                    if hold {
-                        Text(L10n.text(resuming ? "hotkey.hold.release" : "hotkey.hold.release_start")).font(.system(size: 11)).foregroundColor(.white.opacity(0.9))
-                    }
-                    if resuming { overlayButton("recording.finish", identifier: "finishRecording", action: stop) }
-                }
-                .padding(.horizontal, 20)
-            case .recording:
-                VStack(spacing: 8) {
-                    HStack(spacing: 14) {
-                        // Großer pulsierender Punkt: DAS Signal "es läuft wirklich".
-                        Circle()
-                            .fill(Color.red)
-                            .frame(width: 26, height: 26)
-                            .scaleEffect(pulse ? 1.0 : 0.6)
-                            .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: pulse)
-                            .onAppear { pulse = true }
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(L10n.text("overlay.recording"))
-                                .font(.system(size: 21, weight: .heavy))
-                                .foregroundColor(.white)
-                            Text(model.recordingContext)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.white.opacity(0.95))
-                                .lineLimit(1).truncationMode(.middle)
-                                .accessibilityIdentifier("recordingProfile")
-                            if !model.recordingReason.isEmpty {
-                                Text(model.recordingReason).font(.system(size: 10))
-                                    .foregroundColor(.white.opacity(0.85)).lineLimit(1).truncationMode(.middle)
-                                    .accessibilityIdentifier("recordingProfileReason")
-                            }
-                            Text(L10n.format("recording.audio_time", timeString))
-                                .font(.system(size: 14, weight: .medium).monospacedDigit())
-                                .foregroundColor(.white.opacity(0.85))
-                            if !model.recordingInstruction.isEmpty {
-                                Text(model.recordingInstruction).font(.system(size: 11, weight: .medium))
-                                    .foregroundColor(.white).accessibilityIdentifier("recordingHoldInstruction")
-                            }
-                        }
-                        Spacer(minLength: 4)
-                        LevelMeter(levelDb: model.levelDb)
-                    }
-                    HStack(spacing: 10) {
-                        overlayButton("recording.pause", identifier: "pauseResumeRecording", action: pauseResume)
-                        overlayButton("recording.finish", identifier: "finishRecording", action: stop)
-                    }
-                }
-                .padding(.horizontal, 20)
-            case .paused:
-                VStack(spacing: 8) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "pause.circle.fill").font(.system(size: 28))
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(L10n.text("overlay.paused")).font(.system(size: 21, weight: .heavy))
-                            Text(model.recordingContext).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
-                                .accessibilityIdentifier("recordingProfile")
-                            if !model.recordingReason.isEmpty {
-                                Text(model.recordingReason).font(.system(size: 10)).lineLimit(1).truncationMode(.middle)
-                            }
-                            Text(L10n.format("recording.audio_time", timeString)).font(.system(size: 14).monospacedDigit())
-                            Text(L10n.text("recording.microphone_off")).font(.system(size: 11, weight: .medium))
+            VStack(spacing: 0) {
+                stateContent
+                .frame(height: model.panelHeight - (model.showsTranscriptPreview ? 150 : 0))
+                if model.showsTranscriptPreview {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(L10n.text("overlay.live_preview.title"))
+                            .font(.system(size: 11, weight: .semibold))
+                        Text(previewText).font(.system(size: 13))
+                            .lineLimit(model.transcriptPreview?.hasFailedSegment == true ? 3 : 5).truncationMode(.head)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityIdentifier("liveTranscriptText")
+                        if model.transcriptPreview?.hasFailedSegment == true {
+                            Text(L10n.text("overlay.live_preview.failed")).font(.system(size: 10))
                         }
                         Spacer(minLength: 0)
                     }
-                    if !model.recordingInstruction.isEmpty {
-                        Text(model.recordingInstruction).font(.system(size: 11))
-                    }
-                    HStack(spacing: 10) {
-                        overlayButton("recording.resume", identifier: "pauseResumeRecording", action: pauseResume)
-                        overlayButton("recording.finish", identifier: "finishRecording", action: stop)
-                    }
+                    .foregroundColor(.white).padding(12)
+                    .frame(height: 134)
+                    .background(Color.black.opacity(0.22)).cornerRadius(10)
+                    .padding(.horizontal, 16).padding(.bottom, 16)
+                    .allowsHitTesting(false)
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 20)
-            case .processing(let detail):
-                VStack(spacing: 5) {
-                    HStack(spacing: 12) {
-                        ProgressView().controlSize(.large).tint(.white)
-                        Text(L10n.text("overlay.transcribing"))
-                            .font(.system(size: 19, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-                    // Transparenz bei Fallbacks: zeigt z. B. "Ausweichweg: <Modell>",
-                    // damit längeres Warten erklärbar ist statt mysteriös.
-                    if let detail {
-                        Text(detail)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.white.opacity(0.9))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 14)
-                    }
-                }
-            case .success(let note):
-                VStack(spacing: 5) {
-                    Label(L10n.text("overlay.inserted"), systemImage: "checkmark.circle.fill")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.white)
-                    if let note {
-                        Text(note)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.white.opacity(0.9))
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 14)
-                    }
-                }
-            case .clipboard(let note):
-                VStack(spacing: 5) {
-                    Label(L10n.text("overlay.copied"), systemImage: "doc.on.clipboard")
-                        .font(.system(size: 20, weight: .bold))
-                        .foregroundColor(.white)
-                    Text(note)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(.white.opacity(0.9))
-                        .lineLimit(3)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 14)
-                }
-            case .silence:
-                Label(L10n.text("overlay.silence"), systemImage: "waveform.slash")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundColor(.white)
-            case .failure(let message):
-                VStack(spacing: 6) {
-                    Label(L10n.text("overlay.failed"), systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundColor(.white)
-                    Text(message)
-                        .font(.system(size: 11))
-                        .foregroundColor(.white.opacity(0.9))
-                        .multilineTextAlignment(.center)
-                        .lineLimit(3)
-                }
-                .padding(.horizontal, 14)
             }
         }
         .frame(width: 340, height: model.panelHeight)
+    }
+
+    @ViewBuilder private var stateContent: some View {
+        switch model.mode {
+        case .starting(let hold, let resuming):
+            VStack(spacing: 6) {
+                HStack(spacing: 12) {
+                    ProgressView().controlSize(.large).tint(.white)
+                    Text(L10n.text(resuming ? "overlay.resuming" : "overlay.starting")).font(.system(size: 19, weight: .bold)).foregroundColor(.white)
+                }
+                if hold {
+                    Text(L10n.text(resuming ? "hotkey.hold.release" : "hotkey.hold.release_start")).font(.system(size: 11)).foregroundColor(.white.opacity(0.9))
+                }
+                if resuming { overlayButton("recording.finish", identifier: "finishRecording", action: stop) }
+            }
+            .padding(.horizontal, 20)
+        case .recording:
+            VStack(spacing: 8) {
+                HStack(spacing: 14) {
+                    // Großer pulsierender Punkt: DAS Signal "es läuft wirklich".
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 26, height: 26)
+                        .scaleEffect(pulse ? 1.0 : 0.6)
+                        .animation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true), value: pulse)
+                        .onAppear { pulse = true }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L10n.text("overlay.recording"))
+                            .font(.system(size: 21, weight: .heavy))
+                            .foregroundColor(.white)
+                        Text(model.recordingContext)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.95))
+                            .lineLimit(1).truncationMode(.middle)
+                            .accessibilityIdentifier("recordingProfile")
+                        if !model.recordingReason.isEmpty {
+                            Text(model.recordingReason).font(.system(size: 10))
+                                .foregroundColor(.white.opacity(0.85)).lineLimit(1).truncationMode(.middle)
+                                .accessibilityIdentifier("recordingProfileReason")
+                        }
+                        Text(L10n.format("recording.audio_time", timeString))
+                            .font(.system(size: 14, weight: .medium).monospacedDigit())
+                            .foregroundColor(.white.opacity(0.85))
+                        if !model.recordingInstruction.isEmpty {
+                            Text(model.recordingInstruction).font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.white).accessibilityIdentifier("recordingHoldInstruction")
+                        }
+                    }
+                    Spacer(minLength: 4)
+                    LevelMeter(levelDb: model.levelDb)
+                }
+                HStack(spacing: 10) {
+                    overlayButton("recording.pause", identifier: "pauseResumeRecording", action: pauseResume)
+                    overlayButton("recording.finish", identifier: "finishRecording", action: stop)
+                }
+            }
+            .padding(.horizontal, 20)
+        case .paused:
+            VStack(spacing: 8) {
+                HStack(spacing: 12) {
+                    Image(systemName: "pause.circle.fill").font(.system(size: 28))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L10n.text("overlay.paused")).font(.system(size: 21, weight: .heavy))
+                        Text(model.recordingContext).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
+                            .accessibilityIdentifier("recordingProfile")
+                        if !model.recordingReason.isEmpty {
+                            Text(model.recordingReason).font(.system(size: 10)).lineLimit(1).truncationMode(.middle)
+                        }
+                        Text(L10n.format("recording.audio_time", timeString)).font(.system(size: 14).monospacedDigit())
+                        Text(L10n.text("recording.microphone_off")).font(.system(size: 11, weight: .medium))
+                    }
+                    Spacer(minLength: 0)
+                }
+                if !model.recordingInstruction.isEmpty {
+                    Text(model.recordingInstruction).font(.system(size: 11))
+                }
+                HStack(spacing: 10) {
+                    overlayButton("recording.resume", identifier: "pauseResumeRecording", action: pauseResume)
+                    overlayButton("recording.finish", identifier: "finishRecording", action: stop)
+                }
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 20)
+        case .processing(let detail):
+            VStack(spacing: 5) {
+                HStack(spacing: 12) {
+                    ProgressView().controlSize(.large).tint(.white)
+                    Text(L10n.text("overlay.transcribing"))
+                        .font(.system(size: 19, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                // Transparenz bei Fallbacks: zeigt z. B. "Ausweichweg: <Modell>",
+                // damit längeres Warten erklärbar ist statt mysteriös.
+                if let detail {
+                    Text(detail)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.9))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 14)
+                }
+            }
+        case .success(let note):
+            VStack(spacing: 5) {
+                Label(L10n.text("overlay.inserted"), systemImage: "checkmark.circle.fill")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.white)
+                if let note {
+                    Text(note)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.white.opacity(0.9))
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 14)
+                }
+            }
+        case .clipboard(let note):
+            VStack(spacing: 5) {
+                Label(L10n.text("overlay.copied"), systemImage: "doc.on.clipboard")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.white)
+                Text(note)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.9))
+                    .lineLimit(3)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 14)
+            }
+        case .silence:
+            Label(L10n.text("overlay.silence"), systemImage: "waveform.slash")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.white)
+        case .failure(let message):
+            VStack(spacing: 6) {
+                Label(L10n.text("overlay.failed"), systemImage: "exclamationmark.triangle.fill")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundColor(.white)
+                Text(message)
+                    .font(.system(size: 11))
+                    .foregroundColor(.white.opacity(0.9))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+            }
+            .padding(.horizontal, 14)
+        }
+    }
+
+    private var previewText: String {
+        guard let preview = model.transcriptPreview, !preview.text.isEmpty else {
+            if model.transcriptPreview?.hasFailedSegment == true { return L10n.text("overlay.live_preview.no_prefix") }
+            return L10n.text("overlay.live_preview.waiting")
+        }
+        return (preview.isTruncated ? "… " : "") + preview.text
     }
 
     private func overlayButton(_ key: String, identifier: String, action: @escaping () -> Void) -> some View {

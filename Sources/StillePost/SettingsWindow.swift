@@ -222,6 +222,10 @@ private struct GeneralTab: View {
                 .disabled(activeRecorder != nil && activeRecorder != "dictationHotkey")
             }
             Section(L10n.text("settings.result.section")) {
+                Toggle(L10n.text("settings.live_preview"), isOn: $config.ui.liveTranscriptPreview)
+                    .accessibilityIdentifier("liveTranscriptPreview")
+                Text(L10n.text("settings.live_preview.help")).font(.caption).foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Toggle(L10n.text("settings.result.preview"), isOn: $config.ui.previewBeforePaste)
                 Text(L10n.text("settings.result.help"))
                     .font(.caption)

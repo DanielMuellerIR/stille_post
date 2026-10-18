@@ -33,6 +33,7 @@ Der Diktier-Hotkey kann umschalten oder zum Sprechen gehalten werden. Siehe [Ged
 Längere Diktate lassen sich über Menü und Aufnahmefeld pausieren. Siehe [Pause und Fortsetzen](docs/aufnahme-pausieren.md).
 Einrichtung und Fehler lassen sich über die [Diagnose](docs/diagnose.md) prüfen.
 Ein [Testdiktat](docs/testdiktat.md) zeigt Aufnahme, Vorschau und getrennte Phasenzeiten ohne automatisches Einfügen.
+- Optionale [laufende Rohtextvorschau](docs/rohtextvorschau.md) im fokusfreien Aufnahmeoverlay.
 
 ## In fünf Minuten startklar
 

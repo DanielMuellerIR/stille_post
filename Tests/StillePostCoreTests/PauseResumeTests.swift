@@ -68,6 +68,97 @@ final class PauseResumeTests: XCTestCase {
     }
 
     @MainActor
+    func testOrderedRawPreviewSurvivesPauseButNeverCreatesCleanupBeforeStop() async throws {
+        let f = try PauseFixture()
+        defer { f.dispose() }
+        f.config.ui.liveTranscriptPreview = true; f.engine.configure(f.config)
+        let first = PauseGate(); f.transcriber.firstGate = first
+        try await f.start()
+        f.feed(0.1, count: 800); f.segmenters[0].flush()
+        f.feed(0.2, count: 800); f.segmenters[0].flush()
+        try await waitUntil { f.transcriber.completed == 1 }
+        XCTAssertEqual(f.engine.transcriptPreview?.text ?? "", "")
+        f.engine.pause(); await first.open()
+        try await waitUntil { f.engine.transcriptPreview?.text == "Phase 1. Phase 2." }
+        XCTAssertEqual(f.engine.state, .paused)
+        XCTAssertTrue(f.cleanup.inputs.isEmpty)
+        f.engine.resume(); try await waitUntil { f.engine.state == .recording }
+        XCTAssertEqual(f.engine.transcriptPreview?.text, "Phase 1. Phase 2.")
+        f.feed(0.3, count: 800); f.segmenters[1].flush()
+        try await waitUntil { f.engine.transcriptPreview?.text == "Phase 1. Phase 2. Phase 3." }
+        f.engine.stop()
+        XCTAssertNil(f.engine.transcriptPreview)
+        try await waitUntil { f.results.count == 1 }
+        XCTAssertEqual(f.cleanup.inputs, ["Phase 1. Phase 2. Phase 3."])
+        XCTAssertEqual(f.engine.phaseTimings.transcriptionCount, 3)
+        XCTAssertEqual(f.cleanup.warmups, 1)
+        XCTAssertEqual(f.server.stops, 0)
+    }
+
+    @MainActor
+    func testSuppressedAndCancelledPreviewCannotReturnFromLateSegment() async throws {
+        let f = try PauseFixture()
+        defer { f.dispose() }
+        f.config.ui.liveTranscriptPreview = true; f.engine.configure(f.config)
+        try await f.start()
+        f.feed(0.2, count: 800); f.segmenters[0].flush()
+        try await waitUntil { f.engine.transcriptPreview?.text == "Phase 2." }
+        f.engine.suppressTranscriptPreview()
+        XCTAssertFalse(f.engine.isTranscriptPreviewEnabled)
+        f.feed(0.3, count: 800); f.segmenters[0].flush()
+        try await waitUntil { f.transcriber.completed == 2 }
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertNil(f.engine.transcriptPreview)
+        f.engine.stop(); try await waitUntil { f.results.count == 1 }
+        XCTAssertEqual(f.cleanup.inputs, ["Phase 2. Phase 3."])
+        let old = PauseGate(); f.transcriber.firstGate = old
+        try await f.start()
+        f.feed(0.1, count: 800); f.segmenters.last!.flush()
+        f.engine.cancel()
+        try await f.start()
+        f.feed(0.4, count: 800); f.segmenters.last!.flush()
+        try await waitUntil { f.engine.transcriptPreview?.text == "Phase 4." }
+        await old.open()
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(f.engine.transcriptPreview?.text, "Phase 4.")
+        f.engine.cancel(); XCTAssertNil(f.engine.transcriptPreview)
+    }
+
+    @MainActor
+    func testLongSpeechWaitsForExistingVadBoundaryWithoutExtraRequests() async throws {
+        let f = try PauseFixture()
+        defer { f.dispose() }
+        f.realVAD = true; f.config.ui.liveTranscriptPreview = true
+        f.config.vad.minSpeechSec = 0.06; f.config.vad.maxSegmentSec = 2
+        f.engine.configure(f.config)
+        try await f.start()
+        f.feed(0.2, count: 16_000)
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(f.transcriber.completed, 0)
+        XCTAssertNil(f.engine.transcriptPreview)
+        f.feed(0.2, count: 20_000)
+        try await waitUntil { f.engine.transcriptPreview?.text.isEmpty == false }
+        XCTAssertEqual(f.transcriber.completed, 1)
+        XCTAssertTrue(f.cleanup.inputs.isEmpty)
+        f.engine.cancel(); XCTAssertNil(f.engine.transcriptPreview)
+    }
+
+    @MainActor
+    func testPreviewOptionRemainsFrozenUntilNextRequest() async throws {
+        let f = try PauseFixture()
+        defer { f.dispose() }
+        try await f.start()
+        f.config.ui.liveTranscriptPreview = true; f.engine.configure(f.config)
+        f.feed(0.2, count: 800); f.segmenters[0].flush()
+        try await waitUntil { f.transcriber.completed == 1 }
+        XCTAssertNil(f.engine.transcriptPreview)
+        f.engine.stop(); try await waitUntil { f.results.count == 1 }
+        try await f.start()
+        f.feed(0.3, count: 800); f.segmenters.last!.flush()
+        try await waitUntil { f.engine.transcriptPreview?.text == "Phase 3." }
+    }
+
+    @MainActor
     func testTestSessionUsesExistingEngineAndFrozenProfileWithoutAutomaticDelivery() async throws {
         let f = try PauseFixture(privateText: true)
         defer { f.dispose() }

@@ -626,3 +626,12 @@
 "test_dictation.processing_text" = "Audio stays on this Mac. Only the completed text may be sent to configured cleanup services.";
 "test_dictation.copy_report" = "Copy phase report";
 "test_dictation.copied" = "Phase report copied without test text or private configuration data.";
+
+"settings.live_preview" = "Show live raw transcript";
+"settings.live_preview.help" = "Shows provisional completed segments without changing focus. Applies to the next dictation; long speech without a pause may delay the preview.";
+"overlay.live_preview.title" = "Provisional raw text · last lines";
+"overlay.live_preview.waiting" = "Waiting for the first completed segment …";
+"overlay.live_preview.failed" = "A segment is missing. The preview stops before this gap.";
+"overlay.live_preview.sample" = "The server will be updated tomorrow. Please do not restart it today.";
+"overlay.live_preview.sample_end" = "Last sentence: 128, not 256.";
+"overlay.live_preview.no_prefix" = "No text is available before the segment gap.";

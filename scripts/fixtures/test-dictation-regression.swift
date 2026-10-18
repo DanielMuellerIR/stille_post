@@ -15,16 +15,23 @@ import Sparkle
         app.setActivationPolicy(.accessory)
         let counts = FixtureCounts()
         var engine: DictationEngine?
+        var segmenter: FixtureSegmenter?, recorder: FixtureRecorder?
+        var segmentNumber = 0
+        var recordingFrontPID: pid_t?
         var wrapped = false
         let clipboard = NSPasteboard.general.changeCount
         let delegate = AppDelegate(makeEngine: { config in
             let cleanup = FixtureCleanup(counts: counts, fallback: scenario == "private")
             let value = DictationEngine(config: config, history: HistoryStore(), dependencies: .init(
-                transcriber: FixtureTranscriber(counts: counts, language: config.whisper.language),
+                transcriber: FixtureTranscriber(counts: counts, language: config.whisper.language, scenario: scenario),
                 server: FixtureServer(), cleanup: cleanup,
-                makeRecorder: { _ in FixtureRecorder(counts: counts, fails: scenario == "failure") },
-                makeSegmenter: { _ in FixtureSegmenter() }, makeWavWriter: { try WavFileWriter(url: $0) },
-                makeTranscriber: { FixtureTranscriber(counts: counts, language: $0.language) },
+                makeRecorder: { _ in
+                    let value = FixtureRecorder(counts: counts, fails: scenario == "failure", automatic: !scenario.hasPrefix("preview"))
+                    recorder = value; return value
+                },
+                makeSegmenter: { _ in let value = FixtureSegmenter(); segmenter = value; return value },
+                makeWavWriter: { try WavFileWriter(url: $0) },
+                makeTranscriber: { FixtureTranscriber(counts: counts, language: $0.language, scenario: scenario) },
                 requestMicrophoneAccess: {
                     if scenario == "delay" { try? await Task.sleep(nanoseconds: 10_000_000_000) }
                     return true
@@ -51,13 +58,31 @@ import Sparkle
                    let value = try? JSONSerialization.jsonObject(with: data) as? [String: String] {
                     try? FileManager.default.removeItem(at: control)
                     if value["command"] == "recall" { app.sendAction(NSSelectorFromString("showLastResult"), to: delegate, from: nil) }
-                    if value["command"] == "regular-toggle" { app.sendAction(NSSelectorFromString("toggleDictation"), to: delegate, from: nil) }
+                    if value["command"] == "regular-toggle" {
+                        if engine.state == .idle { recordingFrontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier }
+                        app.sendAction(NSSelectorFromString("toggleDictation"), to: delegate, from: nil)
+                    }
+                    if value["command"] == "segment" {
+                        segmentNumber += 1
+                        recorder?.onSamples?(Array(repeating: Float(segmentNumber) / 10, count: 1600))
+                        segmenter?.flush()
+                    }
+                    if value["command"] == "pause" { app.sendAction(NSSelectorFromString("togglePauseResume"), to: delegate, from: nil) }
+                    if value["command"] == "cancel" { app.sendAction(NSSelectorFromString("cancelDictation"), to: delegate, from: nil) }
+                    if value["command"] == "profile" {
+                        let item = NSMenuItem(); item.representedObject = Config.load().profiles.last?.id.uuidString
+                        app.sendAction(NSSelectorFromString("selectProfile:"), to: delegate, from: item)
+                    }
                 }
                 let timings = engine.phaseTimings
                 var data = counts.snapshot
                 data["state"] = String(describing: engine.state)
                 data["ready"] = wrapped
                 data["clipboardUnchanged"] = NSPasteboard.general.changeCount == clipboard
+                data["frontUnchanged"] = recordingFrontPID.map { NSWorkspace.shared.frontmostApplication?.processIdentifier == $0 } ?? true
+                data["previewText"] = engine.transcriptPreview?.text ?? ""
+                data["previewFailed"] = engine.transcriptPreview?.hasFailedSegment ?? false
+                data["previewTruncated"] = engine.transcriptPreview?.isTruncated ?? false
                 data["preparationSec"] = timings.preparationSec as Any? ?? NSNull()
                 data["transcriptionSec"] = timings.transcriptionSec
                 data["transcriptionCount"] = timings.transcriptionCount
@@ -92,11 +117,13 @@ private final class FixtureRecorder: DictationRecorder {
     var onSamples: (([Float]) -> Void)?, onFailure: ((Error) -> Void)?
     private let counts: FixtureCounts
     private let fails: Bool
+    private let automatic: Bool
     private var timer: Timer?
-    init(counts: FixtureCounts, fails: Bool) { self.counts = counts; self.fails = fails }
+    init(counts: FixtureCounts, fails: Bool, automatic: Bool) { self.counts = counts; self.fails = fails; self.automatic = automatic }
     func start() throws {
         counts.recorder()
         if fails { throw FixtureFailure.device }
+        guard automatic else { return }
         timer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
             self?.onSamples?(Array(repeating: 0.1, count: 800))
         }
@@ -116,10 +143,17 @@ private final class FixtureSegmenter: DictationSegmenter {
 private final class FixtureTranscriber: DictationTranscriber {
     let counts: FixtureCounts
     let language: String
-    init(counts: FixtureCounts, language: String) { self.counts = counts; self.language = language }
+    let scenario: String
+    init(counts: FixtureCounts, language: String, scenario: String) { self.counts = counts; self.language = language; self.scenario = scenario }
     func isReachable() async -> Bool { true }
     func transcribe(samples: [Float]) async throws -> String {
         counts.transcribed()
+        if scenario.hasPrefix("preview") {
+            let number = Int(((samples.first ?? 0) * 10).rounded())
+            try await Task.sleep(nanoseconds: number == 1 ? 600_000_000 : 100_000_000)
+            if scenario == "preview-failure", number == 2 { throw FixtureFailure.device }
+            return language == "en" ? "Segment \(number): do not restart." : "Abschnitt \(number): nicht neu starten."
+        }
         try await Task.sleep(nanoseconds: 200_000_000)
         return language == "en" ? "Synthetic microphone test: 128, not 256." : "Künstlicher Mikrofontest: 128, nicht 256."
     }

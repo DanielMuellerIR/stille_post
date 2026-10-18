@@ -51,6 +51,22 @@ public final class DictationEngine {
     public var onBeforeRecordingStart: (() async -> Void)?
     /// Fertiges Diktat für Ausgabe oder ausdrückliche Testvorschau. Auf Main-Thread.
     public var onResult: ((DictationResult) -> Void)?
+    /// Flüchtiger Rohtext; nil entfernt die Anzeige. Auf dem Hauptthread.
+    public var onTranscriptPreview: ((DictationTranscriptPreview?) -> Void)?
+    public private(set) var transcriptPreview: DictationTranscriptPreview?
+    private var previewRevision = 0
+    private var previewSuppressed = false
+    public var isTranscriptPreviewEnabled: Bool { sessionRequest.config.ui.liveTranscriptPreview && !previewSuppressed }
+
+    public func suppressTranscriptPreview() {
+        previewSuppressed = true
+        clearTranscriptPreview()
+    }
+
+    private func clearTranscriptPreview() {
+        transcriptPreview = nil
+        Self.onMain { self.onTranscriptPreview?(nil) }
+    }
     /// Private Wiederholung: Ergebnis nur flüchtig anzeigen, niemals automatisch einfügen.
     public var onPrivateRetryResult: ((HistoryStore.Entry) -> Void)?
     /// Die Bereinigung wechselt gerade auf einen Ausweich-Endpoint (Label als Text).
@@ -191,6 +207,9 @@ public final class DictationEngine {
         sessionGeneration &+= 1
         let generation = sessionGeneration
         sessionRequest = requests.snapshot(appBundleID: requestAppBundleID?())
+        previewSuppressed = false
+        previewRevision = 0
+        clearTranscriptPreview()
         timingStore = DictationTimingStore(clock: monotonicTime)
         setState(.starting)
 
@@ -274,7 +293,19 @@ public final class DictationEngine {
               let audioSession else { return }
         let segmenter = makeSegmenter(sessionRequest.config.vad)
         let recorder = makeRecorder(sessionRequest.config.audio)
-        let collector = segmentResults ?? SegmentCollector()
+        let previewEnabled = sessionRequest.config.ui.liveTranscriptPreview
+        let reportPreview: ((Int, DictationTranscriptPreview) -> Void)? = previewEnabled ? { [weak self] revision, preview in
+            Task { @MainActor [weak self] in
+                guard let self, self.isCurrentSession(generation), !self.previewSuppressed,
+                      self.sessionRequest.config.ui.liveTranscriptPreview,
+                      self.state == .recording || self.state == .paused || self.state == .resuming,
+                      revision > self.previewRevision else { return }
+                self.previewRevision = revision
+                self.transcriptPreview = preview
+                self.onTranscriptPreview?(preview)
+            }
+        } : nil
+        let collector = segmentResults ?? SegmentCollector(onPreview: reportPreview)
         let segmentTasks = self.segmentTasks ?? RecordingSegmentTasks()
         segmentResults = collector
         self.segmentTasks = segmentTasks
@@ -997,7 +1028,9 @@ public final class DictationEngine {
         if state == .starting, newState != .starting { timingStore?.finishPreparation() }
         switch newState {
         case .starting, .recording, .paused, .resuming: break
-        case .idle, .error, .processing: audioSession = nil
+        case .idle, .error, .processing:
+            audioSession = nil
+            clearTranscriptPreview()
         }
         state = newState
         Self.onMain { self.onStateChange?(newState) }
@@ -1057,6 +1090,9 @@ public final class DictationEngine {
 /// Sammelt die Ergebnisse der parallel laufenden Segment-Transkriptionen in der
 /// richtigen Reihenfolge ein. Als Actor thread-sicher ohne manuelle Locks.
 actor SegmentCollector {
+    private let onPreview: ((Int, DictationTranscriptPreview) -> Void)?
+    private var completedSlots = Set<Int>()
+    init(onPreview: ((Int, DictationTranscriptPreview) -> Void)? = nil) { self.onPreview = onPreview }
     /// Ergebnis-Plätze (Rohtext je Segment) in Aufnahme-Reihenfolge.
     /// nil nach finish() = Segment gescheitert.
     private var slots: [String?] = []
@@ -1088,6 +1124,16 @@ actor SegmentCollector {
             slots[index] = nil  // gescheitertes Segment -> Aufrufer erkennt das an nil
         }
         completedCount += 1
+        completedSlots.insert(index)
+        if let onPreview {
+            var prefix: [String] = []
+            for slot in slots.indices {
+                guard completedSlots.contains(slot), let text = slots[slot] else { break }
+                prefix.append(text)
+            }
+            let failed = completedSlots.contains { slots[$0] == nil }
+            onPreview(completedCount, DictationTranscriptPreview(text: DictationEngine.joinSegments(prefix), hasFailedSegment: failed))
+        }
         // Falls finish() schon wartet und wir das letzte offene Segment waren: aufwecken.
         if completedCount >= targetCount, let continuation {
             self.continuation = nil

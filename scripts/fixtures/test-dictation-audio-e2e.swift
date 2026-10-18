@@ -10,6 +10,7 @@ import Foundation
         let first = try AudioDecoder.samples16kMono(from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[3])))
         let second = try AudioDecoder.samples16kMono(from: Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[4])))
         var raw = Config()
+        raw.ui.liveTranscriptPreview = CommandLine.arguments.dropFirst(5).contains("preview")
         raw.whisper.autostart = false
         raw.cleanup.localOnly = true
         var profile = Config.Profile(name: mode == "tech" ? "Technik" : mode.uppercased())
@@ -31,6 +32,8 @@ import Foundation
         let session = TestDictationSession(engine: engine)
         engine.onStateChange = { session.receiveState($0) }
         engine.onResult = { session.receiveResult($0) }
+        var previewUpdates = 0
+        engine.onTranscriptPreview = { if $0?.text.isEmpty == false { previewUpdates += 1 } }
         func wait(_ condition: () -> Bool) async throws {
             for _ in 0..<1800 {
                 if condition() { return }
@@ -46,6 +49,10 @@ import Foundation
         for offset in stride(from: 0, to: audio.count, by: 320) {
             recorder?.onSamples?(Array(audio[offset..<min(offset+320,audio.count)]))
         }
+        if raw.ui.liveTranscriptPreview {
+            try await wait { engine.transcriptPreview?.text.isEmpty == false }
+            guard cleanup.calls == 0 else { throw AudioTestFailure.failed }
+        }
         var changed = raw; changed.removeProfile(id: profile.id); changed.history.storeText = !config.history.storeText
         changed.whisper.language = mode == "en" ? "de" : "en"
         engine.configure(changed)
@@ -57,6 +64,7 @@ import Foundation
               abs(session.audioDuration-Double(audio.count)/16000)<0.001,
               !FileManager.default.fileExists(atPath: wav.path),
               session.configuration?.whisper.language == profile.language else { throw AudioTestFailure.failed }
+        guard engine.transcriptPreview == nil else { throw AudioTestFailure.failed }
         let text = entry.rawText.lowercased()
         guard text.contains(mode == "tech" ? "whisper" : "server"),
               text.contains(mode == "en" ? "dictionary" : "wörterbuch"),
@@ -65,11 +73,14 @@ import Foundation
             guard text.contains("128"), text.contains("256"), (text.contains("1.2") || text.contains("1,2")) else { throw AudioTestFailure.content }
         }
         if mode == "en" { guard try history.list().isEmpty else { throw AudioTestFailure.privacy } }
-        try session.exportReport(version: "0.9.33").write(to: root.appendingPathComponent("phase-report.txt"), atomically: true, encoding: .utf8)
+        let version = (try? String(contentsOfFile: "VERSION", encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "unknown"
+        try session.exportReport(version: version).write(to: root.appendingPathComponent("phase-report.txt"), atomically: true, encoding: .utf8)
         let report: [String: Any] = ["passed":true,"mode":mode,"raw":entry.rawText,"clean":result.text,
             "rawFallback":entry.cleanupFellBack ?? false,"fallbackReason":entry.cleanupFallbackReason as Any? ?? NSNull(),
             "audioSec":session.audioDuration,"transcriptionCount":session.timings.transcriptionCount,
             "cleanupCalls":cleanup.calls,"warmups":cleanup.warmups,"wavDeleted":true,
+            "previewUpdates":previewUpdates,
             "frozenLanguage":session.configuration?.whisper.language ?? "unknown",
             "storesText":entry.storesText as Any? ?? NSNull()]
         try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted,.sortedKeys]).write(to: root.appendingPathComponent("result.json"))

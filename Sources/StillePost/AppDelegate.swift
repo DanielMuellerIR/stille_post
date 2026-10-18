@@ -184,6 +184,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         // Ebenfalls für GUI-Checks: Overlay in einem bestimmten Zustand zeigen
         // (das Overlay erscheint sonst nur mitten in einem echten Diktat).
+        if let preview = ProcessInfo.processInfo.environment["STILLEPOST_OVERLAY_PREVIEW"],
+           preview.hasPrefix("raw-preview"),
+           ProcessInfo.processInfo.environment["STILLEPOST_CONFIG"] != nil,
+           ProcessInfo.processInfo.environment["STILLEPOST_APP_SUPPORT"] != nil {
+            overlay.liveTranscriptPreview = prospectiveConfiguration.ui.liveTranscriptPreview
+            overlay.recordingContext = L10n.format("profiles.recording", prospectiveConfiguration.profileLabel, prospectiveConfiguration.whisper.language)
+            let sample = L10n.text("overlay.live_preview.sample")
+            if preview != "raw-preview-waiting" {
+                overlay.transcriptPreview = DictationTranscriptPreview(
+                    text: preview == "raw-preview-empty-failed" ? "" :
+                        (preview == "raw-preview-long" ? String(repeating: sample + " ", count: 60) + L10n.text("overlay.live_preview.sample_end") : sample),
+                    hasFailedSegment: preview.hasSuffix("failed"))
+            }
+            if preview == "raw-preview-paused" { overlay.show(.paused) }
+            else if preview == "raw-preview-resuming" { overlay.show(.starting(hold: false, resuming: true)) }
+            else { overlay.show(.recording) }
+        }
         switch ProcessInfo.processInfo.environment["STILLEPOST_OVERLAY_PREVIEW"] {
         case "recording":
             overlay.recordingContext = L10n.format("profiles.recording", prospectiveConfiguration.profileLabel,
@@ -497,6 +514,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc private func togglePrivateHistory() {
         guard config.resolvedForRequest().history.storeText else { return }
         temporaryPrivateHistory.toggle()
+        engine.suppressTranscriptPreview()
         let environment = ProcessInfo.processInfo.environment
         if environment["STILLEPOST_HISTORY_TRACE"] == "1",
            environment["STILLEPOST_CONFIG"] != nil, environment["STILLEPOST_APP_SUPPORT"] != nil {
@@ -589,6 +607,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private func adoptRequestSettings(_ saved: Config) {
+        clearPreviewForChangedSettings(saved)
         config.appProfiles = saved.appProfiles
         config.profiles = saved.profiles
         config.defaultProfileID = saved.defaultProfileID
@@ -596,6 +615,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         config.whisper.language = saved.whisper.language
         config.cleanup = saved.cleanup
         config.history = saved.history
+    }
+
+    private func clearPreviewForChangedSettings(_ updated: Config) {
+        if config.profiles != updated.profiles || config.selectedProfileID != updated.selectedProfileID
+            || config.defaultProfileID != updated.defaultProfileID || config.appProfiles != updated.appProfiles
+            || config.whisper.language != updated.whisper.language || config.cleanup != updated.cleanup
+            || config.history != updated.history {
+            engine.suppressTranscriptPreview()
+        }
     }
 
     private func updateRequestConfiguration() {
@@ -621,6 +649,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         requestOnly.hotkeyMode = newConfig.hotkeyMode
         requestOnly.hotkey = newConfig.hotkey
         requestOnly.lastResultHotkey = newConfig.lastResultHotkey
+        requestOnly.ui.liveTranscriptPreview = newConfig.ui.liveTranscriptPreview
         let needsRebuild = requestOnly != newConfig
         let changesBindings = config.hotkey != newConfig.hotkey || config.lastResultHotkey != newConfig.lastResultHotkey
         let changesInput = config.hotkeyMode != newConfig.hotkeyMode || changesBindings
@@ -629,6 +658,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
         try newConfig.save(expected: expected)
         if !needsRebuild {
+            clearPreviewForChangedSettings(newConfig)
             config = newConfig
             if changesBindings { registerHotkey() }
             updateRequestConfiguration()
@@ -787,6 +817,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func setupEngineCallbacks() {
         let source = engine!
         var previousState = source.state
+        engine.onTranscriptPreview = { [weak self, weak source] preview in
+            guard let self, let source, self.engine === source else { return }
+            self.overlay.transcriptPreview = self.testDictationWindow?.owns(source) == true ? nil : preview
+            self.overlay.liveTranscriptPreview = self.testDictationWindow?.owns(source) != true && source.isTranscriptPreviewEnabled
+        }
         // Der Startton wird vollständig vor dem Öffnen des Mikrofons abgespielt.
         // Gerade das iPhone als Continuity-Mikrofon hört den Mac-Lautsprecher sehr
         // klar; der Ton darf deshalb nicht Teil des Whisper-Segments werden.
@@ -808,6 +843,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 self.testDictationWindow.receiveState(state)
                 return
             }
+            self.overlay.liveTranscriptPreview = source.isTranscriptPreviewEnabled
             switch state {
             case .starting:
                 self.pasteTarget = PasteService.captureTarget()

@@ -234,6 +234,7 @@ public struct Config: Codable, Equatable {
         public var sounds: Bool = true
         /// Ergebnis vor dem Einfügen ausdrücklich bestätigen.
         public var previewBeforePaste: Bool = false
+        public var liveTranscriptPreview: Bool = false
 
         public init() {}
     }
@@ -591,7 +592,7 @@ extension Config.Audio {
 }
 
 extension Config.UI {
-    private enum CodingKeys: String, CodingKey { case overlayPosition, sounds, previewBeforePaste }
+    private enum CodingKeys: String, CodingKey { case overlayPosition, sounds, previewBeforePaste, liveTranscriptPreview }
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -600,6 +601,8 @@ extension Config.UI {
         sounds = c.decodeOrDefault(Bool.self, forKey: .sounds, default: sounds)
         previewBeforePaste = c.decodeOrDefault(Bool.self, forKey: .previewBeforePaste,
                                                 default: previewBeforePaste)
+        liveTranscriptPreview = c.decodeOrDefault(Bool.self, forKey: .liveTranscriptPreview,
+                                                   default: liveTranscriptPreview)
     }
 }
 
