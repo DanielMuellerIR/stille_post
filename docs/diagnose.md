@@ -38,6 +38,10 @@ Adressen, Dateipfade, Profilnamen, Schlüssel, Tokens und Diktate sind darin nic
 enthalten. Die Prüfung fragt konfigurierte Textdienste nur nach ihrem Status;
 Audio wird weder aufgenommen noch übertragen.
 
+**Testdiktat …** öffnet die [ausdrückliche Testaufnahme](testdiktat.md) mit
+Ergebnisvorschau und getrennten Phasenzeiten. Die Aufnahme beginnt erst nach dem
+sichtbaren Start; der Diagnosebericht enthält weiterhin keinen Diktattext.
+
 `stillepost-cli doctor` verwendet denselben Kern. Systemrechte und der Listener
 gehören zum jeweiligen App-Prozess; ohne dessen Kontext weist die CLI sie als
 unbestätigt aus. Exit 0 bedeutet keine erkannten aktiven Probleme, Exit 1 meldet

@@ -10,6 +10,19 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.33] — 2026-10-18
+
+### Neu
+
+- Ein ausdrücklich gestartetes Testdiktat prüft die vorhandene Diktierpipeline
+  mit dem sichtbaren Profil. Es endet nach etwa 20 Sekunden, lässt sich abbrechen
+  und zeigt das Ergebnis ohne automatisches Einfügen oder Änderung des letzten Textes.
+- Vorbereitung, erfasste Audiozeit, lokale Transkriptionssumme und Bereinigung
+  werden getrennt angezeigt. Ein kopierbarer Phasenbericht enthält keine Diktate,
+  Profilnamen, Adressen, Schlüssel oder Dateipfade.
+- Abgebrochene Vorbereitung storniert laufende Wartearbeit; alte Zeitmessungen
+  können keine späteren Aufträge verändern. Der vorhandene Whisper bleibt nutzbar.
+
 ## [0.9.32] — 2026-10-18
 
 ### Neu

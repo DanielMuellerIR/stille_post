@@ -32,6 +32,7 @@ Choose Toggle or Hold to talk for the dictation hotkey in Settings. See [hold to
 
 Pause and resume longer dictations from the menu or recording overlay. See [pause and resume](docs/aufnahme-pausieren.md) (German).
 Use the [diagnostics window](docs/diagnose.md) to check setup and failures (German).
+An explicit [test dictation](docs/testdiktat.md) provides a preview and phase timings without automatic insertion (German).
 
 ## Ready in five minutes
 

@@ -68,6 +68,227 @@ final class PauseResumeTests: XCTestCase {
     }
 
     @MainActor
+    func testTestSessionUsesExistingEngineAndFrozenProfileWithoutAutomaticDelivery() async throws {
+        let f = try PauseFixture(privateText: true)
+        defer { f.dispose() }
+        let session = TestDictationSession(engine: f.engine)
+        defer { session.close() }
+        bind(session, to: f)
+        session.start(configuration: f.config, currentConfiguration: f.config,
+                      nextRequestConfiguration: f.config, inputAvailable: true, allowed: true)
+        try await waitUntil { session.state == .recording }
+        var changed = f.config; changed.history.storeText = true; changed.whisper.language = "en"
+        f.engine.configure(changed)
+        f.feed(0.1, count: 1_600); session.stop()
+        try await waitUntil { session.state == .completed }
+        XCTAssertEqual(session.configuration?.history.storeText, false)
+        XCTAssertEqual(session.result?.entry?.storesText, false)
+        XCTAssertTrue(try f.history.list().isEmpty)
+        XCTAssertEqual(f.cleanup.inputs, ["Phase 1."])
+        XCTAssertEqual(session.timings.transcriptionCount, 1)
+        XCTAssertEqual(session.audioDuration, 0.1)
+        XCTAssertEqual(f.server.stops, 0)
+        let lastTimings = session.timings
+        XCTAssertTrue(session.releaseForRegularStart())
+        f.engine.start()
+        try await waitUntil { f.engine.state == .recording }
+        XCTAssertEqual(f.engine.sessionConfiguration.whisper.language, "en")
+        XCTAssertTrue(f.engine.sessionConfiguration.history.storeText)
+        XCTAssertEqual(session.timings, lastTimings)
+        XCTAssertEqual(session.result?.text, "Phase 1.")
+    }
+
+    @MainActor
+    func testTestDeadlineRestartsAndClosingCannotCancelRegularDictation() async throws {
+        let f = try PauseFixture()
+        defer { f.dispose() }
+        let clock = PauseClock()
+        let session = TestDictationSession(engine: f.engine, maximumRecordingDuration: 1, clock: { clock.now })
+        defer { session.close() }
+        bind(session, to: f)
+        func start() { session.start(configuration: f.config, currentConfiguration: f.config,
+                                     nextRequestConfiguration: f.config, inputAvailable: true, allowed: true) }
+        start(); try await waitUntil { session.state == .recording }
+        f.feed(0.1, count: 1_600); clock.advance(1.2); session.pulse()
+        try await waitUntil { session.state == .completed }
+        start(); try await waitUntil { session.state == .recording }
+        clock.advance(0.2); session.pulse()
+        XCTAssertEqual(session.state, .recording)
+        f.feed(0.2, count: 1_600); session.stop()
+        try await waitUntil { session.state == .completed }
+        XCTAssertEqual(f.cleanup.inputs, ["Phase 1.", "Phase 2."])
+        session.releaseForRegularStart(); f.engine.start()
+        try await waitUntil { f.engine.state == .recording }
+        session.close()
+        XCTAssertEqual(f.engine.state, .recording)
+    }
+
+    @MainActor
+    func testTestPreflightNeverStartsAudioForChangedBusyOrMissingInput() throws {
+        let f = try PauseFixture()
+        defer { f.dispose() }
+        let session = TestDictationSession(engine: f.engine)
+        var changed = f.config; changed.whisper.language = "en"
+        for (current, input, allowed) in [(changed, true, true), (f.config, false, true), (f.config, true, false)] {
+            session.start(configuration: f.config, currentConfiguration: current,
+                          nextRequestConfiguration: f.config, inputAvailable: input, allowed: allowed)
+            if case .failed = session.state {} else { XCTFail("Teststart wurde nicht abgewiesen") }
+            XCTAssertFalse(session.isActive)
+            XCTAssertTrue(f.recorders.isEmpty)
+            XCTAssertEqual(f.engine.state, .idle)
+        }
+    }
+
+    @MainActor
+    func testTestCancellationInterruptsPreparationAwaitAndCannotOpenLateRecorder() async throws {
+        let f = try PauseFixture()
+        defer { f.dispose() }
+        let probe = PauseCancellationProbe()
+        f.beforePermission = {
+            probe.setEntered()
+            do { try await Task.sleep(nanoseconds: 10_000_000_000) }
+            catch { probe.setCancelled() }
+        }
+        let session = TestDictationSession(engine: f.engine)
+        bind(session, to: f)
+        session.start(configuration: f.config, currentConfiguration: f.config,
+                      nextRequestConfiguration: f.config, inputAvailable: true, allowed: true)
+        try await waitUntil { probe.entered }
+        session.cancel()
+        try await waitUntil { probe.cancelled }
+        XCTAssertEqual(session.state, .cancelled)
+        XCTAssertFalse(session.isActive)
+        XCTAssertTrue(f.recorders.isEmpty)
+        XCTAssertTrue(f.cleanup.inputs.isEmpty)
+    }
+
+    @MainActor
+    func testTestKeepsOwnershipForErrorAfterValidResultAndClearsOnClose() async throws {
+        let f = try PauseFixture()
+        defer { f.dispose() }
+        let session = TestDictationSession(engine: f.engine)
+        bind(session, to: f)
+        session.start(configuration: f.config, currentConfiguration: f.config,
+                      nextRequestConfiguration: f.config, inputAvailable: true, allowed: true)
+        try await waitUntil { session.state == .recording }
+        f.feed(0.1, count: 1_600); session.stop()
+        try await waitUntil { session.state == .completed }
+        session.receiveState(.error("Synthetischer Dateifehler"))
+        XCTAssertEqual(session.state, .failed("Synthetischer Dateifehler"))
+        XCTAssertEqual(session.result?.text, "Phase 1.")
+        XCTAssertTrue(session.owns(f.engine))
+        session.close()
+        XCTAssertNil(session.result)
+        XCTAssertFalse(session.owns(f.engine))
+    }
+
+    @MainActor
+    func testPhaseTimingsCountOverlappingTranscriptionsWithoutAddingWallTime() async throws {
+        let clock = PauseClock()
+        let f = try PauseFixture(clock: { clock.now })
+        defer { f.dispose() }
+        f.beforePermission = { clock.advance(1) }
+        f.server.beforeEnsure = { clock.advance(2) }
+        f.engine.onBeforeRecordingStart = { clock.advance(3) }
+        let first = PauseGate(); f.transcriber.firstGate = first
+        let entered = PauseCancellationProbe()
+        f.transcriber.onBegin = { number in
+            clock.advance(number == 1 ? 4 : 2)
+            if number == 1 { entered.setEntered() }
+        }
+        f.cleanup.onClean = { clock.advance(5) }
+        try await f.start()
+        f.feed(0.1, count: 1_600); f.engine.pause()
+        try await waitUntil { entered.entered }
+        f.engine.resume(); try await waitUntil { f.engine.state == .recording }
+        // Fortsetzungsvorbereitung gehört nicht zur ursprünglichen Startphase.
+        let secondStart = clock.now
+        f.feed(0.2, count: 1_600); f.engine.pause()
+        try await waitUntil { f.transcriber.completed == 1 }
+        f.engine.stop(); await first.open()
+        try await waitUntil { f.results.count == 1 }
+        let timings = f.engine.phaseTimings
+        XCTAssertEqual(timings.preparationSec, 6)
+        XCTAssertEqual(timings.recordingSec, 0.2)
+        XCTAssertEqual(timings.transcriptionCount, 2)
+        XCTAssertEqual(timings.transcriptionSec, secondStart - 6 + 4)
+        XCTAssertEqual(timings.cleanupSec, 5)
+        XCTAssertEqual(f.results[0].entry?.cleanupSec, timings.cleanupSec)
+    }
+
+    @MainActor
+    func testLateCancelledTranscriptionCannotChangeNewTimingStore() async throws {
+        let f = try PauseFixture()
+        defer { f.dispose() }
+        let old = PauseGate(); f.transcriber.firstGate = old
+        let entered = PauseCancellationProbe()
+        f.transcriber.onBegin = { number in if number == 1 { entered.setEntered() } }
+        try await f.start(); f.feed(0.1, count: 1_600); f.engine.pause()
+        try await waitUntil { entered.entered }
+        f.engine.cancel(); try await f.start()
+        f.feed(0.2, count: 1_600); f.engine.pause()
+        try await waitUntil { f.transcriber.completed == 1 }
+        await old.open()
+        try await waitUntil { f.transcriber.completed == 2 }
+        try await Task.sleep(nanoseconds: 20_000_000)
+        XCTAssertEqual(f.engine.phaseTimings.transcriptionCount, 1)
+        f.engine.stop(); try await waitUntil { f.results.count == 1 }
+        XCTAssertEqual(f.results[0].entry?.rawText, "Phase 2.")
+        XCTAssertEqual(f.engine.phaseTimings.transcriptionCount, 1)
+    }
+
+    @MainActor
+    func testPhaseReportExcludesTextProfilePathsAndErrorDetails() async throws {
+        let f = try PauseFixture(privateText: true)
+        defer { f.dispose() }
+        f.cleanup.usedFallback = true
+        var raw = f.config
+        let profile = Config.Profile(name: "synthetic-secret")
+        raw.profiles = [profile]; raw.selectedProfileID = profile.id
+        let reviewed = raw.resolvedForRequest()
+        let session = TestDictationSession(engine: f.engine)
+        defer { session.close() }
+        bind(session, to: f)
+        session.start(configuration: reviewed, currentConfiguration: reviewed,
+                      nextRequestConfiguration: raw, inputAvailable: true, allowed: true)
+        try await waitUntil { session.state == .recording }
+        f.feed(0.1, count: 1_600); session.stop()
+        try await waitUntil { session.state == .completed }
+        session.receiveState(.error("synthetic-secret /private/example http://192.0.2.1"))
+        let report = session.exportReport(version: "synthetic-secret")
+        for forbidden in ["synthetic-secret", "Phase 1.", "/private/", "192.0.2.1"] { XCTAssertFalse(report.contains(forbidden)) }
+        XCTAssertTrue(report.contains("test.state=failed"))
+        XCTAssertTrue(report.contains("test.source=raw_fallback"))
+        XCTAssertTrue(report.contains("test.transcription_count=1"))
+        XCTAssertTrue(try f.history.list().isEmpty)
+    }
+
+    @MainActor
+    private func bind(_ session: TestDictationSession, to f: PauseFixture) {
+        f.engine.onStateChange = { [weak session] in session?.receiveState($0) }
+        f.engine.onResult = { [weak f, weak session] in f?.results.append($0); session?.receiveResult($0) }
+    }
+
+    @MainActor
+    func testPrivateResultRetainsTransientRawFallbackWithoutPersistingIt() async throws {
+        let f = try PauseFixture(privateText: true)
+        defer { f.dispose() }
+        f.cleanup.usedFallback = true
+        try await f.start()
+        f.feed(0.1, count: 1_600)
+        f.engine.stop()
+        try await waitUntil { f.results.count == 1 }
+        let result = f.results[0]
+        XCTAssertEqual(result.entry?.cleanupFellBack, true)
+        XCTAssertEqual(result.entry?.cleanupFallbackReason, "Synthetischer Rückfall")
+        XCTAssertEqual(result.entry?.rawText, "Phase 1.")
+        XCTAssertEqual(result.entry?.storesText, false)
+        let currentPreview = TransientResultStore.Result(text: result.text, rawFallback: result.entry?.cleanupFellBack == true)
+        XCTAssertEqual(currentPreview?.rawFallback, true)
+        XCTAssertTrue(try f.history.list().isEmpty)
+    }
+
+    @MainActor
     func testPauseInsideRecordingCallbackRejectsLateStartFailure() async throws {
         let f = try PauseFixture()
         defer { f.dispose() }
@@ -287,7 +508,7 @@ private final class PauseFixture {
     var nextRecorderStart: ((PauseRecorder) -> Void)?
     var results: [DictationResult] = []
 
-    init(privateText: Bool = false) throws {
+    init(privateText: Bool = false, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) throws {
         history = HistoryStore(baseDir: directory)
         config.whisper.language = "de"
         config.history.storeText = !privateText
@@ -314,6 +535,8 @@ private final class PauseFixture {
                 self!.writer = writer
                 return writer
             },
+            makeTranscriber: { [weak self] _ in self!.transcriber },
+            monotonicTime: clock,
             requestMicrophoneAccess: { [weak self] in
                 await self?.beforePermission?()
                 return self?.permission == true
@@ -356,12 +579,14 @@ private final class PauseServer: DictationServer {
 }
 private final class PauseCleanup: DictationCleanup {
     var onFallbackEndpoint: ((String) -> Void)?, onPrimaryRetry: (() -> Void)?
-    var warmups = 0
+    var warmups = 0, usedFallback = false
     var inputs: [String] = []
+    var onClean: (() -> Void)?
     func warmUp() { warmups += 1 }
     func clean(_ rawText: String) async -> CleanupService.Result {
+        onClean?()
         inputs.append(rawText)
-        return .init(text: rawText, usedFallback: false, fallbackReason: nil, endpoint: nil)
+        return .init(text: rawText, usedFallback: usedFallback, fallbackReason: usedFallback ? "Synthetischer Rückfall" : nil, endpoint: nil)
     }
 }
 private final class PauseTranscriber: DictationTranscriber {
@@ -369,8 +594,10 @@ private final class PauseTranscriber: DictationTranscriber {
     private var completedCount = 0
     var completed: Int { lock.withLock { completedCount } }
     var firstGate: PauseGate?
+    var onBegin: ((Int) async -> Void)?
     func transcribe(samples: [Float]) async throws -> String {
         let number = Int((Double(samples.first ?? 0) * 10).rounded())
+        await onBegin?(number)
         if number == 1 { await firstGate?.wait() }
         lock.withLock { completedCount += 1 }
         return "Phase \(number)."
@@ -386,4 +613,19 @@ private final class PauseWriter: DictationWavWriter {
     init(url: URL) throws { writer = try WavFileWriter(url: url) }
     func append(_ samples: [Float]) throws { try writer.append(samples) }
     func finish() throws { if failFinish { throw PauseError.device }; try writer.finish() }
+}
+
+private final class PauseClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: TimeInterval = 0
+    var now: TimeInterval { lock.withLock { value } }
+    func advance(_ seconds: TimeInterval) { lock.withLock { value += seconds } }
+}
+private final class PauseCancellationProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didEnter = false, didCancel = false
+    var entered: Bool { lock.withLock { didEnter } }
+    var cancelled: Bool { lock.withLock { didCancel } }
+    func setEntered() { lock.withLock { didEnter = true } }
+    func setCancelled() { lock.withLock { didCancel = true } }
 }

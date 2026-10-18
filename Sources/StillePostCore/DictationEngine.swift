@@ -49,7 +49,7 @@ public final class DictationEngine {
     /// wartet auf das Ende des Signals, damit der eigene Lautsprecherklang niemals
     /// im Diktat landet und von Whisper als Sprache fehlinterpretiert wird.
     public var onBeforeRecordingStart: (() async -> Void)?
-    /// Fertiges Diktat (App fügt den Text ein). Auf Main-Thread.
+    /// Fertiges Diktat für Ausgabe oder ausdrückliche Testvorschau. Auf Main-Thread.
     public var onResult: ((DictationResult) -> Void)?
     /// Private Wiederholung: Ergebnis nur flüchtig anzeigen, niemals automatisch einfügen.
     public var onPrivateRetryResult: ((HistoryStore.Entry) -> Void)?
@@ -65,6 +65,10 @@ public final class DictationEngine {
     public var currentLevelDb: Double { segmenter?.currentLevelDb ?? -120 }
     /// Erfasste Audiozeit; Pause und Fortsetzungsvorbereitung zählen nicht mit.
     public var recordingDuration: TimeInterval { audioSession?.duration ?? 0 }
+
+    /// Auf dem Hauptthread abfragen. Transkriptionszeiten summieren abgeschlossene
+    /// Anfragen, die sich mit der Aufnahme und untereinander überlappen können.
+    public var phaseTimings: DictationPhaseTimings { timingStore?.snapshot ?? .empty }
 
     public private(set) var state: DictationState = .idle
 
@@ -86,6 +90,8 @@ public final class DictationEngine {
     private let makeSegmenter: (Config.Vad) -> any DictationSegmenter
     private let makeWavWriter: (URL) throws -> any DictationWavWriter
     private let requestMicrophoneAccess: () async -> Bool
+    private let monotonicTime: () -> TimeInterval
+    private var timingStore: DictationTimingStore?
     /// Enge Testgrenze für die einzige asynchrone Nachverarbeitung nach Whisper.
     /// Produktiv zeigt sie immer direkt auf `CleanupService.clean`.
     private let cleanupText: ((String) async -> CleanupService.Result)?
@@ -100,6 +106,7 @@ public final class DictationEngine {
     private var startAttemptGeneration: UInt64 = 0
     private var sessionHoldCondition: () -> Bool = { true }
     private var sessionTask: Task<Void, Never>?
+    private var preparationTask: Task<Void, Never>?
     private let retryLock = NSLock()
     private var retryTasks: [UUID: Task<HistoryStore.Entry, Error>] = [:]
     private var shuttingDown = false
@@ -146,6 +153,7 @@ public final class DictationEngine {
         self.makeSegmenter = dependencies.makeSegmenter
         self.makeWavWriter = dependencies.makeWavWriter
         self.requestMicrophoneAccess = dependencies.requestMicrophoneAccess
+        self.monotonicTime = dependencies.monotonicTime
         self.cleanupText = cleanupText
         // Fallback-Wechsel der Bereinigung an die Oberfläche durchreichen
         // (CleanupService meldet von beliebigem Thread -> auf Main-Thread heben).
@@ -183,6 +191,7 @@ public final class DictationEngine {
         sessionGeneration &+= 1
         let generation = sessionGeneration
         sessionRequest = requests.snapshot(appBundleID: requestAppBundleID?())
+        timingStore = DictationTimingStore(clock: monotonicTime)
         setState(.starting)
 
         audioSession = RecordingAudioSession()
@@ -208,10 +217,17 @@ public final class DictationEngine {
         prepareRecording(generation: sessionGeneration, resuming: true)
     }
 
-    private func prepareRecording(generation: UInt64, resuming: Bool) {
+    private func cancelPreparation() {
         startAttemptGeneration &+= 1
+        preparationTask?.cancel()
+        preparationTask = nil
+    }
+
+    private func prepareRecording(generation: UInt64, resuming: Bool) {
+        cancelPreparation()
         let attempt = startAttemptGeneration
-        Task { @MainActor in
+        preparationTask = Task { @MainActor in
+            defer { if self.startAttemptGeneration == attempt { self.preparationTask = nil } }
             guard self.canContinueStart(generation: generation, attempt: attempt, resuming: resuming) else { return }
             let permitted = await self.requestMicrophoneAccess()
             guard self.canContinueStart(generation: generation, attempt: attempt, resuming: resuming) else { return }
@@ -281,10 +297,14 @@ public final class DictationEngine {
         let phase = audioSession.beginPhase(acceptingSamples: !resuming)
         recordingPhaseID = phase
         let transcriber = sessionRequest.transcriber
+        let timings = timingStore
+        let clock = monotonicTime
         segmenter.onSegment = { segment in
             guard segment.hadSpeech else { return }
             segmentTasks.start(collector: collector) {
-                try await transcriber.transcribe(samples: segment.samples)
+                let started = clock()
+                defer { timings?.addTranscription(seconds: clock() - started) }
+                return try await transcriber.transcribe(samples: segment.samples)
             }
         }
         segmenter.onAutoStop = { [weak self] in
@@ -364,7 +384,8 @@ public final class DictationEngine {
         guard isCurrentSession(generation), state == .recording || state == .paused || state == .resuming else { return }
         _ = closeAudioPhase()
         let duration = recordingDuration
-        startAttemptGeneration &+= 1
+        timingStore?.finishRecording(seconds: duration)
+        cancelPreparation()
         sessionGeneration &+= 1
         let failureGeneration = sessionGeneration
         sessionTask?.cancel()
@@ -413,12 +434,13 @@ public final class DictationEngine {
 
     public func stop() {
         guard state == .recording || state == .paused || state == .resuming else { return }
-        startAttemptGeneration &+= 1
+        cancelPreparation()
         if let error = closeAudioPhase() {
             failRecording(error, generation: sessionGeneration)
             return
         }
         let duration = recordingDuration
+        timingStore?.finishRecording(seconds: duration)
         segmenter?.flush()
         segmenter = nil
         let writer = wavWriter
@@ -563,10 +585,13 @@ public final class DictationEngine {
         // Bereinigung über den GESAMTEN Text in einem Aufruf (Modell ist seit
         // Aufnahme-Start vorgewärmt). Bei Fehlern/Verdacht fällt clean() selbst
         // auf den Rohtext zurück — hier kommt immer verwendbarer Text an.
-        let cleanupStarted = Date()
+        let cleanupStarted = monotonicTime()
+        let cleanupTimings = timingStore
         let cleaned: CleanupService.Result
         if let cleanupText { cleaned = await cleanupText(rawJoined) }
         else { cleaned = await sessionRequest.cleanup.clean(rawJoined) }
+        let cleanupDuration = max(0, monotonicTime() - cleanupStarted)
+        cleanupTimings?.finishCleanup(seconds: cleanupDuration)
         guard isCurrentSession(generation), !Task.isCancelled else { return }
 
         let entry = sessionEntry(HistoryStore.Entry(
@@ -574,7 +599,7 @@ public final class DictationEngine {
             durationSec: duration, cleanupFellBack: cleaned.usedFallback,
             cleanupFallbackReason: cleaned.fallbackReason,
             cleanupEndpoint: cleaned.endpoint,
-            cleanupSec: Date().timeIntervalSince(cleanupStarted)
+            cleanupSec: cleanupDuration
         ))
         let finalized: PersistedEntryResult
         do {
@@ -726,8 +751,9 @@ public final class DictationEngine {
     public func cancel() {
         let priorState = state
         _ = closeAudioPhase()
-        startAttemptGeneration &+= 1
+        cancelPreparation()
         let duration = recordingDuration
+        timingStore?.finishRecording(seconds: duration)
         let discardsActiveAudio: Bool
         switch priorState {
         case .starting, .recording, .paused, .resuming, .processing:
@@ -968,6 +994,7 @@ public final class DictationEngine {
     }
 
     private func setState(_ newState: DictationState) {
+        if state == .starting, newState != .starting { timingStore?.finishPreparation() }
         switch newState {
         case .starting, .recording, .paused, .resuming: break
         case .idle, .error, .processing: audioSession = nil

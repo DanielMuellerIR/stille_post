@@ -4,13 +4,33 @@ import AVFoundation
 import SwiftUI
 import StillePostCore
 
+enum AppDiagnosticContext {
+    static func capture(configuration config: Config, bridge: DiagnosticContext.BridgeState = .unknown) -> DiagnosticContext {
+        var context = DiagnosticContext()
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized: context.microphone = .authorized
+        case .notDetermined: context.microphone = .notDetermined
+        case .denied: context.microphone = .denied
+        case .restricted: context.microphone = .restricted
+        @unknown default: context.microphone = .unknown
+        }
+        context.selectedInputAvailable = config.audio.inputDeviceUID.isEmpty
+            ? AudioInputDeviceCatalog.defaultDevice() != nil
+            : AudioInputDeviceCatalog.availableDevices().contains { $0.uid == config.audio.inputDeviceUID }
+        context.accessibility = AXIsProcessTrusted()
+        context.keyboardReadable = HotkeyManager.canReadKeyboardState
+        context.bridge = bridge
+        return context
+    }
+}
+
 @MainActor
 final class DiagnosticsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private let model: DiagnosticsModel
     init(configuration: @escaping () -> Config, bridgeState: @escaping () -> DiagnosticContext.BridgeState,
-         onAction: @escaping (DiagnosticFinding.Action) -> Void) {
-        model = DiagnosticsModel(configuration: configuration, bridgeState: bridgeState, onAction: onAction)
+         onAction: @escaping (DiagnosticFinding.Action) -> Void, onTestDictation: @escaping () -> Void = {}) {
+        model = DiagnosticsModel(configuration: configuration, bridgeState: bridgeState, onAction: onAction, onTestDictation: onTestDictation)
         super.init()
     }
     func show() {
@@ -40,14 +60,16 @@ final class DiagnosticsModel: ObservableObject {
     private let configuration: () -> Config
     private let bridgeState: () -> DiagnosticContext.BridgeState
     let onAction: (DiagnosticFinding.Action) -> Void
+    let onTestDictation: () -> Void
     private let service: DiagnosticsService
     private var task: Task<Void, Never>?
     private var generation = UUID()
 
     init(configuration: @escaping () -> Config, bridgeState: @escaping () -> DiagnosticContext.BridgeState,
-         onAction: @escaping (DiagnosticFinding.Action) -> Void, service: DiagnosticsService = .init()) {
+         onAction: @escaping (DiagnosticFinding.Action) -> Void, service: DiagnosticsService = .init(),
+         onTestDictation: @escaping () -> Void = {}) {
         self.configuration = configuration; self.bridgeState = bridgeState
-        self.onAction = onAction; self.service = service
+        self.onAction = onAction; self.service = service; self.onTestDictation = onTestDictation
     }
     func start() {
         task?.cancel()
@@ -55,20 +77,7 @@ final class DiagnosticsModel: ObservableObject {
         let config = configuration()
         profile = L10n.format("profiles.recording", config.profileLabel, config.whisper.language)
         if config.cleanup.localOnly { profile += " · " + L10n.text("profiles.local_only") }
-        var context = DiagnosticContext()
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized: context.microphone = .authorized
-        case .notDetermined: context.microphone = .notDetermined
-        case .denied: context.microphone = .denied
-        case .restricted: context.microphone = .restricted
-        @unknown default: context.microphone = .unknown
-        }
-        context.selectedInputAvailable = config.audio.inputDeviceUID.isEmpty
-            ? AudioInputDeviceCatalog.defaultDevice() != nil
-            : AudioInputDeviceCatalog.availableDevices().contains { $0.uid == config.audio.inputDeviceUID }
-        context.accessibility = AXIsProcessTrusted()
-        context.keyboardReadable = HotkeyManager.canReadKeyboardState
-        context.bridge = bridgeState()
+        let context = AppDiagnosticContext.capture(configuration: config, bridge: bridgeState())
         report = nil; note = nil; checking = true
         task = Task { [weak self] in
             guard let self else { return }
@@ -113,6 +122,8 @@ struct DiagnosticsView: View {
                     Button(L10n.text("common.cancel")) { model.cancel() }.accessibilityIdentifier("diagnosisCancel")
                 }
                 Spacer()
+                Button(L10n.text("test_dictation.open"), action: model.onTestDictation)
+                    .accessibilityIdentifier("openTestDictation")
                 Button(L10n.text("diagnosis.copy")) { model.copyReport() }
                     .disabled(model.report == nil).accessibilityIdentifier("diagnosisCopy")
             }

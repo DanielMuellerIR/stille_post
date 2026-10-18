@@ -9,11 +9,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Sparkle verwaltet Suche, Download, Signaturprüfung, Austausch der App und
     /// Neustart. Als langlebiges Feld bleibt der Controller während der gesamten
     /// App-Laufzeit erhalten; mehr als eine Instanz darf es nicht geben.
-    private let updaterController = SPUStandardUpdaterController(
-        startingUpdater: true,
-        updaterDelegate: nil,
-        userDriverDelegate: nil
-    )
+    private let updaterController: SPUStandardUpdaterController
+    private let makeEngine: (Config) -> DictationEngine
+    private let testContext: (Config) -> DiagnosticContext
+
+    override convenience init() {
+        self.init(makeEngine: { DictationEngine(config: $0) },
+                  testContext: { AppDiagnosticContext.capture(configuration: $0) }, startsUpdater: true)
+    }
+    // Interne Fabriken prüfen die echte App-Verdrahtung mit künstlicher Audioquelle,
+    // ohne Mikrofonrechte, Alltagsdaten oder automatische Updateanfragen anzufassen.
+    init(makeEngine: @escaping (Config) -> DictationEngine,
+         testContext: @escaping (Config) -> DiagnosticContext, startsUpdater: Bool) {
+        self.makeEngine = makeEngine; self.testContext = testContext
+        updaterController = SPUStandardUpdaterController(startingUpdater: startsUpdater,
+            updaterDelegate: nil, userDriverDelegate: nil)
+        super.init()
+    }
     private var config = Config.load()
     private var engine: DictationEngine!
     private var retiredEngineShutdowns: [Task<Void, Never>] = []
@@ -37,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var pendingResults = PendingResults<PreviewDelivery>()
     private var settingsWindow: SettingsWindowController!
     private var diagnosticsWindow: DiagnosticsWindowController!
+    private var testDictationWindow: TestDictationWindowController!
     /// Netzwerkzugang für eigene Geräte im Heimnetz; nil = ausgeschaltet.
     private var bridge: BridgeServer?
     private var bridgeTransition: Task<Void, Never>?
@@ -112,7 +125,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             bridgeState: { [weak self] in
                 guard let self, self.bridgeTransition == nil else { return .unknown }
                 return self.bridge?.isRunning == true ? .running : .stopped
-            }, onAction: { [weak self] in self?.performDiagnosticAction($0) }
+            }, onAction: { [weak self] in self?.performDiagnosticAction($0) },
+            onTestDictation: { [weak self] in self?.showTestDictation() }
+        )
+        testDictationWindow = TestDictationWindowController(
+            engine: { [weak self] in self?.engine },
+            configuration: { [weak self] in self?.prospectiveConfiguration ?? Config().resolvedForRequest() },
+            nextConfiguration: { [weak self] in self?.requestConfiguration ?? Config() },
+            canStart: { [weak self] in
+                guard let self, !self.terminationPending, !self.isCapturingHotkey else { return false }
+                return self.engine?.hasInFlightRequests == false && self.pendingResults.isEmpty
+            }, onSettings: { [weak self] in self?.performDiagnosticAction($0) },
+            onClosingError: { [weak self] message in
+                guard let self, !self.terminationPending else { return }
+                self.overlay?.show(.failure(message))
+            }, context: testContext
         )
 
         setupStatusItem()
@@ -147,6 +174,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // sofort öffnen, ohne dass jemand durchs Menü klicken muss.
         if let tab = ProcessInfo.processInfo.environment["STILLEPOST_OPEN_SETTINGS"] {
             if tab == "diagnose" { showDiagnostics() }
+            else if tab == "testdiktat" { showTestDictation() }
             else { settingsWindow.show() }
         }
         // Isolierter Screenshot-/GUI-Testweg fürs Verlaufsfenster. Zusammen mit
@@ -240,6 +268,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         guard !terminationPending else { return .terminateLater }
         guard let engine else { return .terminateNow }
         terminationPending = true
+        testDictationWindow?.prepareForTermination()
         hotkey = nil
         lastResultHotkey = nil
         bridge?.stop()
@@ -270,7 +299,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func buildComponents() {
         pasteTarget = nil
         let engineConfig = requestConfiguration
-        engine = DictationEngine(config: engineConfig)
+        engine = makeEngine(engineConfig)
         engine.requestAppBundleID = { [weak self] in self?.targetAppBundleID }
         overlay = OverlayController(config: config.ui)
         historyWindow = HistoryWindowController(engine: engine, onVocabularySaved: { [weak self] saved in
@@ -285,9 +314,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         // Klick aufs Overlay stoppt ebenfalls.
         overlay.onClickStop = { [weak self] in
-            guard let self else { return }
+            guard let self, self.testDictationWindow?.isActive != true else { return }
             if self.engine.state == .starting { self.cancelDictation() }
-            else { self.engine.toggle() }
+            else {
+                if self.canRecallResult {
+                    guard self.testDictationWindow?.releaseForRegularStart() != false else { return }
+                }
+                self.engine.toggle()
+            }
         }
         overlay.onPauseResume = { [weak self] in self?.togglePauseResume() }
         overlay.levelProvider = { [weak self] in
@@ -415,12 +449,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func handleDictationHotkey(_ input: DictationHotkeyState.Input) {
         guard let engine, !terminationPending else { return }
+        if testDictationWindow?.isActive == true {
+            if input == .released || input == .interrupted {
+                _ = dictationHotkeyState.handle(input, mode: config.hotkeyMode, state: engine.state)
+            }
+            if input == .interrupted { testDictationWindow.cancel() }
+            return
+        }
         switch dictationHotkeyState.handle(input, mode: config.hotkeyMode, state: engine.state,
             canReadKeyboardState: input != .pressed || HotkeyManager.canReadKeyboardState) {
         case .unavailable: overlay.show(.failure(L10n.text("hotkey.hold.unavailable")))
         case .none: break
-        case .toggle: engine.toggle()
+        case .toggle:
+            if canRecallResult {
+                guard testDictationWindow?.releaseForRegularStart() != false else { return }
+            }
+            engine.toggle()
         case .start:
+            guard testDictationWindow?.releaseForRegularStart() != false else { return }
             engine.start(onlyWhile: { [weak self] in
                 self?.dictationHotkeyState.ownsHold == true && self?.hotkey?.isCombinationHeld == true
             })
@@ -675,6 +721,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let diagnosisItem = NSMenuItem(title: L10n.text("diagnosis.open"), action: #selector(showDiagnostics), keyEquivalent: "")
         diagnosisItem.target = self
         menu.addItem(diagnosisItem)
+        let testItem = NSMenuItem(title: L10n.text("test_dictation.open"), action: #selector(showTestDictation), keyEquivalent: "")
+        testItem.target = self
+        menu.addItem(testItem)
         let settingsItem = NSMenuItem(title: L10n.text("menu.settings"),
                                       action: #selector(showSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -742,15 +791,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Gerade das iPhone als Continuity-Mikrofon hört den Mac-Lautsprecher sehr
         // klar; der Ton darf deshalb nicht Teil des Whisper-Segments werden.
         engine.onBeforeRecordingStart = { [weak self, weak source] in
-            guard let self, self.engine === source else { return }
+            guard let self, let source, self.engine === source else { return }
             await self.playSoundAndWait(custom: "dictation-start", fallback: "Pop")
         }
         engine.onStateChange = { [weak self, weak source] state in
-            guard let self, self.engine === source else { return }
+            guard let self, let source, self.engine === source else { return }
             let priorState = previousState
             previousState = state
             self.dictationHotkeyState.didChangeState(state)
             self.updateStatusIcon(for: state)
+            if self.testDictationWindow?.owns(source) == true {
+                self.overlay.hide()
+                if state == .starting { self.pasteTarget = nil }
+                if state == .processing { self.playSound(custom: "dictation-stop", fallback: "Bottle") }
+                if case .error = state { self.playSound(custom: nil, fallback: "Basso") }
+                self.testDictationWindow.receiveState(state)
+                return
+            }
             switch state {
             case .starting:
                 self.pasteTarget = PasteService.captureTarget()
@@ -782,7 +839,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
 
         engine.onResult = { [weak self, weak source] result in
-            guard let self, self.engine === source else { return }
+            guard let self, let source, self.engine === source else { return }
+            if self.testDictationWindow?.owns(source) == true {
+                self.testDictationWindow.receiveResult(result)
+                return
+            }
             defer { self.pasteTarget = nil }
             if let entry = result.entry,
                let usable = TransientResultStore.Result(text: result.text,
@@ -811,13 +872,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Bereinigung weicht gerade auf einen Fallback-Endpoint aus: im Overlay
         // anzeigen, damit eine evtl. längere Wartezeit erklärbar ist.
         engine.onCleanupFallback = { [weak self, weak source] label in
-            guard let self, self.engine === source, self.engine.state == .processing else { return }
+            guard let self, let source, self.engine === source, self.engine.state == .processing,
+                  self.testDictationWindow?.owns(source) != true else { return }
             self.overlay.show(.processing(detail: L10n.format("app.cleanup_fallback", label)))
         }
         // Direktanfrage an den primären Endpoint ist gescheitert — es läuft sofort
         // ein zweiter Versuch über eine frische Verbindung.
         engine.onCleanupPrimaryRetry = { [weak self, weak source] in
-            guard let self, self.engine === source, self.engine.state == .processing else { return }
+            guard let self, let source, self.engine === source, self.engine.state == .processing,
+                  self.testDictationWindow?.owns(source) != true else { return }
             self.overlay.show(.processing(detail: L10n.text("app.cleanup_primary_retry")))
         }
     }
@@ -825,6 +888,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // MARK: - Menü-Aktionen
 
     private var canRecallResult: Bool {
+        guard testDictationWindow?.isActive != true else { return false }
         if case .idle = engine.state { return true }
         if case .error = engine.state { return true }
         return false
@@ -832,8 +896,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard !terminationPending else { return false }
-        if menuItem.action == #selector(showDiagnostics) { return !isCapturingHotkey }
+        if menuItem.action == #selector(showDiagnostics) || menuItem.action == #selector(showTestDictation) { return !isCapturingHotkey }
+        if menuItem.action == #selector(toggleDictation) { return testDictationWindow?.isActive != true }
         if menuItem.action == #selector(togglePauseResume) {
+            guard testDictationWindow?.isActive != true else { return false }
             menuItem.title = L10n.text(engine.state == .paused ? "recording.resume" : "recording.pause")
             return engine.state == .recording || engine.state == .paused
         }
@@ -903,16 +969,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     @objc private func togglePauseResume() {
+        guard testDictationWindow?.isActive != true else { return }
         if engine.state == .recording { engine.pause() }
         else if engine.state == .paused { engine.resume() }
     }
-    @objc private func toggleDictation() { engine.toggle() }
+    @objc private func toggleDictation() {
+        guard testDictationWindow?.isActive != true, testDictationWindow?.releaseForRegularStart() != false else { return }
+        engine.toggle()
+    }
     @objc private func cancelDictation() {
         pasteTarget = nil
         engine.cancel()
         if engine.state == .idle { overlay.hide() }
     }
     @objc private func showHistory() { if !terminationPending { historyWindow.show() } }
+    @objc private func showTestDictation() {
+        guard !terminationPending, !isCapturingHotkey else { return }
+        testDictationWindow.show()
+    }
+
     @MainActor @objc private func showDiagnostics() {
         guard !terminationPending, !isCapturingHotkey else { return }
         diagnosticsWindow.show()
