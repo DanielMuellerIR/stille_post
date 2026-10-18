@@ -28,7 +28,7 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Silero als Opt-in mit festem, SHA-256-geprüftem Modell und RMS-Rückfall integrieren; siehe [Silero](docs/silero-vad.md).
 - [ ] Silero mit menschlichen Mikrofonaufnahmen abnehmen (kurze/leise Wörter, Klicks, Rauschen, lange Pausen und Pause/Fortsetzen).
 - [x] Native iPhone-App mit Aufnahme, Brückenzugriff und manuellem Kopieren umsetzen und am echten Gerät prüfen; [Entwicklungsclient](iOS/README.md), HTTP ausschließlich für ausdrücklich freigegebene Debug-Tests.
-- [ ] TLS-/QR-Kopplung: 0.9.42 implementiert; QR-/HTTPS-Kopplung, echtes AAC-Diktat, Kopieren, Listener-Neustart sowie Pin-/Token-/Zertifikatswechsel am iPhone geprüft. Mac-Kopplungsansicht in DE/EN auf Öffnen, Fokuswechsel und Schließen geprüft, Zweiminutenfrist unter DE bestätigt. Die verschlüsselte Abbruch-/Wiederaufnahmeprobe und der Ausblendfall bleiben offen. Danach lokales Offline-Diktat aufbauen.
+- [ ] TLS-/QR-Kopplung: 0.9.42 implementiert; QR-/HTTPS-Kopplung, echtes AAC-Diktat, Kopieren, Listener-Neustart sowie Pin-/Token-/Zertifikatswechsel am iPhone geprüft. Versandabbruch während der Bereinigung, Aufnahmeerhalt über App-Neustart und ausdrückliches erneutes Senden über HTTPS geprüft. Mac-Kopplungsansicht in DE/EN auf Öffnen, Fokuswechsel und Schließen geprüft, Zweiminutenfrist unter DE bestätigt. Der Ausblendfall bleibt unbelegt. Danach lokales Offline-Diktat aufbauen.
 - [ ] Die wesentlichen Kombinationen auf realen Geräten abnehmen und beide Nutzungsanleitungen aktualisieren.
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
@@ -88,8 +88,9 @@ ist entfernt. Vorhandene Heimnetz-Kurzbefehle müssen zur App-Aktion
 Die echte TLS-/QR-Kopplung, verschlüsselte AAC-Sprechprobe und manuelles Kopieren
 wurden am 2026-10-18 auf iOS 26.6.2 mit macOS 26.7.1 geprüft. Falscher Pin,
 alter und falscher Token sowie fehlender Token werden abgewiesen; Neu-Kopplung
-nach Tokenwechsel und Zertifikatserneuerung funktioniert. Die verschlüsselte
-Abbruch-/Wiederaufnahmeprobe steht noch aus. Der native Ausblendfall bleibt
+nach Tokenwechsel und Zertifikatserneuerung funktioniert. Auch der verschlüsselte
+Versandabbruch während der Bereinigung, Aufnahmeerhalt nach App-Neustart und
+ausdrückliches erneutes Senden sind bestanden. Der native Ausblendfall bleibt
 unbelegt: Die Menüleisten-App ließ sich auf dem geprüften macOS weder per API
 noch per ⌘H ausblenden. Bis zum Abschluss der Restabnahme bleibt 0.9.42 ein
 Entwicklungsstand. Simulator und lokale Prüfungen ersetzen die Gerätefälle nicht.
@@ -310,8 +311,10 @@ einen chirurgischen Fix ist, und die Reste zweier Fixes.
 - **Abbruch von Transkription und Bereinigung.** Router-Tasks werden bereits
   storniert; Decoder und Whisper-Selbststart prüfen jetzt zusätzlich den Abbruch.
   Eine stornierte Bereinigung startet weder eine zweite Probe noch Retry/Fallback.
-  Kern-Gegenproben sind bestanden; der reale Verbindungsabbruch während eines
-  Diktats über das App-Bundle bleibt zu prüfen.
+  Kern-Gegenproben sind bestanden. Der reale HTTPS-Verbindungsabbruch während
+  der Bereinigung über das App-Bundle ist geprüft: Die lokale
+  Bereinigungsanfrage wurde beendet, ohne automatische Wiederholung.
+  Der Gerätefall während noch laufender Transkription bleibt zu prüfen.
 - **Worttreue weiterer Sprachen.** DE/EN-Gegenproben schützen jetzt auch
   Beträge, Termine und mehrdeutige Wörter. Löschungen sind nur für eindeutig
   definierte Zögerlaute oder unmittelbare wortgleiche Wiederholungen über

@@ -2,10 +2,10 @@
 
 Native SwiftUI-App ab iOS 17. Der Kandidat 0.9.42 verbindet sich ausschließlich
 verschlüsselt mit der Mac-Brücke und übernimmt deren Identität direkt per QR-Code.
-Die reale QR-/HTTPS-Kopplung und ein verschlüsseltes AAC-Diktat wurden am iPhone
-geprüft. Die verschlüsselte Abbruch-/Wiederaufnahmeprobe steht noch aus; bis zum
-Abschluss bleibt die App ein Entwicklungsclient. HTTP wird in Debug und Release
-abgewiesen.
+Reale QR-/HTTPS-Kopplung, verschlüsseltes AAC-Diktat und Versandabbruch mit
+Wiederaufnahme nach App-Neustart wurden am iPhone geprüft. Die App bleibt ein
+Entwicklungsclient; verbleibende Mac-/Plattformfälle stehen im Backlog. HTTP wird
+in Debug und Release abgewiesen.
 
 ## Benutzung und sichere Kopplung
 
@@ -105,10 +105,15 @@ Die bestehende Kopplung überstand einen Listener-Neustart. Ein falscher Pin und
 der bisherige Pin nach Zertifikatserneuerung wurden nativ abgewiesen; dabei
 entstand kein zusätzlicher HTTP-Routeneintrag. Alter und absichtlich falscher
 Token ergaben 401, ein fehlender Token scheiterte bereits lokal. Neu-Kopplung
-nach Tokenwechsel und Zertifikatserneuerung samt HTTPS-Prüfung gelangen. Die
-verschlüsselte Abbruch-/Wiederaufnahmeprobe bleibt offen. Heimnetz-, Größen-,
-Warteschlangen- und Bytebudget-Verträge stammen weiterhin aus den getrennten
-Kern-/Transportprüfungen.
+nach Tokenwechsel und Zertifikatserneuerung samt HTTPS-Prüfung gelangen.
+
+Beim HTTPS-Versandabbruch während der Bereinigung blieben Aufnahme und Metadaten
+auf dem iPhone erhalten, auch nach App-Neustart. Der lokale Testdienst hielt
+die Textantwort zurück und beobachtete danach den Verbindungsabbruch. Es folgte
+keine automatische Wiederholung. Nach Wiederherstellung des normalen Dienstes
+gelang das ausdrücklich erneut ausgelöste Senden; danach waren beide temporären
+Dateien entfernt. Heimnetz-, Größen-, Warteschlangen- und Bytebudget-Verträge
+stammen weiterhin aus den getrennten Kern-/Transportprüfungen.
 
 Die folgenden älteren Gerätebelege betreffen den früheren
 HTTP-Entwicklungstransport und sind keine TLS-Abnahme.
