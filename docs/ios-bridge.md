@@ -163,8 +163,13 @@ swift test --package-path iOS/StillePostClientCore
 
 Die native App, Build-/Geräteprüfung und tatsächlichen Plattformgrenzen stehen in
 [iOS/README.md](../iOS/README.md). Die historische HTTP-Sprechprobe von 2026-07-29
-belegt den damaligen AAC-Pfad, aber keine TLS-Abnahme. Aktuelle Geräteprüfungen
-werden erst nach ihrem tatsächlichen Abschluss ausgewiesen.
+belegt den damaligen AAC-Pfad, aber keine TLS-Abnahme. Am 2026-10-18 wurden mit
+0.9.42 echte QR-/HTTPS-Kopplung, AAC-Diktat, Kopieren und die Pin-/Token-/
+Zertifikatswechsel auf iOS 26.6.2 gegen macOS 26.7.1 geprüft. Die verschlüsselte
+Abbruch-/Wiederaufnahmeprobe bleibt offen. Die native Mac-Anzeige wurde in DE/EN
+auf Öffnen, Fokuswechsel und Schließen geprüft, ihre Zweiminutenfrist unter DE
+bestätigt. Der Ausblendfall blieb unbelegt, weil sich die Menüleisten-App auf dem
+geprüften macOS weder per API noch per ⌘H ausblenden ließ.
 
 Technische Grundlage: Apples Dokumentation zu
 [manueller Serverprüfung](https://developer.apple.com/documentation/foundation/performing-manual-server-trust-authentication)

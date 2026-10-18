@@ -2,8 +2,10 @@
 
 Native SwiftUI-App ab iOS 17. Der Kandidat 0.9.42 verbindet sich ausschließlich
 verschlüsselt mit der Mac-Brücke und übernimmt deren Identität direkt per QR-Code.
-Die reale TLS-/Kopplungsabnahme ist noch offen; vorher keine Freigabe als fertiger
-sicherer Client. HTTP wird in Debug und Release abgewiesen.
+Die reale QR-/HTTPS-Kopplung und ein verschlüsseltes AAC-Diktat wurden am iPhone
+geprüft. Die verschlüsselte Abbruch-/Wiederaufnahmeprobe steht noch aus; bis zum
+Abschluss bleibt die App ein Entwicklungsclient. HTTP wird in Debug und Release
+abgewiesen.
 
 ## Benutzung und sichere Kopplung
 
@@ -29,6 +31,8 @@ im Debug-Build. Alte HTTP-Einträge verlangen Neu-Kopplung. Tokenwechsel,
 Zertifikatserneuerung und bekannte Identitätswechsel verlangen ebenfalls einen
 neuen Scan direkt am Mac. Ein Netz-Fingerabdruck wird niemals ungeprüft übernommen.
 QR-Codes enthalten Zugangsdaten und gehören weder in Screenshots noch Protokolle.
+Verwende den Scanner in Stille Post. Die normale Kamera-App kann den
+Kopplungsinhalt als Websuche öffnen und damit Zugangsdaten weitergeben.
 
 Migration vorhandener Kurzbefehle und Zertifikatslebenszyklus:
 [Heimnetzbrücke](../docs/ios-bridge.md).
@@ -91,9 +95,23 @@ rsvg-convert --width=1024 --height=1024 --background-color='#4338ca' \
 
 ## Prüfung
 
-Der TLS-/QR-Kandidat benötigt zusätzlich zur automatisierten Prüfung die echte
-Kopplungs- und AAC-Abnahme am iPhone. Der folgende AP20-Beleg betrifft den früheren
-Entwicklungstransport und ist keine TLS-Abnahme.
+Am 2026-10-18 wurde der Kandidat 0.9.42 auf einem iPhone 16 Pro Max mit iOS 26.6.2
+gegen macOS 26.7.1 geprüft: direkte QR-Kopplung mit verglichener Mac-Identität,
+HTTPS-Health über `.local`, echtes AAC-Diktat, korrektes Ergebnis sowie Kopieren
+und Einfügen. Nach Erfolg waren die temporäre Audiodatei und ihre Metadaten im
+iPhone-Container entfernt.
+
+Die bestehende Kopplung überstand einen Listener-Neustart. Ein falscher Pin und
+der bisherige Pin nach Zertifikatserneuerung wurden nativ abgewiesen; dabei
+entstand kein zusätzlicher HTTP-Routeneintrag. Alter und absichtlich falscher
+Token ergaben 401, ein fehlender Token scheiterte bereits lokal. Neu-Kopplung
+nach Tokenwechsel und Zertifikatserneuerung samt HTTPS-Prüfung gelangen. Die
+verschlüsselte Abbruch-/Wiederaufnahmeprobe bleibt offen. Heimnetz-, Größen-,
+Warteschlangen- und Bytebudget-Verträge stammen weiterhin aus den getrennten
+Kern-/Transportprüfungen.
+
+Die folgenden älteren Gerätebelege betreffen den früheren
+HTTP-Entwicklungstransport und sind keine TLS-Abnahme.
 
 
 Auf einem iPhone 16 Pro Max mit iOS 26.6.2 wurden Mikrofon- und lokale

@@ -28,7 +28,7 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Silero als Opt-in mit festem, SHA-256-geprüftem Modell und RMS-Rückfall integrieren; siehe [Silero](docs/silero-vad.md).
 - [ ] Silero mit menschlichen Mikrofonaufnahmen abnehmen (kurze/leise Wörter, Klicks, Rauschen, lange Pausen und Pause/Fortsetzen).
 - [x] Native iPhone-App mit Aufnahme, Brückenzugriff und manuellem Kopieren umsetzen und am echten Gerät prüfen; [Entwicklungsclient](iOS/README.md), HTTP ausschließlich für ausdrücklich freigegebene Debug-Tests.
-- [ ] TLS-/QR-Kopplung: 0.9.42 implementiert und automatisiert geprüft; Mac-Kopplungsansicht in DE/EN nativ auf Öffnen, Fokuswechsel und Schließen geprüft, Zweiminutenfrist unter DE bestätigt. Reale iPhone-Kopplungs-/TLS-Abnahme und der Ausblendfall bleiben offen. Danach lokales Offline-Diktat aufbauen.
+- [ ] TLS-/QR-Kopplung: 0.9.42 implementiert; QR-/HTTPS-Kopplung, echtes AAC-Diktat, Kopieren, Listener-Neustart sowie Pin-/Token-/Zertifikatswechsel am iPhone geprüft. Mac-Kopplungsansicht in DE/EN auf Öffnen, Fokuswechsel und Schließen geprüft, Zweiminutenfrist unter DE bestätigt. Die verschlüsselte Abbruch-/Wiederaufnahmeprobe und der Ausblendfall bleiben offen. Danach lokales Offline-Diktat aufbauen.
 - [ ] Die wesentlichen Kombinationen auf realen Geräten abnehmen und beide Nutzungsanleitungen aktualisieren.
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
@@ -85,9 +85,14 @@ Tokenrotation und ausdrücklicher Neu-Kopplung. HTTP samt Entwicklungsausnahme
 ist entfernt. Vorhandene Heimnetz-Kurzbefehle müssen zur App-Aktion
 „Diktat öffnen“ wechseln; Einzelheiten in der Brückenanleitung.
 
-Die echte TLS-/QR-Kopplung und verschlüsselte AAC-Sprechprobe am iPhone stehen
-noch aus. Bis dahin Entwicklungsstand und keine Freigabe als fertiger sicherer
-Client. Simulator und lokale TLS-/AAC-Prüfungen ersetzen diese Abnahme nicht.
+Die echte TLS-/QR-Kopplung, verschlüsselte AAC-Sprechprobe und manuelles Kopieren
+wurden am 2026-10-18 auf iOS 26.6.2 mit macOS 26.7.1 geprüft. Falscher Pin,
+alter und falscher Token sowie fehlender Token werden abgewiesen; Neu-Kopplung
+nach Tokenwechsel und Zertifikatserneuerung funktioniert. Die verschlüsselte
+Abbruch-/Wiederaufnahmeprobe steht noch aus. Der native Ausblendfall bleibt
+unbelegt: Die Menüleisten-App ließ sich auf dem geprüften macOS weder per API
+noch per ⌘H ausblenden. Bis zum Abschluss der Restabnahme bleibt 0.9.42 ein
+Entwicklungsstand. Simulator und lokale Prüfungen ersetzen die Gerätefälle nicht.
 Anschließend folgen getrennt Modell-/Ressourcenverwaltung und Offline-Diktat;
 die vorhandene Whisper-Engine und Silero als Opt-in mit RMS bleiben unverändert.
 
