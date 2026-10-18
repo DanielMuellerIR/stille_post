@@ -162,7 +162,7 @@ Wort-/Wertfehler bleiben trotzdem Korrekturbedarf. Reine Stördateien werden
 separat bewertet: ihre Halluzinationen fließen nicht in eine WER mit leerer
 Referenz ein.
 
-## Grenzen und nächste Umsetzung
+## Grenzen
 
 Es liegen **keine menschlichen Mikrofonaufnahmen** vor. Die künstliche
 Aktivitätsmaske basiert auf sauberer TTS-Energie in 30-ms-Frames. Vollständige
@@ -178,17 +178,30 @@ Prozesskaltstart erhält OS-/CoreML-Caches und ist kein Bootkaltstart.
 Stopp-bis-Rohtext enthält hier weder vorgezogene Live-Transkription noch Cleanup
 oder Einfügen. Prozess-RSS erfasst ANE-/Metal-/XPC-Speicher nicht vollständig.
 
-Silero sollte als Opt-in mit intaktem bisherigen Detektor integriert werden.
-Modellbeschaffung braucht feste Revision, Größen-/Hashprüfung und klaren
-Fehlerrückfall. Die macOS-13-Untergrenze darf nicht durch eine direkte
-FluidAudio-Abhängigkeit verloren gehen; dafür zuerst einen kleinen
-Kompatibilitätsversuch machen. Eine schmale lokale CoreML-Anbindung desselben
-Modells ist eine mögliche Implementierung, deren Plattformfähigkeit und
-256-ms-Zustandsführung gesondert zu prüfen sind. Echte kurze/leise Wörter,
-Tastenklicks, Rauschen, lange Pausen, Pause/Fortsetzen, Abbruch und genau eine
-Gesamtbereinigung bleiben Integrations-Abnahmekriterien.
+## Übernahmeabschluss
 
-Parakeet ist für die Übernahme unter den gemessenen Bedingungen abgelehnt.
+Am 2026-10-18 wurde die negative Übernahmeentscheidung anhand der archivierten
+Rohdaten bestätigt. Die 27 WAV-Dateien stimmen per SHA-256 mit den identischen
+M5-/M1-Manifesten überein. Nachgerechnete WER, warme Laufzeiten und die drei
+kritischen Gegenfälle stimmen mit den obigen Ergebnissen überein: falscher
+Name, falscher Fachbegriff und drei falsche Versionswerte im DE-Langfall,
+jeweils auf beiden Geräten in allen drei warmen Wiederholungen.
+
+**Der geprüfte Parakeet-TDT-0.6B-v3-Kandidat wird nicht übernommen.** Der
+Geschwindigkeitsgewinn erfüllt die vorab festgelegte Qualitätsgrenze nicht.
+Zusätzlich verlangt FluidAudio 0.17.7 macOS 14; eine direkte Produktabhängigkeit
+würde die Untergrenze macOS 13 verletzen. Whisper large-v3-turbo bleibt der
+Produktweg, ohne Parakeet-/FluidAudio-Abhängigkeit oder geänderte Voreinstellung.
+Der Dokumentationsabschluss ändert die Produktversion 0.9.40 nicht und benötigt
+keine erneute Inferenz, Modellbeschaffung oder Bundle-Installation.
+
+Die empfohlene Silero-Integration ist seit 0.9.40 als [Opt-in](silero-vad.md)
+vorhanden: direkte lokale CoreML-Anbindung, feste Revision mit Größen-/Hashprüfung,
+RMS als Standard und Rückfall, macOS 13 als Untergrenze. Die menschliche
+Mikrofonabnahme bleibt offen; die synthetischen Dateien ersetzen sie nicht.
+
+Die Ablehnung gilt für den dokumentierten Modell-/SDK-Stand unter den gemessenen
+Bedingungen, nicht pauschal für alle Parakeet-Versionen oder iPhone-Modelle.
 Ein späterer neuer Kandidat braucht einen neuen begrenzten Vergleich; die
 Herstellerbenchmarks und die hier beobachtete Geschwindigkeit rechtfertigen
 keine Lockerung der Qualitätsgrenzen. Die bereits offenen Mikrofon-/Geräte-

@@ -23,7 +23,8 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Gesprochene Absatz-/Zeilenformatierung mit globaler und profilbezogener Auswahl ergänzen; siehe [Formatierung](docs/gesprochene-formatierung.md).
 - [x] Ausdrückliche Listen-/Anführungszeichenbefehle DE/EN mit geschützten wörtlichen Bereichen ergänzen.
 - [x] Auswahl ausdrücklich bereinigen, im Arbeitsspeicher prüfen und nur bei unverändertem Ziel ersetzen; siehe [Auswahl bereinigen](docs/auswahl-bereinigen.md).
-- [x] Parakeet und Silero reproduzierbar auf zwei Apple-Silicon-Geräten vergleichen; siehe [ASR-/VAD-Vergleich](docs/asr-vad-vergleich.md). Parakeet v3 für die Übernahme abgelehnt.
+- [x] Parakeet und Silero reproduzierbar auf zwei Apple-Silicon-Geräten vergleichen; siehe [ASR-/VAD-Vergleich](docs/asr-vad-vergleich.md).
+- [x] Übernahme des geprüften Parakeet-v3-Kandidaten begründet ablehnen: zusätzliche Namens-, Fachbegriffs- und Versionsfehler auf beiden Geräten; Whisper und macOS 13 bleiben erhalten. Siehe [Übernahmeabschluss](docs/asr-vad-vergleich.md#übernahmeabschluss).
 - [x] Silero als Opt-in mit festem, SHA-256-geprüftem Modell und RMS-Rückfall integrieren; siehe [Silero](docs/silero-vad.md).
 - [ ] Silero mit menschlichen Mikrofonaufnahmen abnehmen (kurze/leise Wörter, Klicks, Rauschen, lange Pausen und Pause/Fortsetzen).
 - [ ] Native iPhone-App, TLS-/QR-Kopplung und lokales Offline-Diktat aufbauen.
@@ -81,8 +82,9 @@ Repo. Sie bringt drei Dinge, die ein Kurzbefehl nicht kann — TLS mit gemerktem
 Zertifikats-Fingerabdruck (heute läuft die Verbindung im Klartext durchs WLAN),
 eine Kopplung per QR-Code statt Token-Einfügen, und später Whisper lokal auf dem
 iPhone für unterwegs. Auf dem iPhone 16 Pro Max ist `large-v3-turbo` über WhisperKit
-realistisch (quantisiert 550–630 MB, etwa fünffache Echtzeit); Parakeet aus dem
-gleichen SDK wäre der kleinere Kandidat und passt zum Benchmark-Punkt weiter unten.
+realistisch (quantisiert 550–630 MB, etwa fünffache Echtzeit). Das spätere lokale
+iPhone-Modell braucht eine gesonderte Auswahl; der geprüfte Parakeet-v3-Kandidat
+ist nach dem Mac-Vergleich für die Übernahme abgelehnt.
 Für App-Erweiterungen bräuchte das ein Xcode-Projekt — `*.xcodeproj` ist derzeit
 ignoriert, das wäre dann anzupassen.
 
@@ -354,7 +356,7 @@ liegen, weil sie mehr als einen chirurgischen Eingriff brauchen.
 - Login-Item: gebaut und verifiziert in 0.8.1. Offen bleibt nur das Deaktivieren im
   Alltag und der echte Ab-/Anmeldezyklus.
 - Optionales Silero-VAD ist seit 0.9.40 integriert, mit RMS als Standard und Rückfall; menschliche Mikrofonabnahme bleibt offen. [Ablauf und Grenzen](docs/silero-vad.md).
-- Lokaler ASR-/VAD-Vergleich am 2026-10-18 abgeschlossen. Whisper bleibt Standard; Parakeet v3 verfehlt die Qualitätsgrenze. Silero zeigt unter den künstlichen Testbedingungen Nutzen und ist für eine optionale Integration empfohlen; Quellen, Plattformgrenzen und Messwerte im [Vergleichsbericht](docs/asr-vad-vergleich.md).
+- Lokaler ASR-/VAD-Vergleich und negative Parakeet-Übernahmeentscheidung am 2026-10-18 abgeschlossen. Whisper bleibt Standard; der geprüfte Parakeet-v3-Kandidat verfehlt die Qualitätsgrenze. Silero ist seit 0.9.40 optional integriert; die menschliche Mikrofonabnahme bleibt offen. Quellen, Plattformgrenzen und Messwerte im [Vergleichsbericht](docs/asr-vad-vergleich.md).
 - CI für `swift test` und die echten Release-Shellverträge ist eingerichtet:
   Push auf `main`, Pull Request und manueller Start. Der Workflow ist noch nicht
   öffentlich ausgeführt; lokale Vertragsprüfungen bestehen.
