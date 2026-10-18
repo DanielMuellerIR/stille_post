@@ -847,6 +847,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             guard let self, let source, self.engine === source, self.audioImportWindow?.owns(source) == true else { return }
             self.audioImportWindow.receiveStage(stage)
         }
+        engine.onAudioImportProgress = { [weak self, weak source] progress in
+            guard let self, let source, self.engine === source, self.audioImportWindow?.owns(source) == true else { return }
+            self.audioImportWindow.receiveProgress(progress)
+        }
         // Der Startton wird vollständig vor dem Öffnen des Mikrofons abgespielt.
         // Gerade das iPhone als Continuity-Mikrofon hört den Mac-Lautsprecher sehr
         // klar; der Ton darf deshalb nicht Teil des Whisper-Segments werden.

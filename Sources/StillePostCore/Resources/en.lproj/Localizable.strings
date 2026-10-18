@@ -640,7 +640,7 @@
 "audio_import.title" = "Transcribe audio file";
 "audio_import.choose" = "Choose audio file …";
 "audio_import.select" = "Select";
-"audio_import.limits" = "Up to 5 minutes and 50 MiB. Supports audio files readable by the system, such as WAV, AAC/m4a and AIFF.";
+"audio_import.limits" = "Up to 30 minutes and 250 MiB. Supports audio files readable by the system, such as WAV, AAC/m4a and AIFF.";
 "audio_import.audio_policy" = "The original file stays unchanged. Only the working copy is deleted after success; failed copies stay local under the retention rules.";
 "audio_import.history" = "Text is saved to history under the visible profile’s rules.";
 "audio_import.private" = "Text stays in memory; failures may leave local audio references without text.";
@@ -669,3 +669,12 @@
 "audio_import.file_changed" = "The audio file changed during preparation. Please select it again.";
 "audio_import.memory_only" = "Memory only";
 "audio_import.retention" = "Text: %@ · Failed audio: %@";
+"audio_import.drop_hint" = "Drop one audio file here or choose a file. Import starts only after your confirmation.";
+"audio_import.selecting" = "Receiving file selection …";
+"audio_import.invalid_drop" = "Please choose or drop exactly one readable local audio file.";
+"audio_import.decode_progress" = "%@ of about %@ prepared";
+"audio_import.decode_progress_unknown" = "%@ of audio prepared";
+"audio_import.transcribe_progress" = "%@ of %@ processed · %@";
+"audio_import.segment_one" = "1 segment completed";
+"audio_import.segment_many" = "%d segments completed";
+"audio_import.already_completed" = "This import is already complete. Import the original file again for a new transcription; existing raw text and the original output remain unchanged.";

@@ -25,3 +25,7 @@ swiftc -parse-as-library -I "$MODULE_DIR" \
     Sources/StillePost/HotkeyManager.swift Sources/StillePost/DiagnosticsWindow.swift \
     scripts/fixtures/diagnostics-regression.swift "${OBJECTS[@]}" -o "$TEST_DIR/diagnostics-regression"
 "$TEST_DIR/diagnostics-regression"
+swiftc -parse-as-library -I "$MODULE_DIR" \
+    Sources/StillePost/AudioImportWindow.swift scripts/fixtures/audio-import-selection-regression.swift \
+    "${OBJECTS[@]}" -o "$TEST_DIR/audio-import-selection-regression"
+"$TEST_DIR/audio-import-selection-regression"

@@ -10,6 +10,21 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.36] — 2026-10-18
+
+### Neu
+
+- Audioimport unterstützt Dateien bis zu 30 Minuten und 250 MiB. Eine einzelne
+  Audiodatei lässt sich auch in der Importansicht ablegen; der Start bleibt ausdrücklich.
+- Vorbereitung und lokale Transkription zeigen abgearbeitete Audiozeit und
+  abgeschlossene Abschnitte. Die einmalige Bereinigung hat keine erfundene Zeitprognose.
+- Verspätete Datei- oder Drop-Antworten überschreiben keine neuere Auswahl und
+  wirken nach Start oder Schließen nicht mehr. Mehrere oder ungültige Dateien
+  erhalten eine klare Rückmeldung.
+- Erhaltenes Audio neuer Dateiimporte wird auch bei der Wiederholung begrenzt
+  segmentiert. Beschädigte Arbeitskopien bleiben gesperrt, auch bei veralteten
+  parallelen Verlaufsspeicherungen.
+
 ## [0.9.35] — 2026-10-18
 
 ### Neu

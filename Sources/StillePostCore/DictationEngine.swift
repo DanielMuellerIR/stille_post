@@ -54,6 +54,7 @@ public final class DictationEngine {
     /// Flüchtiger Rohtext; nil entfernt die Anzeige. Auf dem Hauptthread.
     public var onTranscriptPreview: ((DictationTranscriptPreview?) -> Void)?
     public var onAudioImportStage: ((AudioImportStage) -> Void)?
+    public var onAudioImportProgress: ((AudioImportProgress) -> Void)?
     public private(set) var transcriptPreview: DictationTranscriptPreview?
     private var previewRevision = 0
     private var previewSuppressed = false
@@ -100,7 +101,9 @@ public final class DictationEngine {
     public func configureVocabulary(_ vocabulary: Config.Cleanup) { requests.configureVocabulary(vocabulary) }
 
     private func sessionEntry(_ entry: HistoryStore.Entry) -> HistoryStore.Entry {
-        sessionRequest.config.history.applying(to: entry)
+        var result = sessionRequest.config.history.applying(to: entry)
+        if result.audioIsComplete == nil { result.audioIsComplete = processingAudioIsComplete }
+        return result
     }
     private let serverManager: any DictationServer
     private let makeRecorder: (Config.Audio) -> any DictationRecorder
@@ -126,6 +129,7 @@ public final class DictationEngine {
     private var sessionTask: Task<Void, Never>?
     private var preparationTask: Task<Void, Never>?
     private var importingAudio = false
+    private var importProgressStage: AudioImportStage?
     private var importCancellationRequested = false
     private var processingAudioIsComplete: Bool?
     private let retryLock = NSLock()
@@ -203,7 +207,7 @@ public final class DictationEngine {
 
     /// Import teilt Auftrags-Snapshot, Dienste und Endverarbeitung mit Diktaten.
     /// Die Quelldatei wird ausschließlich gelesen; nur die eigene WAV gehört uns.
-    public func importAudioFile(_ source: URL, limits: AudioImportLimits = .shortClip) {
+    public func importAudioFile(_ source: URL, limits: AudioImportLimits = .file) {
         guard !shuttingDown, !hasInFlightRequests, state == .idle || { if case .error = state { return true }; return false }() else { return }
         sessionGeneration &+= 1
         let generation = sessionGeneration
@@ -213,16 +217,24 @@ public final class DictationEngine {
         let timings = timingStore
         previewSuppressed = true; clearTranscriptPreview()
         let work = AudioFileImportWork(source: source, workingURL: history.newRecordingURL(), limits: limits,
-            makeWriter: makeWavWriter, beforeChunk: beforeFileDecodeChunk)
+            makeWriter: makeWavWriter, beforeChunk: beforeFileDecodeChunk,
+            onProgress: { [weak self] progress in
+                Task { @MainActor in
+                    guard let self, self.isCurrentSession(generation), self.importingAudio,
+                          !self.importCancellationRequested, self.importProgressStage == progress.stage else { return }
+                    self.onAudioImportProgress?(progress)
+                }
+            })
         processingWavURL = work.workingURL
         processingAudioIsComplete = false
         importingAudio = true; importCancellationRequested = false
         setState(.processing)
-        onAudioImportStage?(.decoding)
+        importProgressStage = .decoding; onAudioImportStage?(.decoding)
         sessionTask = Task { @MainActor in
             defer {
                 if self.isCurrentSession(generation) {
                     self.importingAudio = false
+                    self.importProgressStage = nil
                     self.processingAudioIsComplete = work.isComplete
                     if self.importCancellationRequested || Task.isCancelled { self.cancel() }
                     else { self.sessionTask = nil }
@@ -235,13 +247,19 @@ public final class DictationEngine {
                 timings?.finishPreparation()
                 timings?.finishRecording(seconds: work.audioDuration)
                 self.processingAudioIsComplete = true
-                self.onAudioImportStage?(.transcribing)
+                self.importProgressStage = .transcribing; self.onAudioImportStage?(.transcribing)
                 let texts = try await work.transcribe(request: request, server: self.serverManager,
                     makeSegmenter: self.makeSegmenter, timings: timings, clock: self.monotonicTime)
                 try Task.checkCancellation()
                 guard self.isCurrentSession(generation) else { return }
+                if !texts.contains(where: { $0 == nil }) {
+                    self.onAudioImportProgress?(.init(stage: .transcribing,
+                        audioSeconds: work.audioDuration, totalSeconds: work.audioDuration,
+                        completedSegments: texts.count, stageComplete: true))
+                }
+                try Task.checkCancellation()
                 if !texts.contains(where: { $0 == nil }), !Self.joinSegments(texts.compactMap { $0 }).isEmpty {
-                    self.onAudioImportStage?(.cleaning)
+                    self.importProgressStage = .cleaning; self.onAudioImportStage?(.cleaning)
                 }
                 await self.finishSession(segments: texts, duration: work.audioDuration,
                     wavURL: work.workingURL, generation: generation)
@@ -990,6 +1008,7 @@ public final class DictationEngine {
             throw HistoryStore.PersistenceError.audioRetentionExpired
         }
         guard stored.audioIsComplete != false else { throw AudioImportFailure.incompleteAudio }
+        guard stored.audioIsComplete != true || stored.status != "ok" else { throw AudioImportFailure.alreadyCompleted }
         var policyInput = stored
         policyInput.date = Date()
         var entry = policy.applying(to: policyInput)
@@ -1005,18 +1024,33 @@ public final class DictationEngine {
               FileManager.default.fileExists(atPath: audioURL.path) else {
             var updated = entry
             updated.errorMessage = L10n.text("core.dictation.audio_missing")
+            if stored.audioIsComplete == true { updated.audioIsComplete = false }
             try await history.updateAsync(updated)
             return updated
         }
         let raw: String
+        let importedAudio = stored.audioIsComplete == true ? AudioFileImportWork(
+            source: audioURL, workingURL: audioURL, limits: .file,
+            makeWriter: makeWavWriter, beforeChunk: nil) : nil
         do {
-            try await serverManager.ensureRunning(reachability: whisper)
-            // Wie beim Live-Diktat: Zeilenumbruch-Artefakte sofort deterministisch raus.
-            raw = TranscriptPolish.flattenLineBreaks(try await whisper.transcribe(wavFile: audioURL))
+            if let work = importedAudio {
+                try work.prepareRetainedAudio()
+                let texts = try await work.transcribe(request: request, server: serverManager,
+                    makeSegmenter: makeSegmenter, timings: nil, clock: monotonicTime)
+                let failed = texts.filter { $0 == nil }.count
+                guard failed == 0 else { throw AudioImportFailure.transcriptionFailed(failed) }
+                raw = Self.joinSegments(texts.compactMap { $0 })
+                entry.durationSec = work.audioDuration
+            } else {
+                try await serverManager.ensureRunning(reachability: whisper)
+                // Ältere und reguläre Aufnahmen behalten ihren bisherigen Retry-Vertrag.
+                raw = TranscriptPolish.flattenLineBreaks(try await whisper.transcribe(wavFile: audioURL))
+            }
         } catch {
             try Task.checkCancellation()
             var updated = entry
             updated.errorMessage = L10n.format("core.dictation.retry_failed", error.localizedDescription)
+            if let work = importedAudio { updated.audioIsComplete = work.isComplete }
             try await history.updateAsync(updated)
             return updated
         }

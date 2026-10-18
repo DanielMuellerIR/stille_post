@@ -11,6 +11,7 @@ public final class AudioImportSession {
     public private(set) var ownsCurrentSession = false
     public private(set) var configuration: Config?
     public private(set) var result: DictationResult?
+    public private(set) var progress: AudioImportProgress?
     public var onChange: (() -> Void)?
     public var onErrorWhileClosed: ((String) -> Void)?
     public var recordingsDirectory: URL { engine.history.recordingsDir }
@@ -29,6 +30,7 @@ public final class AudioImportSession {
         guard reviewed == currentConfiguration else { fail("test_dictation.changed"); return }
         guard beforeStart() else { fail("test_dictation.busy"); return }
         configuration = reviewed.resolvedForRequest(); result = nil
+        progress = nil
         cancelling = false; closed = false
         ownsCurrentSession = true; isActive = true; state = .processing(.decoding)
         onChange?()
@@ -42,9 +44,11 @@ public final class AudioImportSession {
         guard ownsCurrentSession else { return }
         switch value {
         case .error(let message):
+            progress = nil
             state = .failed(message); isActive = false
             if closed { onErrorWhileClosed?(message) }
         case .idle where cancelling:
+            progress = nil
             state = .cancelled; isActive = false
         default: break
         }
@@ -53,11 +57,16 @@ public final class AudioImportSession {
     }
     public func receiveStage(_ stage: AudioImportStage) {
         guard ownsCurrentSession, isActive, !cancelling else { return }
-        state = .processing(stage); onChange?()
+        progress = nil; state = .processing(stage); onChange?()
+    }
+    public func receiveProgress(_ value: AudioImportProgress) {
+        guard ownsCurrentSession, isActive, !cancelling, state == .processing(value.stage) else { return }
+        progress = value; onChange?()
     }
     public func receiveResult(_ value: DictationResult) {
         guard ownsCurrentSession else { return }
         isActive = false
+        progress = nil
         if value.entry?.isFailed == true {
             if !closed { result = value }
             state = .failed(value.entry?.errorMessage ?? L10n.text("audio_import.failed"))
@@ -72,12 +81,12 @@ public final class AudioImportSession {
     }
     public func cancel() {
         guard isActive, ownsCurrentSession, !cancelling else { return }
-        cancelling = true; result = nil; state = .cancelling
+        cancelling = true; result = nil; progress = nil; state = .cancelling
         onChange?(); engine.cancel()
     }
     public func reset() {
         guard !isActive else { return }
-        closed = false; cancelling = false; result = nil; configuration = nil; state = .ready
+        closed = false; cancelling = false; result = nil; progress = nil; configuration = nil; state = .ready
         onChange?()
     }
     public func close() {

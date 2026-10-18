@@ -19,7 +19,7 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Ausdrückliches Testdiktat mit Vorschau ohne Einfügen und getrennten Phasenzeiten ergänzen; siehe [Testdiktat](docs/testdiktat.md).
 - [x] Optionale laufende Rohtextvorschau in Segmentreihenfolge ergänzen; siehe [Rohtextvorschau](docs/rohtextvorschau.md).
 - [x] Kurze Audiodateien mit ausdrücklicher Dateiauswahl lokal transkribieren; siehe [Audioimport](docs/audioimport.md).
-- [ ] Begrenzte längere Audiodateien, Drag-and-drop und konkreten Fortschritt ergänzen.
+- [x] Begrenzte längere Audiodateien, Drag-and-drop und konkreten Fortschritt ergänzen.
 - [ ] Explizite gesprochene Formatierung und Bereinigung ausgewählten Textes ergänzen.
 - [ ] Parakeet und Silero gegen den bestehenden Weg messen und geeignete Kandidaten evidenzbasiert integrieren.
 - [ ] Native iPhone-App, TLS-/QR-Kopplung und lokales Offline-Diktat aufbauen.
@@ -27,7 +27,7 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
 [docs/ausgangspruefung-2026-10-16.md](docs/ausgangspruefung-2026-10-16.md) dokumentiert.
-Nächster Schritt: Audioimport bis 30 Minuten/250 MiB mit Drag-and-drop und konkretem Fortschritt. Die offenen
+Nächster Schritt: Gesprochene Formatierung und ausdrückliche Auswahlbereinigung.
 Gerätefälle bleiben bis zu ihrer tatsächlichen Abnahme erhalten.
 
 ## Offene Abnahmen nach dem Review 2026-10-04

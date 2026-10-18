@@ -26,6 +26,7 @@ final class AudioImportWindowController: NSObject, NSWindowDelegate {
     func owns(_ engine: DictationEngine) -> Bool { model.session?.owns(engine) == true }
     func receiveState(_ state: DictationState) { model.session?.receiveState(state) }
     func receiveStage(_ stage: AudioImportStage) { model.session?.receiveStage(stage) }
+    func receiveProgress(_ progress: AudioImportProgress) { model.session?.receiveProgress(progress) }
     func receiveResult(_ result: DictationResult) { model.session?.receiveResult(result) }
     func cancel() { model.cancel() }
     @discardableResult func releaseForRegularStart() -> Bool { model.session?.releaseForRegularStart() ?? true }
@@ -50,10 +51,13 @@ final class AudioImportWindowController: NSObject, NSWindowDelegate {
         panel.allowedContentTypes = [.audio]
         panel.canChooseFiles = true; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
         picker = panel
+        let selection = model.beginSelection()
         panel.beginSheetModal(for: window) { [weak self] response in
             guard let self, self.picker === panel else { return }
             self.picker = nil
-            if response == .OK, self.window?.isVisible == true, let url = panel.url { self.model.select(url) }
+            if response == .OK, self.window?.isVisible == true, let url = panel.url {
+                self.model.completeSelection(selection, url: url)
+            } else { self.model.cancelSelection(selection) }
         }
     }
     func windowWillClose(_ notification: Notification) { picker?.cancel(nil); model.close() }
@@ -66,6 +70,8 @@ final class AudioImportViewModel: ObservableObject {
     @Published private(set) var selectedURL: URL?
     @Published private(set) var allowed = false
     @Published private(set) var note: String?
+    @Published private(set) var selectionError: String?
+    @Published private(set) var isSelecting = false
     private(set) var session: AudioImportSession?
     private let engineProvider: () -> DictationEngine?
     private let configurationProvider: () -> Config
@@ -75,6 +81,8 @@ final class AudioImportViewModel: ObservableObject {
     private let onClosingError: (String) -> Void
     private var timer: Timer?
     private var scopedURL: URL?
+    private var selectionGeneration = UUID()
+    private var isVisible = false
     init(engine: @escaping () -> DictationEngine?, configuration: @escaping () -> Config,
          nextConfiguration: @escaping () -> Config, canStart: @escaping () -> Bool,
          onBegin: @escaping () -> Bool, onClosingError: @escaping (String) -> Void) {
@@ -98,6 +106,7 @@ final class AudioImportViewModel: ObservableObject {
         return L10n.format("audio_import.retention", text, period(policy.audioRetentionDays, zero: "settings.history.manual"))
     }
     func open() {
+        isVisible = true
         ensureSession()
         if reviewed == nil { refresh() }
         if timer == nil {
@@ -109,13 +118,55 @@ final class AudioImportViewModel: ObservableObject {
             timer = value; RunLoop.main.add(value, forMode: .common)
         }
     }
-    func select(_ url: URL) { guard !isActive else { return }; selectedURL = url; refresh() }
+    func beginSelection() -> UUID {
+        selectionGeneration = UUID(); isSelecting = true; selectionError = nil
+        return selectionGeneration
+    }
+    func cancelSelection(_ generation: UUID) {
+        guard selectionGeneration == generation else { return }
+        selectionGeneration = UUID(); isSelecting = false
+    }
+    func cancelPendingSelection() { cancelSelection(selectionGeneration) }
+    func completeSelection(_ generation: UUID, url: URL?) {
+        guard isVisible, !isActive, selectionGeneration == generation else { return }
+        isSelecting = false
+        guard let url, validAudioFile(url) else {
+            selectedURL = nil; refresh(); selectionError = L10n.text("audio_import.invalid_drop"); return
+        }
+        selectedURL = url; refresh()
+    }
+    @discardableResult func acceptDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard isVisible, !isActive else { return false }
+        let generation = beginSelection()
+        guard providers.count == 1, let provider = providers.first,
+              provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else {
+            completeSelection(generation, url: nil); return false
+        }
+        provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { [weak self] item, error in
+            let url: URL?
+            if error != nil { url = nil }
+            else if let value = item as? URL { url = value }
+            else if let data = item as? Data { url = URL(dataRepresentation: data, relativeTo: nil) }
+            else { url = nil }
+            DispatchQueue.main.async { self?.completeSelection(generation, url: url) }
+        }
+        return true
+    }
+    private func validAudioFile(_ url: URL) -> Bool {
+        guard url.isFileURL, url.path.hasPrefix("/"), url.host == nil || url.host == "" || url.host?.lowercased() == "localhost",
+              let type = UTType(filenameExtension: url.pathExtension), type.conforms(to: .audio),
+              let values = try? URL(fileURLWithPath: url.path).resourceValues(forKeys: [.isRegularFileKey, .isReadableKey]),
+              values.isRegularFile == true, values.isReadable == true else { return false }
+        return true
+    }
     func refresh() {
         guard !isActive else { return }
+        selectionGeneration = UUID(); isSelecting = false; selectionError = nil
         ensureSession(); session?.reset(); reviewed = configurationProvider(); allowed = canStart(); note = nil
     }
     func start() {
-        guard !isActive, let reviewed, let url = selectedURL else { return }
+        guard !isActive, !isSelecting, let reviewed, let url = selectedURL else { return }
+        selectionGeneration = UUID()
         ensureSession()
         if url.startAccessingSecurityScopedResource() { scopedURL = url }
         session?.start(file: url, configuration: reviewed, currentConfiguration: configurationProvider(),
@@ -124,6 +175,7 @@ final class AudioImportViewModel: ObservableObject {
     }
     func cancel() { session?.cancel() }
     func close() {
+        isVisible = false; selectionGeneration = UUID(); isSelecting = false; selectionError = nil
         timer?.invalidate(); timer = nil
         session?.close(); reviewed = nil; selectedURL = nil; note = nil
         synchronize()
@@ -157,6 +209,7 @@ final class AudioImportViewModel: ObservableObject {
 struct AudioImportView: View {
     @ObservedObject var model: AudioImportViewModel
     let chooseFile: () -> Void
+    @State private var dropTargeted = false
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.text("audio_import.title")).font(.title2.bold())
@@ -175,6 +228,13 @@ struct AudioImportView: View {
                         .disabled(model.isActive).accessibilityIdentifier("chooseImportFile")
                 }.padding(6)
             }
+            .overlay(RoundedRectangle(cornerRadius: 7).stroke(dropTargeted ? Color.accentColor : Color.clear, lineWidth: 2))
+            .onDrop(of: [UTType.fileURL.identifier], isTargeted: $dropTargeted, perform: model.acceptDrop)
+            Text(L10n.text(model.isSelecting ? "audio_import.selecting" : "audio_import.drop_hint"))
+                .font(.caption).foregroundColor(.secondary).accessibilityIdentifier("importDropHint")
+            if let error = model.selectionError {
+                Text(error).font(.callout).foregroundColor(.red).accessibilityIdentifier("importDropError")
+            }
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     Text(L10n.text("audio_import.limits")).font(.callout)
@@ -190,6 +250,13 @@ struct AudioImportView: View {
                     HStack(spacing: 12) {
                         if model.isActive { ProgressView().controlSize(.small) }
                         Text(L10n.text(statusKey)).font(.headline).accessibilityIdentifier("audioImportStatus")
+                    }
+                    if let progress = model.session?.progress {
+                        VStack(alignment: .leading, spacing: 6) {
+                            if let fraction = progress.fraction { ProgressView(value: fraction) }
+                            Text(progressLabel(progress)).font(.caption).foregroundColor(.secondary)
+                                .accessibilityIdentifier("audioImportProgress")
+                        }
                     }
                     if let error = errorMessage {
                         Text(error).font(.callout).foregroundColor(.red).textSelection(.enabled)
@@ -230,9 +297,12 @@ struct AudioImportView: View {
                     Button(L10n.text("common.cancel")) { model.cancel() }
                         .keyboardShortcut(.cancelAction).disabled(model.state == .cancelling)
                         .accessibilityIdentifier("cancelAudioImport")
+                } else if model.isSelecting {
+                    Button(L10n.text("common.cancel")) { model.cancelPendingSelection() }
+                        .keyboardShortcut(.cancelAction).accessibilityIdentifier("cancelAudioSelection")
                 } else if model.state == .ready {
                     Button(L10n.text("audio_import.start")) { model.start() }
-                        .disabled(!model.allowed || model.selectedURL == nil).accessibilityIdentifier("startAudioImport")
+                        .disabled(!model.allowed || model.isSelecting || model.selectedURL == nil).accessibilityIdentifier("startAudioImport")
                     Button(L10n.text("audio_import.refresh")) { model.refresh() }
                         .accessibilityIdentifier("refreshAudioImport")
                 } else {
@@ -246,6 +316,18 @@ struct AudioImportView: View {
         }.padding(20).environment(\.locale, Locale(identifier: L10n.languageCode))
     }
     private var errorMessage: String? { if case .failed(let message) = model.state { return message }; return nil }
+    private func progressLabel(_ value: AudioImportProgress) -> String {
+        func time(_ seconds: TimeInterval) -> String {
+            let rounded = max(0, Int(seconds)); return String(format: "%d:%02d", rounded / 60, rounded % 60)
+        }
+        if value.stage == .decoding {
+            if let total = value.totalSeconds { return L10n.format("audio_import.decode_progress", time(value.audioSeconds), time(total)) }
+            return L10n.format("audio_import.decode_progress_unknown", time(value.audioSeconds))
+        }
+        let segments = value.completedSegments == 1 ? L10n.text("audio_import.segment_one") :
+            L10n.format("audio_import.segment_many", value.completedSegments)
+        return L10n.format("audio_import.transcribe_progress", time(value.audioSeconds), time(value.totalSeconds ?? 0), segments)
+    }
     private var statusKey: String {
         switch model.state {
         case .ready: return "audio_import.ready"

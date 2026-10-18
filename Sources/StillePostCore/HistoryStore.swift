@@ -51,7 +51,8 @@ public final class HistoryStore: @unchecked Sendable {
         /// Dateiname einer noch nicht nachweislich gelöschten Aufnahme.
         /// Bewusst nur der Name, kein absoluter Pfad — der Basis-Ordner kann sich ändern.
         public var audioFileName: String?
-        /// nil bei älteren Einträgen; false sperrt Retry unvollständiger Arbeitskopien.
+        /// nil bei regulären/älteren Aufnahmen. true/false kennzeichnet geprüfte
+        /// Importkopien; false sperrt Retry unvollständiger oder ungültiger Kopien.
         public var audioIsComplete: Bool?
         /// Dauer der Aufnahme in Sekunden (fürs Anzeigen).
         public var durationSec: Double
@@ -84,7 +85,8 @@ public final class HistoryStore: @unchecked Sendable {
         public var isAudioExpired: Bool { audioExpiresAt.map { $0 <= Date() } == true }
 
         public var canRetry: Bool {
-            audioFileName != nil && audioIsComplete != false && !isDeletionPending && !isAudioExpired
+            audioFileName != nil && audioIsComplete != false &&
+                !(audioIsComplete == true && status == "ok") && !isDeletionPending && !isAudioExpired
         }
 
         public var diagnosticMessage: String? {
@@ -338,14 +340,16 @@ public final class HistoryStore: @unchecked Sendable {
             }
             var input = entry
             if fresh[index].resultMetadata != nil || (fresh[index].manualEditCount ?? 0) > 0 {
-                // Ein verspäteter Pipeline-Snapshot darf nur seinen Audioverweis
-                // fortschreiben. Bestätigte Texte und deren Herkunft gehören dem Editor.
+                // Ein verspäteter Pipeline-Snapshot darf nur Audiodaten und
+                // zugehörige Ungültigkeit fortschreiben. Bestätigte Texte und
+                // deren Herkunft gehören dem Editor.
                 guard entry.status == "ok", Self.sameText(entry.rawText, fresh[index].rawText),
                       entry.audioFileName == nil || entry.audioFileName == fresh[index].audioFileName else {
                     throw PersistenceError.correctionConflict
                 }
                 input = fresh[index]
                 input.audioFileName = entry.audioFileName
+                if entry.audioIsComplete == false { input.errorMessage = entry.errorMessage }
                 input = Self.effectiveEntry(input, stored: entry, now: Date())
             }
             let receipt = Self.effectiveEntry(input, stored: fresh[index], now: Date())
@@ -557,6 +561,9 @@ public final class HistoryStore: @unchecked Sendable {
         var result = entry
         result.textExpiresAt = earlier(entry.textExpiresAt, stored?.textExpiresAt)
         result.audioExpiresAt = earlier(entry.audioExpiresAt, stored?.audioExpiresAt)
+        if entry.audioIsComplete == false || stored?.audioIsComplete == false {
+            result.audioIsComplete = false
+        } else { result.audioIsComplete = entry.audioIsComplete ?? stored?.audioIsComplete }
         if entry.storesText == false || stored?.storesText == false ||
             result.textExpiresAt.map({ $0 <= now }) == true {
             result.storesText = false

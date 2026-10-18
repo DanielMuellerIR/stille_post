@@ -640,7 +640,7 @@
 "audio_import.title" = "Audiodatei transkribieren";
 "audio_import.choose" = "Audiodatei auswählen …";
 "audio_import.select" = "Auswählen";
-"audio_import.limits" = "Bis 5 Minuten und 50 MiB. Unterstützt werden vom System lesbare Audiodateien, zum Beispiel WAV, AAC/m4a und AIFF.";
+"audio_import.limits" = "Bis 30 Minuten und 250 MiB. Unterstützt werden vom System lesbare Audiodateien, zum Beispiel WAV, AAC/m4a und AIFF.";
 "audio_import.audio_policy" = "Die Originaldatei bleibt unverändert. Nur die eigene Arbeitskopie wird nach Erfolg gelöscht; Fehlerkopien bleiben nach den Aufbewahrungsregeln lokal.";
 "audio_import.history" = "Text wird nach den Regeln des sichtbaren Profils im Verlauf gespeichert.";
 "audio_import.private" = "Text bleibt flüchtig; Fehler können textfreie lokale Audioverweise hinterlassen.";
@@ -669,3 +669,12 @@
 "audio_import.file_changed" = "Die Audiodatei wurde während der Vorbereitung geändert. Bitte erneut auswählen.";
 "audio_import.memory_only" = "Nur im Arbeitsspeicher";
 "audio_import.retention" = "Text: %@ · Fehleraudio: %@";
+"audio_import.drop_hint" = "Eine Audiodatei hier ablegen oder auswählen. Der Import startet erst nach Ihrer Bestätigung.";
+"audio_import.selecting" = "Dateiauswahl wird übernommen …";
+"audio_import.invalid_drop" = "Bitte genau eine lesbare lokale Audiodatei auswählen oder ablegen.";
+"audio_import.decode_progress" = "%@ von ca. %@ vorbereitet";
+"audio_import.decode_progress_unknown" = "%@ Audio vorbereitet";
+"audio_import.transcribe_progress" = "%@ von %@ ausgewertet · %@";
+"audio_import.segment_one" = "1 Abschnitt abgeschlossen";
+"audio_import.segment_many" = "%d Abschnitte abgeschlossen";
+"audio_import.already_completed" = "Dieser Import ist bereits abgeschlossen. Für eine neue Transkription die Originaldatei erneut importieren; vorhandener Rohtext und ursprüngliche Ausgabe bleiben erhalten.";

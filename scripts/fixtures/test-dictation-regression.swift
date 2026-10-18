@@ -33,6 +33,9 @@ import Sparkle
                 makeSegmenter: { _ in let value = FixtureSegmenter(); segmenter = value; return value },
                 makeWavWriter: { try WavFileWriter(url: $0) },
                 makeTranscriber: { FixtureTranscriber(counts: counts, language: $0.language, scenario: scenario) },
+                beforeFileDecodeChunk: scenario == "import-decode" ? { _ in
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                } : nil,
                 requestMicrophoneAccess: {
                     counts.permission()
                     if scenario == "delay" { try? await Task.sleep(nanoseconds: 10_000_000_000) }
@@ -53,6 +56,8 @@ import Sparkle
                 if !wrapped {
                     let receive = engine.onResult
                     engine.onResult = { value in counts.delivered(value); receive?(value) }
+                    let receiveProgress = engine.onAudioImportProgress
+                    engine.onAudioImportProgress = { value in counts.progressed(value); receiveProgress?(value) }
                     wrapped = true
                 }
                 let control = root.appendingPathComponent("control.json")
@@ -73,6 +78,7 @@ import Sparkle
                     if value["command"] == "cancel" { app.sendAction(NSSelectorFromString("cancelDictation"), to: delegate, from: nil) }
                     if value["command"] == "open-import" { app.sendAction(NSSelectorFromString("showAudioImport"), to: delegate, from: nil) }
                     if value["command"] == "open-test" { app.sendAction(NSSelectorFromString("showTestDictation"), to: delegate, from: nil) }
+                    if value["command"] == "open-history" { app.sendAction(NSSelectorFromString("showHistory"), to: delegate, from: nil) }
                     if value["command"] == "profile" {
                         let item = NSMenuItem(); item.representedObject = Config.load().profiles.last?.id.uuidString
                         app.sendAction(NSSelectorFromString("selectProfile:"), to: delegate, from: item)
@@ -107,15 +113,23 @@ private final class FixtureCounts {
     private let lock = NSLock()
     private var recorders = 0, transcriptions = 0, cleanup = 0, warmups = 0, results = 0, permissions = 0
     private var rawFallback = false
+    private var progress: [[String: Any]] = []
     func recorder() { lock.withLock { recorders += 1 } }
     func permission() { lock.withLock { permissions += 1 } }
-    func transcribed() { lock.withLock { transcriptions += 1 } }
+    func transcribed() -> Int { lock.withLock { transcriptions += 1; return transcriptions } }
     func cleaned() { lock.withLock { cleanup += 1 } }
     func warmed() { lock.withLock { warmups += 1 } }
     func delivered(_ result: DictationResult) { lock.withLock { results += 1; rawFallback = result.entry?.cleanupFellBack == true } }
+    func progressed(_ value: AudioImportProgress) {
+        lock.withLock {
+            progress.append(["stage": String(describing: value.stage), "audioSeconds": value.audioSeconds,
+                "totalSeconds": value.totalSeconds ?? 0, "segments": value.completedSegments])
+            if progress.count > 120 { progress.removeFirst(progress.count - 120) }
+        }
+    }
     var snapshot: [String: Any] {
         lock.withLock { ["recorders":recorders,"transcriptions":transcriptions,"cleanupCalls":cleanup,
-                        "warmups":warmups,"results":results,"rawFallback":rawFallback,"permissions":permissions] }
+                        "warmups":warmups,"results":results,"rawFallback":rawFallback,"permissions":permissions,"importProgress":progress] }
     }
 }
 private final class FixtureRecorder: DictationRecorder {
@@ -152,7 +166,8 @@ private final class FixtureTranscriber: DictationTranscriber {
     init(counts: FixtureCounts, language: String, scenario: String) { self.counts = counts; self.language = language; self.scenario = scenario }
     func isReachable() async -> Bool { true }
     func transcribe(samples: [Float]) async throws -> String {
-        counts.transcribed()
+        let call = counts.transcribed()
+        if scenario == "import-failure", call == 1 { throw FixtureFailure.device }
         if scenario.hasPrefix("preview") {
             let number = Int(((samples.first ?? 0) * 10).rounded())
             try await Task.sleep(nanoseconds: number == 1 ? 600_000_000 : 100_000_000)
@@ -160,7 +175,7 @@ private final class FixtureTranscriber: DictationTranscriber {
             return language == "en" ? "Segment \(number): do not restart." : "Abschnitt \(number): nicht neu starten."
         }
         if scenario.hasPrefix("import") {
-            try await Task.sleep(nanoseconds: 200_000_000)
+            try await Task.sleep(nanoseconds: scenario == "import-slow" ? 3_000_000_000 : 200_000_000)
             return language == "en" ? "Imported synthetic audio: 128, not 256." : "Importiertes künstliches Audio: 128, nicht 256."
         }
         try await Task.sleep(nanoseconds: 200_000_000)
