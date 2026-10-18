@@ -40,9 +40,9 @@ public final class HistoryStore: @unchecked Sendable {
         public var id: UUID
         /// Zeitpunkt des Diktats (ISO-8601 beim Anzeigen formatiert).
         public var date: Date
-        /// Roher Whisper-Text (vor der Bereinigung). Bei Fehlschlag leer.
+        /// Roher Whisper-Text; bei Fehlern gegebenenfalls bereits erkannte Teilphasen.
         public var rawText: String
-        /// Bereinigter (= eingefügter) Text. Bei Fehlschlag leer.
+        /// Ausgabe; bei Fehlern gegebenenfalls unbereinigter Teiltext ohne Einfügen.
         public var cleanText: String
         /// "ok" oder "failed".
         public var status: String

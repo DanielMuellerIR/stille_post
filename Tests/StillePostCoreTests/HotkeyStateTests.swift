@@ -83,6 +83,19 @@ final class HotkeyStateTests: XCTestCase {
         XCTAssertEqual(input.handle(.pressed, mode: .hold, state: .idle), .start)
     }
 
+    func testHoldReleaseAndLimitFinishPausedAndResumingSessions() {
+        for state in [DictationState.paused, .resuming] {
+            for event in [DictationHotkeyState.Input.released, .deadline, .interrupted] {
+                var input = DictationHotkeyState()
+                _ = input.handle(.pressed, mode: .hold, state: .idle)
+                input.didChangeState(state)
+                XCTAssertTrue(input.ownsHold)
+                XCTAssertEqual(input.handle(event, mode: .hold, state: state), event == .released ? .stop : (event == .deadline ? .stopAtLimit : .cancel))
+                XCTAssertEqual(input.handle(event, mode: .hold, state: state), .none)
+            }
+        }
+    }
+
     func testHoldOwnershipSurvivesModeChangeUntilRelease() {
         var input = DictationHotkeyState()
         _ = input.handle(.pressed, mode: .hold, state: .idle)

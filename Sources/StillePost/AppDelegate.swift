@@ -154,6 +154,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             overlay.recordingReason = prospectiveConfiguration.requestProfileSelection?.label ?? ""
             overlay.recordingInstruction = config.hotkeyMode == .hold ? L10n.text("hotkey.hold.release") : ""
             overlay.show(.recording)
+        case "paused":
+            overlay.recordingContext = L10n.format("profiles.recording", prospectiveConfiguration.profileLabel, prospectiveConfiguration.whisper.language)
+            overlay.recordingReason = prospectiveConfiguration.requestProfileSelection?.label ?? ""
+            overlay.recordingInstruction = config.hotkeyMode == .hold ? L10n.text("hotkey.hold.release") : ""
+            overlay.show(.paused)
+        case "resuming":
+            overlay.show(.starting(hold: config.hotkeyMode == .hold, resuming: true))
         case "hold-unavailable":
             overlay.show(.failure(L10n.text("hotkey.hold.unavailable")))
         case "starting":
@@ -273,6 +280,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             if self.engine.state == .starting { self.cancelDictation() }
             else { self.engine.toggle() }
         }
+        overlay.onPauseResume = { [weak self] in self?.togglePauseResume() }
         overlay.levelProvider = { [weak self] in
             guard let self else { return (-120, 0) }
             return (self.engine.currentLevelDb, self.engine.recordingDuration)
@@ -612,6 +620,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             menu.addItem(NSMenuItem(title: L10n.format("hotkey.hold.menu", HotkeyManager.describe(config.hotkey)),
                 action: nil, keyEquivalent: ""))
         }
+        let pauseItem = NSMenuItem(title: L10n.text("recording.pause"), action: #selector(togglePauseResume), keyEquivalent: "")
+        pauseItem.target = self
+        menu.addItem(pauseItem)
         let cancelItem = NSMenuItem(title: L10n.text("menu.cancel_recording"),
                                     action: #selector(cancelDictation), keyEquivalent: "")
         cancelItem.target = self
@@ -684,6 +695,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Mikrofon-Nutzung (z. B. Videocall) ein fast identisches Mikrofon in der
         // Menüleiste, was wie ein doppeltes Stille-Post-Icon wirkt.
         case .idle: (symbol, description) = ("waveform.and.mic", L10n.text("status.ready"))
+        case .paused: (symbol, description) = ("pause.circle.fill", L10n.text("status.paused"))
+        case .resuming: (symbol, description) = ("mic.badge.plus", L10n.text("status.resuming"))
         case .starting: (symbol, description) = ("mic.badge.plus", L10n.text("status.starting"))
         case .recording: (symbol, description) = ("record.circle.fill", L10n.text("status.recording"))
         // Eingekreist statt "waveform", damit Verarbeitung nicht wie das neue
@@ -702,7 +715,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             button.contentTintColor = nil
         }
         button.image = image
-        let effective = (state == .starting || state == .recording || state == .processing)
+        let effective = (state == .starting || state == .recording || state == .paused || state == .resuming || state == .processing)
             ? (engine?.sessionConfiguration ?? prospectiveConfiguration) : prospectiveConfiguration
         button.toolTip = description + " · " + effective.profileLabel + " · " + effective.whisper.language
             + " · " + (effective.requestProfileSelection?.label ?? "")
@@ -730,6 +743,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             case .starting:
                 self.pasteTarget = PasteService.captureTarget()
                 self.overlay.show(.starting(hold: self.dictationHotkeyState.ownsHold))
+            case .resuming:
+                self.overlay.show(.starting(hold: self.dictationHotkeyState.ownsHold, resuming: true))
+            case .paused:
+                self.playSound(custom: "dictation-stop", fallback: "Bottle")
+                self.overlay.show(.paused)
             case .recording:
                 self.overlay.recordingContext = L10n.format("profiles.recording", self.engine.sessionConfiguration.profileLabel,
                     self.engine.sessionConfiguration.whisper.language)
@@ -802,6 +820,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         guard !terminationPending else { return false }
+        if menuItem.action == #selector(togglePauseResume) {
+            menuItem.title = L10n.text(engine.state == .paused ? "recording.resume" : "recording.pause")
+            return engine.state == .recording || engine.state == .paused
+        }
         if menuItem.action == #selector(togglePrivateHistory) { return config.resolvedForRequest().history.storeText }
         return menuItem.action != #selector(showLastResult) ||
             ((resultMemory.last != nil || resultPreview.isVisible) && canRecallResult)
@@ -867,6 +889,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
+    @objc private func togglePauseResume() {
+        if engine.state == .recording { engine.pause() }
+        else if engine.state == .paused { engine.resume() }
+    }
     @objc private func toggleDictation() { engine.toggle() }
     @objc private func cancelDictation() {
         pasteTarget = nil

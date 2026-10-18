@@ -4,8 +4,9 @@ import Foundation
 ///
 /// Kernidee für die Geschwindigkeit der App: Wir warten NICHT bis zum Ende des
 /// Diktats, sondern schneiden den Audio-Strom live an Sprechpausen in Segmente.
-/// Jedes fertige Segment wird sofort transkribiert und bereinigt, während die
-/// Aufnahme weiterläuft. Beim Stopp bleibt nur noch das letzte Segment übrig —
+/// Jedes fertige Segment wird sofort lokal transkribiert, während die Aufnahme
+/// weiterläuft. Die Bereinigung erfolgt einmal über den vollständigen Text.
+/// Beim Stopp bleibt meist nur noch das letzte Segment übrig —
 /// die Wartezeit ist damit fast konstant kurz, egal wie lange man geredet hat.
 ///
 /// Die Erkennung ist bewusst einfach (Lautstärke-Schwelle statt neuronalem VAD):

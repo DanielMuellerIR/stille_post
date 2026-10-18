@@ -5,6 +5,8 @@ public enum DictationState: Equatable {
     case idle                    // wartet auf den Hotkey
     case starting                // Dienste hochfahren / Mikro öffnen
     case recording               // Aufnahme läuft
+    case paused                  // Mikrofon freigegeben, bisherige Phasen bleiben erhalten
+    case resuming                // Dienste/Startsignal, Mikrofon noch geschlossen
     case processing              // Aufnahme beendet, letzte Segmente laufen noch
     case error(String)           // etwas ist schiefgegangen (Meldung fürs Overlay)
 }
@@ -61,8 +63,8 @@ public final class DictationEngine {
     public var onCleanupPrimaryRetry: (() -> Void)?
     /// Live-Pegel in dBFS für die Anzeige (aufgerufen vom Audio-Thread!).
     public var currentLevelDb: Double { segmenter?.currentLevelDb ?? -120 }
-    /// Laufende Aufnahmedauer in Sekunden.
-    public var recordingDuration: TimeInterval { recordingStart.map { Date().timeIntervalSince($0) } ?? 0 }
+    /// Erfasste Audiozeit; Pause und Fortsetzungsvorbereitung zählen nicht mit.
+    public var recordingDuration: TimeInterval { audioSession?.duration ?? 0 }
 
     public private(set) var state: DictationState = .idle
 
@@ -92,13 +94,17 @@ public final class DictationEngine {
     private var recorder: (any DictationRecorder)?
     private var segmenter: (any DictationSegmenter)?
     private var wavWriter: (any DictationWavWriter)?
-    private var recordingStart: Date?
+    private var audioSession: RecordingAudioSession?
+    private var recordingPhaseID: UUID?
+    private var closingAudioPhase = false
+    private var startAttemptGeneration: UInt64 = 0
+    private var sessionHoldCondition: () -> Bool = { true }
     private var sessionTask: Task<Void, Never>?
     private let retryLock = NSLock()
     private var retryTasks: [UUID: Task<HistoryStore.Entry, Error>] = [:]
     private var shuttingDown = false
     public var hasInFlightRequests: Bool {
-        state == .starting || state == .recording || state == .processing || retryLock.withLock { !retryTasks.isEmpty }
+        state == .starting || state == .recording || state == .paused || state == .resuming || state == .processing || retryLock.withLock { !retryTasks.isEmpty }
     }
     private var historyTasks: [UUID: Task<Void, Never>] = [:]
     /// Jede Start-/Abbruchfolge bekommt eine neue Generation. Ein alter Task darf
@@ -156,7 +162,7 @@ public final class DictationEngine {
         switch state {
         case .idle, .error:
             start()
-        case .recording:
+        case .recording, .paused, .resuming:
             stop()
         case .starting, .processing:
             break  // Übergangszustände: Tastendruck ignorieren statt Chaos
@@ -179,209 +185,226 @@ public final class DictationEngine {
         sessionRequest = requests.snapshot(appBundleID: requestAppBundleID?())
         setState(.starting)
 
+        audioSession = RecordingAudioSession()
+        sessionHoldCondition = shouldContinue
+        prepareRecording(generation: generation, resuming: false)
+    }
+
+    public func pause() {
+        guard state == .recording else { return }
+        if let error = closeAudioPhase() {
+            failRecording(error, generation: sessionGeneration)
+            return
+        }
+        segmenter?.flush()
+        segmenter = nil
+        recordingFailure = nil
+        setState(.paused)
+    }
+
+    public func resume() {
+        guard state == .paused else { return }
+        setState(.resuming)
+        prepareRecording(generation: sessionGeneration, resuming: true)
+    }
+
+    private func prepareRecording(generation: UInt64, resuming: Bool) {
+        startAttemptGeneration &+= 1
+        let attempt = startAttemptGeneration
         Task { @MainActor in
-            guard self.canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
-            // 1. Mikrofon-Berechtigung sicherstellen (System fragt beim ersten Mal).
+            guard self.canContinueStart(generation: generation, attempt: attempt, resuming: resuming) else { return }
             let permitted = await self.requestMicrophoneAccess()
-            guard self.canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
+            guard self.canContinueStart(generation: generation, attempt: attempt, resuming: resuming) else { return }
             guard permitted else {
-                self.setState(.error(L10n.text("core.dictation.microphone_permission")))
+                self.failPreparation(NSError(domain: "StillePost", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: L10n.text("core.dictation.microphone_permission")]),
+                    generation: generation, resuming: resuming)
                 return
             }
-            // 2. whisper-server sicherstellen (läuft er schon, kostet das nur einen Ping).
             do {
                 try await self.serverManager.ensureRunning(reachability: self.sessionRequest.transcriber)
             } catch {
-                guard self.canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
-                self.setState(.error(error.localizedDescription))
+                guard self.canContinueStart(generation: generation, attempt: attempt, resuming: resuming) else { return }
+                self.failPreparation(error, generation: generation, resuming: resuming)
                 return
             }
-            // shutdown()/Einstellungswechsel kann während des Server-Starts den
-            // Zustand zurücksetzen. Dann weder Modell noch Startton der alten Engine
-            // unnötig auslösen.
-            guard self.canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
-            // 3. Bereinigungs-Modell VORWÄRMEN — lädt parallel, während man spricht.
-            self.sessionRequest.cleanup.warmUp()
-            // 4. Startsignal vollständig VOR der Aufnahme abspielen. Unsere kurzen
-            //    Sounds liegen deutlich über der VAD-Schwelle; in der Aufnahme
-            //    würden sie deshalb als Sprache an Whisper geschickt.
+            guard self.canContinueStart(generation: generation, attempt: attempt, resuming: resuming) else { return }
+            if !resuming { self.sessionRequest.cleanup.warmUp() }
             await self.onBeforeRecordingStart?()
-            // Wurde die Engine während des asynchronen Startsignals beendet oder
-            // neu aufgebaut, darf der alte Startvorgang kein Mikrofon mehr öffnen.
-            guard self.canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
-            // 5. Aufnahme wirklich starten.
-            self.beginRecording(generation: generation, onlyWhile: shouldContinue)
+            guard self.canContinueStart(generation: generation, attempt: attempt, resuming: resuming) else { return }
+            self.beginRecording(generation: generation, attempt: attempt, resuming: resuming)
         }
     }
 
-    private func canContinueStart(generation: UInt64, onlyWhile shouldContinue: () -> Bool) -> Bool {
-        guard isCurrentSession(generation), state == .starting, !Task.isCancelled else { return false }
+    private func failPreparation(_ error: Error, generation: UInt64, resuming: Bool) {
+        if resuming { failRecording(error, generation: generation) }
+        else { setState(.error(error.localizedDescription)) }
+    }
+
+    private func canContinueStart(generation: UInt64, attempt: UInt64, resuming: Bool) -> Bool {
+        guard isCurrentSession(generation), startAttemptGeneration == attempt,
+              state == (resuming ? .resuming : .starting), !Task.isCancelled else { return false }
         // Carbon-Freigabe und Poll-Timer können hinter einer Startfortsetzung
         // liegen. Die physische Bedingung gilt auch ohne zugestellten Callback.
-        guard shouldContinue() else { cancel(); return false }
+        guard sessionHoldCondition() else {
+            if resuming { stop() } else { cancel() }
+            return false
+        }
         return true
     }
 
-    private func beginRecording(generation: UInt64, onlyWhile shouldContinue: () -> Bool) {
-        guard canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
+    private func beginRecording(generation: UInt64, attempt: UInt64, resuming: Bool) {
+        guard canContinueStart(generation: generation, attempt: attempt, resuming: resuming),
+              let audioSession else { return }
         let segmenter = makeSegmenter(sessionRequest.config.vad)
         let recorder = makeRecorder(sessionRequest.config.audio)
-        let collector = SegmentCollector()
+        let collector = segmentResults ?? SegmentCollector()
+        let segmentTasks = self.segmentTasks ?? RecordingSegmentTasks()
+        segmentResults = collector
+        self.segmentTasks = segmentTasks
         let recordingFailure = RecordingFailure()
         self.recordingFailure = recordingFailure
-        let segmentTasks = RecordingSegmentTasks()
-        self.segmentTasks = segmentTasks
-        segmentResults = collector
-
-        // Komplette Aufnahme zusätzlich als WAV auf Platte puffern: Schlägt später
-        // irgendetwas fehl, ist das Audio nicht weg ("Erneut transkribieren").
-        // Nach ERFOLGREICHER Transkription wird die Datei sofort gelöscht.
-        let wavURL = history.newRecordingURL()
         let writer: any DictationWavWriter
-        do {
-            writer = try makeWavWriter(wavURL)
-        } catch {
-            segmentResults = nil
-            setState(.error(L10n.format(
-                "core.dictation.audio_writer_start_failed", wavURL.path,
-                error.localizedDescription
-            )))
-            return
+        if let existing = wavWriter { writer = existing }
+        else {
+            let wavURL = history.newRecordingURL()
+            do { writer = try makeWavWriter(wavURL) }
+            catch {
+                segmentResults = nil
+                setState(.error(L10n.format("core.dictation.audio_writer_start_failed", wavURL.path, error.localizedDescription)))
+                return
+            }
+            wavWriter = writer
         }
-        wavWriter = writer
-
+        // Vor der bestätigten Fortsetzung darf auch ein synchron startender
+        // Recorder keine neue Phase an die vorhandene Aufnahme anhängen.
+        let phase = audioSession.beginPhase(acceptingSamples: !resuming)
+        recordingPhaseID = phase
         let transcriber = sessionRequest.transcriber
-        // Fertige Segmente sofort transkribieren (läuft parallel weiter). Die
-        // Bereinigung passiert absichtlich NICHT hier, sondern einmal am Ende über
-        // den Gesamttext — nur so kann das LLM Satzgrenzen zwischen Segmenten
-        // reparieren statt jedes Fragment als eigenen Satz zu behandeln.
-        // `collector` wird hier bewusst als lokaler Wert eingefangen und NICHT
-        // über `self.segmentResults` gelesen: Der Callback läuft auf dem
-        // Audio-Thread, während Start, Stopp und Abbruch dasselbe Feld auf dem
-        // Hauptthread ersetzen. Neben dem Datenrennen konnte ein verspätetes
-        // Segment so im Sammler einer schon neu begonnenen Aufnahme landen.
         segmenter.onSegment = { segment in
-            // Reine Stille-Segmente überspringen: Whisper bekommt sie NIE zu sehen —
-            // das ist die Abwesenheits-/Stille-Erkennung gegen Halluzinationen.
             guard segment.hadSpeech else { return }
             segmentTasks.start(collector: collector) {
                 try await transcriber.transcribe(samples: segment.samples)
             }
         }
-
-        // Abwesenheitserkennung: lange Stille -> Aufnahme automatisch beenden.
         segmenter.onAutoStop = { [weak self] in
             DispatchQueue.main.async {
-                guard let self, self.isCurrentSession(generation) else { return }
+                guard let self, self.isCurrentSession(generation),
+                      self.recordingPhaseID == phase, self.state == .recording else { return }
                 self.stop()
             }
         }
-
-        // Audio-Strom: an Segmentierer UND WAV-Datei verteilen.
         recorder.onSamples = { samples in
-            segmenter.process(samples)
-            // Der Writer merkt sich den ersten Fehler unter einem Lock. Der
-            // Audio-Thread darf nicht blockierend UI-Zustand ändern; `stop()`
-            // holt denselben Fehler beim Finalisieren sichtbar nach.
-            do { try writer.append(samples) } catch {}
+            audioSession.consume(samples, in: phase) {
+                segmenter.process(samples)
+                do { try writer.append(samples) } catch {}
+            }
         }
-
         recorder.onFailure = { [weak self] error in
-            // Das Fehlersignal wird sofort festgehalten. Ein unmittelbar folgender
-            // Stopp darf nicht vorher den normalen Erfolgsweg starten.
             recordingFailure.record(error)
             if Thread.isMainThread {
-                self?.failRecording(error, generation: generation)
+                guard let self, self.recordingPhaseID == phase, !self.closingAudioPhase,
+                      self.state == .recording else { return }
+                self.failRecording(error, generation: generation)
             } else {
                 DispatchQueue.main.async {
-                    self?.failRecording(error, generation: generation)
+                    guard let self, self.recordingPhaseID == phase, self.state == .recording else { return }
+                    self.failRecording(error, generation: generation)
                 }
             }
         }
-
-        guard canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
-        do {
-            try recorder.start()
-        } catch {
-            wavWriter = nil
-            self.segmentTasks?.cancel()
-            self.segmentTasks = nil
-            self.recordingFailure = nil
-            segmentResults = nil
-            let startError = error
-            do {
-                try writer.finish()
-                // Der Recorder kann schon Samples geliefert haben, bevor sein
-                // Start scheitert. Deshalb auch hier keine Diagnose-WAV löschen.
-                setState(.error(L10n.format(
-                    "core.dictation.recording_start_failed_retained", wavURL.path,
-                    startError.localizedDescription
-                )))
-            } catch {
-                setState(.error(L10n.format(
-                    "core.dictation.audio_write_failed", wavURL.path, error.localizedDescription
-                )))
+        guard canContinueStart(generation: generation, attempt: attempt, resuming: resuming) else { return }
+        do { try recorder.start() }
+        catch {
+            if resuming {
+                self.recorder = recorder
+                failRecording(error, generation: generation)
+            } else {
+                audioSession.closePhase()
+                recordingPhaseID = nil
+                wavWriter = nil
+                self.segmentTasks?.cancel()
+                self.segmentTasks = nil
+                self.recordingFailure = nil
+                segmentResults = nil
+                let startError = error
+                do {
+                    try writer.finish()
+                    setState(.error(L10n.format("core.dictation.recording_start_failed_retained", writer.url.path, startError.localizedDescription)))
+                } catch {
+                    setState(.error(L10n.format("core.dictation.audio_write_failed", writer.url.path, error.localizedDescription)))
+                }
             }
             return
         }
-
         self.recorder = recorder
         self.segmenter = segmenter
-        guard canContinueStart(generation: generation, onlyWhile: shouldContinue) else { return }
-        self.recordingStart = Date()
+        guard canContinueStart(generation: generation, attempt: attempt, resuming: resuming) else { return }
+        audioSession.acceptSamples(in: phase)
         setState(.recording)
-        if let error = recordingFailure.error {
+        if recordingPhaseID == phase, state == .recording, let error = recordingFailure.error {
             failRecording(error, generation: generation)
         }
     }
 
+    private func closeAudioPhase() -> Error? {
+        audioSession?.closePhase()
+        let failure = recordingFailure
+        closingAudioPhase = true
+        recorder?.stop()
+        recorder = nil
+        closingAudioPhase = false
+        recordingPhaseID = nil
+        return failure?.error
+    }
+
     /// Ein unterbrochenes Mikrofon darf nicht den normalen Stopp auslösen:
     /// dessen Flush und Bereinigung würden aus einer Teilaufnahme einen Erfolg machen.
-    private func failRecording(_ error: Error, generation: UInt64) {
-        guard isCurrentSession(generation), state == .recording else { return }
+    private func failRecording(_ error: Error, generation: UInt64, writerAlreadyFailed: Bool = false) {
+        guard isCurrentSession(generation), state == .recording || state == .paused || state == .resuming else { return }
+        _ = closeAudioPhase()
         let duration = recordingDuration
+        startAttemptGeneration &+= 1
         sessionGeneration &+= 1
         let failureGeneration = sessionGeneration
         sessionTask?.cancel()
         sessionTask = nil
+        let collector = segmentResults
         segmentTasks?.cancel()
         segmentTasks = nil
         recordingFailure = nil
-        recorder?.stop()
-        recorder = nil
         segmenter = nil
         segmentResults = nil
         let writer = wavWriter
         wavWriter = nil
-        // Die Fehleraufnahme gehört ab jetzt zur Diagnose, nicht mehr zum
-        // normalen Abbruchpfad, der aktive WAV-Dateien löschen darf.
         processingWavURL = nil
-        let message = error.localizedDescription
-        do {
-            try writer?.finish()
-        } catch {
-            setState(.error(L10n.format(
-                "core.dictation.audio_write_failed", writer?.url.path ?? "–",
-                error.localizedDescription
-            )))
-            return
+        var message = error.localizedDescription
+        var validAudio = !writerAlreadyFailed
+        if validAudio {
+            do { try writer?.finish() }
+            catch {
+                validAudio = false
+                message = L10n.format("core.dictation.audio_write_failed", writer?.url.path ?? "–", error.localizedDescription)
+            }
         }
         setState(.error(message))
-        let entry = sessionEntry(HistoryStore.Entry(
-            rawText: "", cleanText: "", status: "failed", errorMessage: message,
-            audioFileName: writer?.url.lastPathComponent, durationSec: duration
-        ))
-        // Auch bei neuer Aufnahme bleibt der alte Fehlereintrag notwendig. Nur
-        // seine verspätete UI-Meldung darf nicht den neuen Zustand überschreiben.
+        let policy = sessionRequest.config.history
+        let finalMessage = message
+        let audioName = validAudio ? writer?.url.lastPathComponent : nil
+        // Schon erkannte Phasen bleiben als unbereinigter Teiltext erhalten.
+        // Die Politik muss vor dem Await feststehen, auch bei sofortigem Neustart.
         trackHistoryWork { @MainActor in
-            do {
-                try await self.history.appendAsync(entry)
-            } catch {
+            let raw = Self.joinSegments(await collector?.completedTexts() ?? [])
+            guard audioName != nil || !raw.isEmpty else { return }
+            let entry = policy.applying(to: HistoryStore.Entry(
+                rawText: raw, cleanText: raw, status: "failed", errorMessage: finalMessage,
+                audioFileName: audioName, durationSec: duration,
+                cleanupFellBack: true, cleanupFallbackReason: finalMessage
+            ))
+            do { try await self.history.appendAsync(entry) }
+            catch {
                 guard self.isCurrentSession(failureGeneration) else { return }
-                self.setState(.error(L10n.format(
-                    "core.dictation.failure_history_write_failed", writer?.url.path ?? "–",
-                    error.localizedDescription
-                )))
+                self.setState(.error(L10n.format("core.dictation.failure_history_write_failed", writer?.url.path ?? "–", error.localizedDescription)))
             }
         }
     }
@@ -389,67 +412,35 @@ public final class DictationEngine {
     // MARK: - Aufnahme stoppen + Ergebnis bauen
 
     public func stop() {
-        guard state == .recording, let recorder, let segmenter else { return }
-        let failureSignal = recordingFailure
-        if let error = failureSignal?.error {
+        guard state == .recording || state == .paused || state == .resuming else { return }
+        startAttemptGeneration &+= 1
+        if let error = closeAudioPhase() {
             failRecording(error, generation: sessionGeneration)
             return
         }
         let duration = recordingDuration
-
-        // Mikrofon zuerst schließen, erst danach den Verarbeitungszustand melden:
-        // Die App spielt bei `.processing` den Stoppton. In umgekehrter Reihenfolge
-        // wurde dieser Ton noch aufgenommen und als vermeintliche Sprache erkannt.
-        recorder.stop()
-        self.recorder = nil
-        // Auch während des Geräte-Stopps kann der Audio-Thread noch einen
-        // Fehler melden. Erst danach darf der normale Verarbeitungsweg starten.
-        if let error = failureSignal?.error {
-            failRecording(error, generation: sessionGeneration)
+        segmenter?.flush()
+        segmenter = nil
+        let writer = wavWriter
+        do { try writer?.finish() }
+        catch {
+            let message = L10n.format("core.dictation.audio_write_failed", writer?.url.path ?? "–", error.localizedDescription)
+            failRecording(NSError(domain: "StillePost", code: 1, userInfo: [NSLocalizedDescriptionKey: message]),
+                generation: sessionGeneration, writerAlreadyFailed: true)
             return
         }
         recordingFailure = nil
-        setState(.processing)
-        segmenter.flush()  // letztes angefangenes Segment noch ausliefern
-        self.segmenter = nil
-
-        let writer = wavWriter
-        self.wavWriter = nil
+        wavWriter = nil
         processingWavURL = writer?.url
-        let wavURL: URL?
-        do {
-            try writer?.finish()
-            wavURL = writer?.url
-        } catch {
-            // Unvollständiges Audio als Diagnose behalten, aber niemals als
-            // angeblich erneut transkribierbare Aufnahme in den Verlauf hängen.
-            // Die Datei bleibt absichtlich liegen; deshalb hier auch kein
-            // Verweis, den ein späterer Abbruch wegräumen würde.
-            processingWavURL = nil
-            segmentResults = nil
-            sessionGeneration &+= 1
-            segmentTasks?.cancel()
-            segmentTasks = nil
-            sessionTask?.cancel()
-            sessionTask = nil
-            let retainedPath = writer?.url.path ?? "–"
-            setState(.error(L10n.format(
-                "core.dictation.audio_write_failed", retainedPath, error.localizedDescription
-            )))
-            return
-        }
-
+        let wavURL = writer?.url
         guard let collector = segmentResults else {
-            // Heute unerreichbar: `beginRecording` setzt den Sammler, bevor es
-            // `.recording` meldet, und der Wächter oben verlangt genau diesen
-            // Zustand. Ohne das Zurücksetzen bliebe die Maschine hier aber für
-            // immer in `.processing` stehen — `toggle()` ignoriert diesen Zustand,
-            // die App wäre bis zum Neustart taub. Ein Wächter darf keinen
-            // Endzustand hinterlassen, aus dem es keinen Weg zurück gibt.
             setState(.idle)
             return
         }
         segmentResults = nil
+        // Erst nach geschlossener Hardware und abgeschlossener WAV darf die App
+        // ihr Stoppsignal spielen. Pausen haben dieselbe Mikrofon-Grenze.
+        setState(.processing)
 
         let generation = sessionGeneration
         sessionTask?.cancel()
@@ -470,7 +461,7 @@ public final class DictationEngine {
     }
 
     /// `@MainActor` ist hier Pflicht und kein Beiwerk: Die Funktion liest und
-    /// schreibt `sessionGeneration`, `state` und `recordingStart` — dieselben
+    /// schreibt `sessionGeneration`, `state` und den Aufnahme-Lifecycle — dieselben
     /// Felder, die `start()`, `stop()` und `cancel()` auf dem Hauptthread
     /// anfassen. Als `nonisolated async`-Funktion lief sie auf dem globalen
     /// Concurrency-Executor; Zustandswechsel und der Abbruch-Wächter waren damit
@@ -734,10 +725,12 @@ public final class DictationEngine {
     /// Bricht eine laufende Aufnahme ab, ohne Text zu erzeugen (Menüpunkt "Abbrechen").
     public func cancel() {
         let priorState = state
+        _ = closeAudioPhase()
+        startAttemptGeneration &+= 1
         let duration = recordingDuration
         let discardsActiveAudio: Bool
         switch priorState {
-        case .starting, .recording, .processing:
+        case .starting, .recording, .paused, .resuming, .processing:
             discardsActiveAudio = true
         case .idle, .error:
             discardsActiveAudio = false
@@ -785,7 +778,7 @@ public final class DictationEngine {
                 }
             }
         }
-        recordingStart = nil
+        audioSession = nil
         if let deletionFailure {
             setState(.error(L10n.format(
                 "core.history.audio_delete_failed", deletionFailure.localizedDescription
@@ -975,8 +968,9 @@ public final class DictationEngine {
     }
 
     private func setState(_ newState: DictationState) {
-        if case .recording = newState {} else if case .starting = newState {} else {
-            recordingStart = nil
+        switch newState {
+        case .starting, .recording, .paused, .resuming: break
+        case .idle, .error, .processing: audioSession = nil
         }
         state = newState
         Self.onMain { self.onStateChange?(newState) }
@@ -1073,6 +1067,8 @@ actor SegmentCollector {
             continuation.resume()
         }
     }
+
+    func completedTexts() -> [String] { slots.compactMap { $0 } }
 
     /// Wartet, bis ALLE reservierten Segmente fertig sind, und liefert die Slots.
     /// (Zählt über reservierte Plätze, nicht über gestartete Tasks — damit kann kein

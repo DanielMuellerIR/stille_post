@@ -22,7 +22,7 @@ public struct DictationHotkeyState {
                 guard canReadKeyboardState else { return .unavailable }
                 ownsHold = true
                 return .start
-            case .starting, .recording, .processing: return .none
+            case .starting, .recording, .paused, .resuming, .processing: return .none
             }
         case .released, .interrupted, .deadline:
             if input == .released { isPressed = false }
@@ -30,7 +30,7 @@ public struct DictationHotkeyState {
             ownsHold = false
             switch state {
             case .starting: return input == .deadline ? .cancelAtLimit : .cancel
-            case .recording:
+            case .recording, .paused, .resuming:
                 if input == .interrupted { return .cancel }
                 return input == .deadline ? .stopAtLimit : .stop
             case .idle, .processing, .error: return .none
@@ -40,7 +40,7 @@ public struct DictationHotkeyState {
 
     public mutating func didChangeState(_ state: DictationState) {
         switch state {
-        case .starting, .recording: break
+        case .starting, .recording, .paused, .resuming: break
         case .idle, .processing, .error: ownsHold = false
         }
     }

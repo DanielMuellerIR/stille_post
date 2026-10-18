@@ -30,6 +30,8 @@ Manage profiles for language, dictionary, cleanup and retention in Settings, ass
 
 Choose Toggle or Hold to talk for the dictation hotkey in Settings. See [hold to talk](docs/gedrueckthalten.md) (German).
 
+Pause and resume longer dictations from the menu or recording overlay. See [pause and resume](docs/aufnahme-pausieren.md) (German).
+
 ## Ready in five minutes
 
 The signed app package runs on **Apple Silicon Macs with macOS 13 or later**.

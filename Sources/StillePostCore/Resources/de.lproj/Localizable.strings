@@ -512,3 +512,13 @@
 "hotkey.hold.menu" = "Hotkey gedrückt halten: %@";
 "overlay.starting" = "Vorbereitung …";
 "hotkey.hold.unavailable" = "Für Gedrückthalten die Bedienungshilfenfreigabe erlauben oder Umschalten verwenden.";
+
+"status.paused" = "Stille Post — pausiert, Mikrofon aus";
+"status.resuming" = "Stille Post — Fortsetzen wird vorbereitet";
+"overlay.paused" = "PAUSIERT";
+"overlay.resuming" = "Fortsetzen …";
+"recording.pause" = "Pausieren";
+"recording.resume" = "Fortsetzen";
+"recording.finish" = "Beenden";
+"recording.audio_time" = "Audiozeit %@";
+"recording.microphone_off" = "Mikrofon aus";

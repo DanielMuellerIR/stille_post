@@ -30,6 +30,8 @@ Profile für Sprache, Wörterbuch, Bereinigung und Aufbewahrung lassen sich in d
 
 Der Diktier-Hotkey kann umschalten oder zum Sprechen gehalten werden. Siehe [Gedrückthalten](docs/gedrueckthalten.md).
 
+Längere Diktate lassen sich über Menü und Aufnahmefeld pausieren. Siehe [Pause und Fortsetzen](docs/aufnahme-pausieren.md).
+
 ## In fünf Minuten startklar
 
 Das fertige, signierte App-Paket läuft auf **Apple-Silicon-Macs ab macOS 13**.

@@ -512,3 +512,13 @@
 "hotkey.hold.menu" = "Hold hotkey to talk: %@";
 "overlay.starting" = "Preparing …";
 "hotkey.hold.unavailable" = "Allow Accessibility for Stille Post to use Hold to talk, or use Toggle.";
+
+"status.paused" = "Stille Post — paused, microphone off";
+"status.resuming" = "Stille Post — preparing to resume";
+"overlay.paused" = "PAUSED";
+"overlay.resuming" = "Resuming …";
+"recording.pause" = "Pause";
+"recording.resume" = "Resume";
+"recording.finish" = "Finish";
+"recording.audio_time" = "Audio time %@";
+"recording.microphone_off" = "Microphone off";

@@ -10,6 +10,17 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.31] — 2026-10-18
+
+### Neu
+
+- Diktate lassen sich über Menü und Overlay pausieren und fortsetzen. Während
+  einer Pause ist das Mikrofon freigegeben; die Anzeige zählt nur erfasste Audiozeit.
+- Mehrere Aufnahmephasen ergeben ein Diktat und einen Bereinigungsauftrag. Profil,
+  Sprache und Aufbewahrung bleiben vom ersten Start bis zum Abschluss eingefroren.
+- Hold-Freigabe und Sicherheitsfrist beenden auch ein pausiertes Diktat.
+  Fortsetzungsfehler erhalten vorhandenes Audio und bereits erkannten Teiltext.
+
 ## [0.9.30] — 2026-10-18
 
 ### Neu
