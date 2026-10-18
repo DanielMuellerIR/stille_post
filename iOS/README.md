@@ -1,11 +1,20 @@
 # Stille Post auf dem iPhone
 
-Native SwiftUI-App ab iOS 17. Der Kandidat 0.9.42 verbindet sich ausschließlich
+Native SwiftUI-App ab iOS 17. Die App verbindet sich ausschließlich
 verschlüsselt mit der Mac-Brücke und übernimmt deren Identität direkt per QR-Code.
 Reale QR-/HTTPS-Kopplung, verschlüsseltes AAC-Diktat und Versandabbruch mit
 Wiederaufnahme nach App-Neustart wurden am iPhone geprüft. Die App bleibt ein
 Entwicklungsclient; weitere Geräte-/Plattformabnahmen stehen im Backlog. HTTP
 wird in Debug und Release abgewiesen.
+
+Version 0.9.43 ergänzt eine ausdrücklich bediente lokale
+[Modellverwaltung](../docs/ios-local-model.md) mit geprüftem Download,
+Pause/Fortsetzen, Laden, Freigeben und Entfernen. Die ausgewählte 649-MB-Variante
+hat die lokale Geräteprobe bestanden. Laden, Freigeben, Hintergrundwechsel,
+Neustart ohne automatisches Laden, Integritätsfehler und Entfernen wurden in der
+nativen Produktansicht am iPhone manuell abgenommen. Die Diktatansicht verwendet
+weiterhin den gekoppelten Mac. Der Erhalt einer eingerichteten Kopplung während
+der Modellaktionen bleibt ein zusätzlicher Gerätefall.
 
 ## Benutzung und sichere Kopplung
 
@@ -71,6 +80,11 @@ vorhandene SDK-/Gerätestand; daraus folgt kein Test aller unterstützten iOS-Ve
 ./iOS/build.sh --release       # Simulator, ausschließlich HTTPS
 DEVELOPMENT_TEAM='<team-id>' ./iOS/build.sh --device
 ```
+
+Das Skript prüft abschließend die Bundle-Signatur. Nach Änderungen an
+SwiftPM-Ressourcen kann Xcode beim inkrementellen Bauen einen veralteten
+Signaturstand behalten. In diesem Fall mit `--clean` sauber neu bauen;
+ein ungültiges Bundle gilt nicht als erfolgreicher Build.
 
 Die Ergebnisse liegen unter `build/iOS-<Konfiguration>-<simulator|device>/`.
 Geräteinstallation und Geräteprüfung benötigen ein passendes Entwicklungsprofil,
@@ -144,6 +158,11 @@ Brückentests sind standardmäßig übersprungen und verlangen vorbereitete priv
 Testdaten und ihre jeweilige Buildvariable:
 `STILLEPOST_RUN_BRIDGE_UI_TEST=1` für den Simulator oder
 `STILLEPOST_RUN_DEVICE_BRIDGE_TEST=1` für die begleitete echte iPhone-Probe.
+`STILLEPOST_RUN_MODEL_DOWNLOAD_TEST=1` aktiviert den vollständigen öffentlichen
+Modell-Download im Simulator. `STILLEPOST_RUN_DEVICE_MODEL_TEST=1` verlangt einen
+abgestimmten iPhone-Block mit vorbereiteten, geprüften Modelldateien; die
+Integritätsprobe benötigt anschließend eine ausdrücklich beschädigte eigene
+Modell-Testdatei. Die beiden Geräte-Modelltests werden sonst übersprungen.
 
 Der Debug-Testimport liest bei
 `STILLEPOST_MOBILE_IMPORT_TEST_CONNECTION=1` eine höchstens 4 KiB große

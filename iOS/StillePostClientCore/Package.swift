@@ -6,7 +6,8 @@ let package = Package(
     platforms: [.iOS(.v17), .macOS(.v13)],
     products: [.library(name: "StillePostClientCore", targets: ["StillePostClientCore"])],
     targets: [
-        .target(name: "StillePostClientCore", swiftSettings: [.swiftLanguageMode(.v5)]),
+        .target(name: "StillePostClientCore", resources: [.process("Resources")],
+                swiftSettings: [.swiftLanguageMode(.v5)]),
         .testTarget(name: "StillePostClientCoreTests", dependencies: ["StillePostClientCore"],
                     swiftSettings: [.swiftLanguageMode(.v5)])
     ]

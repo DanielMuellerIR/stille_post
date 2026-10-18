@@ -7,9 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		002E5AC5AFE269C8AAB96AEC /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 4042909FD0B4ACBCAA785862 /* PrivacyInfo.xcprivacy */; };
 		1A6860387349C4142936FBE6 /* DictationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F0F32476467D0854C719820 /* DictationView.swift */; };
+		2CFA760190A1795B223A1D1C /* LocalModelLicenses.txt in Resources */ = {isa = PBXBuildFile; fileRef = 0311498A3D80ED6C066BEB82 /* LocalModelLicenses.txt */; };
 		336D6673DB48814C58428AB0 /* MobileUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0127830708A30EAE69B3A169 /* MobileUITests.swift */; };
 		37486ABF9019F271B649FB12 /* BridgeKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5362D1576E3D96F54F5759F1 /* BridgeKeychain.swift */; };
+		43C4194E54CF9433988C8DBE /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0BA35CDB9C7A2EC900C5064F /* WhisperKit */; };
 		47AF1D7F1F08BBEA6250D97C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9622957C6036238FBBE5B896 /* Assets.xcassets */; };
 		47F6797FA98E4E6003558188 /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6CAD3EDFB7433B901B59502 /* ConnectionView.swift */; };
 		4945EE60FF70E4EB582A66B4 /* StillePostClientCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4A529D3144E9EB3133CD5B8A /* StillePostClientCore */; };
@@ -17,10 +20,14 @@
 		6ABF6C628FC2CFD36292F077 /* PairingScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76CB6CABA9CE7941898B20C3 /* PairingScanner.swift */; };
 		736717626C995B9D3F4CD852 /* MobileModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6A10B3737D73B271C0FA896 /* MobileModel.swift */; };
 		7F89FEB727EA9F08426E9B3F /* OpenDictationIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24F69C404FE43D366CE10B20 /* OpenDictationIntent.swift */; };
+		885735F92288C7C92474985C /* LocalWhisperAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E770822D4C470C0C0249B8A /* LocalWhisperAdapter.swift */; };
 		A233B700CA007CD4265081F2 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = E4A9CC529B734562338227CC /* Localizable.strings */; };
 		AA438B26BF551895EE259CF9 /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 7CD4944A7D9AFE23E0613903 /* InfoPlist.strings */; };
+		AEBD21F2A4058A8104F7B928 /* LocalModelUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D23E5144EF64F9CCEF5970E /* LocalModelUITests.swift */; };
+		D1CE1CE207F849315012A1D9 /* LocalModelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFB411E00403BAF58E976BD3 /* LocalModelController.swift */; };
 		D7ECB363B510F12DDC7681F3 /* StillePostMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42C76D231F7B233EC15D2B17 /* StillePostMobileApp.swift */; };
 		EA058326EBA9B3F409E0A394 /* SimulatorAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43B42341349C186782F25A8A /* SimulatorAudioCapture.swift */; };
+		F0080B8289DAA379912EDE09 /* LocalModelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 615DCBF16CAE80652A536937 /* LocalModelView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -35,13 +42,18 @@
 
 /* Begin PBXFileReference section */
 		0127830708A30EAE69B3A169 /* MobileUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileUITests.swift; sourceTree = "<group>"; };
+		0311498A3D80ED6C066BEB82 /* LocalModelLicenses.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = LocalModelLicenses.txt; sourceTree = "<group>"; };
 		0AC322A0862AFA1EE62F3DCE /* AudioRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorder.swift; sourceTree = "<group>"; };
 		24F69C404FE43D366CE10B20 /* OpenDictationIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenDictationIntent.swift; sourceTree = "<group>"; };
 		27CDCF629869B40E85F7304E /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		3E770822D4C470C0C0249B8A /* LocalWhisperAdapter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalWhisperAdapter.swift; sourceTree = "<group>"; };
+		4042909FD0B4ACBCAA785862 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		42C76D231F7B233EC15D2B17 /* StillePostMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StillePostMobileApp.swift; sourceTree = "<group>"; };
 		43B42341349C186782F25A8A /* SimulatorAudioCapture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimulatorAudioCapture.swift; sourceTree = "<group>"; };
 		4785956BC8C2D64ABD3A33BD /* StillePostClientCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = StillePostClientCore; path = StillePostClientCore; sourceTree = SOURCE_ROOT; };
+		4D23E5144EF64F9CCEF5970E /* LocalModelUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelUITests.swift; sourceTree = "<group>"; };
 		5362D1576E3D96F54F5759F1 /* BridgeKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeKeychain.swift; sourceTree = "<group>"; };
+		615DCBF16CAE80652A536937 /* LocalModelView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelView.swift; sourceTree = "<group>"; };
 		6F0F32476467D0854C719820 /* DictationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DictationView.swift; sourceTree = "<group>"; };
 		75F3A6BC982AAF119B09082B /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
 		76CB6CABA9CE7941898B20C3 /* PairingScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScanner.swift; sourceTree = "<group>"; };
@@ -52,6 +64,7 @@
 		A8AC392F56C15FA13C257591 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		B6CAD3EDFB7433B901B59502 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
 		CA3BF9FC86E35513D5CDB018 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+		CFB411E00403BAF58E976BD3 /* LocalModelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelController.swift; sourceTree = "<group>"; };
 		F6EF84BAED1FEDC5A322F88A /* StillePostMobile.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StillePostMobile.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -61,6 +74,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				4945EE60FF70E4EB582A66B4 /* StillePostClientCore in Frameworks */,
+				43C4194E54CF9433988C8DBE /* WhisperKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -70,6 +84,7 @@
 		0414423968ED685F20F0BDA0 /* UITests */ = {
 			isa = PBXGroup;
 			children = (
+				4D23E5144EF64F9CCEF5970E /* LocalModelUITests.swift */,
 				0127830708A30EAE69B3A169 /* MobileUITests.swift */,
 			);
 			path = UITests;
@@ -102,9 +117,14 @@
 				5362D1576E3D96F54F5759F1 /* BridgeKeychain.swift */,
 				B6CAD3EDFB7433B901B59502 /* ConnectionView.swift */,
 				6F0F32476467D0854C719820 /* DictationView.swift */,
+				CFB411E00403BAF58E976BD3 /* LocalModelController.swift */,
+				0311498A3D80ED6C066BEB82 /* LocalModelLicenses.txt */,
+				615DCBF16CAE80652A536937 /* LocalModelView.swift */,
+				3E770822D4C470C0C0249B8A /* LocalWhisperAdapter.swift */,
 				A6A10B3737D73B271C0FA896 /* MobileModel.swift */,
 				24F69C404FE43D366CE10B20 /* OpenDictationIntent.swift */,
 				76CB6CABA9CE7941898B20C3 /* PairingScanner.swift */,
+				4042909FD0B4ACBCAA785862 /* PrivacyInfo.xcprivacy */,
 				43B42341349C186782F25A8A /* SimulatorAudioCapture.swift */,
 				F6EF84BAED1FEDC5A322F88A /* StillePostMobile.entitlements */,
 				42C76D231F7B233EC15D2B17 /* StillePostMobileApp.swift */,
@@ -158,6 +178,7 @@
 			name = StillePostMobile;
 			packageProductDependencies = (
 				4A529D3144E9EB3133CD5B8A /* StillePostClientCore */,
+				0BA35CDB9C7A2EC900C5064F /* WhisperKit */,
 			);
 			productName = StillePostMobile;
 			productReference = 7BB26DE619B93836665B19C9 /* StillePostMobile.app */;
@@ -192,6 +213,7 @@
 			mainGroup = 869E16C7F5D3150B4222555A;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				F62EEB040079E40A3096F4A5 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */,
 				EE33683F489175CF241220DE /* XCLocalSwiftPackageReference "StillePostClientCore" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -212,7 +234,9 @@
 			files = (
 				47AF1D7F1F08BBEA6250D97C /* Assets.xcassets in Resources */,
 				AA438B26BF551895EE259CF9 /* InfoPlist.strings in Resources */,
+				2CFA760190A1795B223A1D1C /* LocalModelLicenses.txt in Resources */,
 				A233B700CA007CD4265081F2 /* Localizable.strings in Resources */,
+				002E5AC5AFE269C8AAB96AEC /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -223,6 +247,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AEBD21F2A4058A8104F7B928 /* LocalModelUITests.swift in Sources */,
 				336D6673DB48814C58428AB0 /* MobileUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -235,6 +260,9 @@
 				37486ABF9019F271B649FB12 /* BridgeKeychain.swift in Sources */,
 				47F6797FA98E4E6003558188 /* ConnectionView.swift in Sources */,
 				1A6860387349C4142936FBE6 /* DictationView.swift in Sources */,
+				D1CE1CE207F849315012A1D9 /* LocalModelController.swift in Sources */,
+				F0080B8289DAA379912EDE09 /* LocalModelView.swift in Sources */,
+				885735F92288C7C92474985C /* LocalWhisperAdapter.swift in Sources */,
 				736717626C995B9D3F4CD852 /* MobileModel.swift in Sources */,
 				7F89FEB727EA9F08426E9B3F /* OpenDictationIntent.swift in Sources */,
 				6ABF6C628FC2CFD36292F077 /* PairingScanner.swift in Sources */,
@@ -378,7 +406,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.9.42;
+				MARKETING_VERSION = 0.9.43;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -444,7 +472,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.9.42;
+				MARKETING_VERSION = 0.9.43;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -513,7 +541,23 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		F62EEB040079E40A3096F4A5 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/argmaxinc/argmax-oss-swift";
+			requirement = {
+				kind = exactVersion;
+				version = 1.1.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
+		0BA35CDB9C7A2EC900C5064F /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = F62EEB040079E40A3096F4A5 /* XCRemoteSwiftPackageReference "argmax-oss-swift" */;
+			productName = WhisperKit;
+		};
 		4A529D3144E9EB3133CD5B8A /* StillePostClientCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = StillePostClientCore;

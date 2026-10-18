@@ -5,6 +5,7 @@ destination='generic/platform=iOS Simulator'
 platform=simulator
 configuration=Debug
 signing=(CODE_SIGN_IDENTITY=-)
+actions=(build)
 for argument in "$@"; do
     case "$argument" in
         --device)
@@ -14,10 +15,19 @@ for argument in "$@"; do
             signing=("DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM")
             ;;
         --release) configuration=Release ;;
-        *) echo "Aufruf: iOS/build.sh [--device] [--release]" >&2; exit 2 ;;
+        --clean) actions=(clean build) ;;
+        *) echo "Aufruf: iOS/build.sh [--device] [--release] [--clean]" >&2; exit 2 ;;
     esac
 done
-exec xcodebuild -project "$root/iOS/StillePostMobile.xcodeproj" -scheme StillePostMobile \
+xcodebuild -project "$root/iOS/StillePostMobile.xcodeproj" -scheme StillePostMobile \
     -configuration "$configuration" -destination "$destination" \
     -derivedDataPath "$root/build/iOS-$configuration-$platform" \
-    "MARKETING_VERSION=$(cat "$root/VERSION")" "${signing[@]}" build
+    "MARKETING_VERSION=$(cat "$root/VERSION")" "${signing[@]}" "${actions[@]}"
+bundle="$root/build/iOS-$configuration-$platform/Build/Products/$configuration-iphoneos/StillePostMobile.app"
+if [ "$platform" = simulator ]; then
+    bundle="$root/build/iOS-$configuration-$platform/Build/Products/$configuration-iphonesimulator/StillePostMobile.app"
+fi
+if ! codesign --verify --deep --strict "$bundle"; then
+    echo "Bundle-Signatur ungültig. Erneut mit --clean bauen." >&2
+    exit 1
+fi

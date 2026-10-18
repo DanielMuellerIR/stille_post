@@ -64,6 +64,16 @@
             value = "$(STILLEPOST_RUN_DEVICE_BRIDGE_TEST)"
             isEnabled = "YES">
          </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "STILLEPOST_RUN_DEVICE_MODEL_TEST"
+            value = "$(STILLEPOST_RUN_DEVICE_MODEL_TEST)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "STILLEPOST_RUN_MODEL_DOWNLOAD_TEST"
+            value = "$(STILLEPOST_RUN_MODEL_DOWNLOAD_TEST)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
       </EnvironmentVariables>
    </TestAction>
    <LaunchAction

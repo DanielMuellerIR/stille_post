@@ -30,6 +30,19 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Native iPhone-App mit Aufnahme, Brückenzugriff und manuellem Kopieren umsetzen und am echten Gerät prüfen; [Entwicklungsclient](iOS/README.md), HTTP ausschließlich für ausdrücklich freigegebene Debug-Tests.
 - [x] TLS-/QR-Kopplung: 0.9.42 implementiert; QR-/HTTPS-Kopplung, echtes AAC-Diktat, Kopieren, Listener-Neustart sowie Pin-/Token-/Zertifikatswechsel am iPhone geprüft. Versandabbruch während der Bereinigung, Aufnahmeerhalt über App-Neustart und ausdrückliches erneutes Senden über HTTPS geprüft. Mac-Kopplungsansicht in DE/EN auf Öffnen, Fokuswechsel, Schließen und natives Aus-/Einblenden geprüft; nach der Rückkehr bleibt der QR-Code geschlossen. Zweiminutenfrist unter DE bestätigt. Danach lokales Offline-Diktat aufbauen.
 - [ ] Die wesentlichen Kombinationen auf realen Geräten abnehmen und beide Nutzungsanleitungen aktualisieren.
+- [x] Lokale iPhone-Modellverwaltung: 0.9.43 implementiert;
+  vollständiger Download mit Pause/Fortsetzen, Neustart, Hashprüfung, Entfernen
+  und DE/EN-Oberfläche im Simulator geprüft. Die komprimierte Variante besteht
+  auch mit dem endgültigen DE/EN-Profil am iPhone. Die größere Variante wurde
+  wegen Überschreitens der sechsminütigen Ladegrenze ausgeschlossen. Laden,
+  Hintergrundfreigabe, ausdrückliches Freigeben, Neustart ohne automatisches
+  Laden, Hashfehler und bestätigtes Entfernen am iPhone manuell abgenommen.
+  Siehe [Lokales Modell](docs/ios-local-model.md).
+- [ ] Modellaktionen mit eingerichteter Mac-Kopplung und einer zuvor vorhandenen
+  ausstehenden Aufnahme am iPhone auf Datenerhalt prüfen; die Modellabnahme
+  begann mit leerem Aufnahmeordner und bereits ungekoppelter Verbindung.
+- [ ] Anschließend den ausdrücklich gewählten Offline-Diktatablauf auf dem
+  iPhone integrieren und mit menschlicher Sprache prüfen.
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
 [docs/ausgangspruefung-2026-10-16.md](docs/ausgangspruefung-2026-10-16.md) dokumentiert.

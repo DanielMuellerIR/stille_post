@@ -10,6 +10,22 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.43] — 2026-10-18
+
+Lokale iPhone-Modellverwaltung; die Diktatansicht verwendet weiterhin den Mac.
+
+### Neu
+
+- Die iPhone-App bietet einen ausdrücklich gestarteten WLAN-Download des lokalen
+  Whisper-large-v3-turbo-Modells mit Fortschritt, Pause und Wiederaufnahme.
+  Feste Revisionen, Dateigrößen und SHA-256-Prüfungen sichern die Modelldateien;
+  vor dem Laden wird ihre Integrität erneut geprüft.
+- Laden, Freigeben und Entfernen haben sichtbare Zustände. Hintergrundwechsel
+  und Speicherdruck brechen Arbeit ab und fordern die Speicherfreigabe an.
+  Ein Download-/Ladevorgang wird nie automatisch fortgesetzt.
+- Die Modellverwaltung bereitet lokale Erkennung vor. Die Diktatansicht verwendet
+  weiterhin die verschlüsselte Mac-Brücke.
+
 ## [0.9.42] — 2026-10-18
 
 Entwicklungskandidat: Die reale iPhone-TLS-/QR-Abnahme steht noch aus.

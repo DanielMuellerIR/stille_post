@@ -6,12 +6,15 @@ options:
   developmentLanguage: de
   knownRegions: [de, en, Base]
 packages:
+  WhisperKit:
+    url: https://github.com/argmaxinc/argmax-oss-swift
+    exactVersion: 1.1.1
   StillePostClientCore:
     path: StillePostClientCore
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    MARKETING_VERSION: "0.9.42"
+    MARKETING_VERSION: "0.9.43"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
     TARGETED_DEVICE_FAMILY: "1"
@@ -24,6 +27,8 @@ targets:
         excludes: [Info.plist]
     dependencies:
       - package: StillePostClientCore
+      - package: WhisperKit
+        product: WhisperKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.github.danielmuellerir.stillepost.ios
@@ -56,3 +61,5 @@ schemes:
       environmentVariables:
         STILLEPOST_RUN_BRIDGE_UI_TEST: $(STILLEPOST_RUN_BRIDGE_UI_TEST)
         STILLEPOST_RUN_DEVICE_BRIDGE_TEST: $(STILLEPOST_RUN_DEVICE_BRIDGE_TEST)
+        STILLEPOST_RUN_MODEL_DOWNLOAD_TEST: $(STILLEPOST_RUN_MODEL_DOWNLOAD_TEST)
+        STILLEPOST_RUN_DEVICE_MODEL_TEST: $(STILLEPOST_RUN_DEVICE_MODEL_TEST)

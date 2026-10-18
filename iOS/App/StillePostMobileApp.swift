@@ -3,6 +3,7 @@ import StillePostClientCore
 
 @main struct StillePostMobileApp: App {
     @StateObject private var model: MobileModel
+    @StateObject private var localModels = LocalModelController()
 
     init() {
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -20,7 +21,7 @@ import StillePostClientCore
 
     var body: some Scene {
         WindowGroup {
-            DictationView(model: model)
+            DictationView(model: model, localModels: localModels)
                 .tint(.indigo)
                 .task { await model.load() }
                 // Vor dem Hintergrundwechsel stoppen: Die Audio-Session kann sonst
@@ -30,6 +31,10 @@ import StillePostClientCore
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIScene.didEnterBackgroundNotification)) { _ in
                     model.interrupt()
+                    localModels.interrupt(.background)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+                    localModels.interrupt(.memory)
                 }
         }
     }

@@ -3,7 +3,9 @@ import StillePostClientCore
 
 struct DictationView: View {
     @ObservedObject var model: MobileModel
+    @ObservedObject var localModels: LocalModelController
     @State private var showConnection = false
+    @State private var showModels = false
     @State private var confirmDiscard = false
 
     var body: some View {
@@ -52,6 +54,9 @@ struct DictationView: View {
                             .font(.subheadline.weight(.medium))
                         Text("recording.limits").font(.footnote).foregroundStyle(.secondary)
                         Text("privacy.explanation").font(.footnote).foregroundStyle(.secondary)
+                        Button { showModels = true } label: {
+                            Label("model.manage", systemImage: "cpu").frame(minHeight: 44)
+                        }.disabled(model.busy).accessibilityIdentifier("model.open")
                     }
                 }.padding(20)
             }.background(Color(.systemGroupedBackground))
@@ -63,6 +68,7 @@ struct DictationView: View {
                     }
                 }
                 .sheet(isPresented: $showConnection) { ConnectionView(model: model) }
+                .sheet(isPresented: $showModels) { LocalModelView(model: localModels) }
                 .confirmationDialog("recording.discardConfirm", isPresented: $confirmDiscard, titleVisibility: .visible) {
                     Button("recording.discard", role: .destructive, action: model.discard)
                 }
