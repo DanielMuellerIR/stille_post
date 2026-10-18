@@ -62,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// Pinnt das primäre Bereinigungs-Modell jede Minute neu — läuft nur im Modus
     /// "dauerhaft geladen" (siehe buildComponents); bei befristetem keep_alive nil.
     private var warmUpTimer: Timer?
+    private var selectionCleanupActions: SelectionCleanupActions?
     private var temporaryPrivateHistory = false
     private var lastExternalAppBundleID: String?
     private var appActivationObserver: NSObjectProtocol?
@@ -112,6 +113,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // des App-Bundles; .accessory deckt den `swift run`-Entwicklungsfall ab).
         NSApp.setActivationPolicy(.accessory)
         setupEditingMenu()
+        selectionCleanupActions = SelectionCleanupActions(canStart: { [weak self] in
+            guard let self else { return false }; return !self.terminationPending && !self.isCapturingHotkey
+        })
+        NSApp.servicesProvider = selectionCleanupActions
 
         settingsWindow = SettingsWindowController(
             onApply: { [weak self] newConfig, expected in
@@ -299,6 +304,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard !terminationPending else { return .terminateLater }
+        selectionCleanupActions?.close()
         guard let engine else { return .terminateNow }
         terminationPending = true
         testDictationWindow?.prepareForTermination()
@@ -771,6 +777,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let testItem = NSMenuItem(title: L10n.text("test_dictation.open"), action: #selector(showTestDictation), keyEquivalent: "")
         testItem.target = self
         menu.addItem(testItem)
+        let selectionItem = NSMenuItem(title:L10n.text("selection.menu"),
+            action:#selector(SelectionCleanupActions.cleanSelectedText(_:)),keyEquivalent:"")
+        selectionItem.target = selectionCleanupActions
+        menu.addItem(selectionItem)
         let importItem = NSMenuItem(title: L10n.text("audio_import.open"), action: #selector(showAudioImport), keyEquivalent: "")
         importItem.target = self
         menu.addItem(importItem)

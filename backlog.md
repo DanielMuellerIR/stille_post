@@ -21,14 +21,15 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Kurze Audiodateien mit ausdrücklicher Dateiauswahl lokal transkribieren; siehe [Audioimport](docs/audioimport.md).
 - [x] Begrenzte längere Audiodateien, Drag-and-drop und konkreten Fortschritt ergänzen.
 - [x] Gesprochene Absatz-/Zeilenformatierung mit globaler und profilbezogener Auswahl ergänzen; siehe [Formatierung](docs/gesprochene-formatierung.md).
-- [ ] Ausdrückliche Listen-/Anführungszeichenbefehle und Bereinigung ausgewählten Textes ergänzen.
+- [ ] Ausdrückliche Listen-/Anführungszeichenbefehle ergänzen.
+- [x] Auswahl ausdrücklich bereinigen, im Arbeitsspeicher prüfen und nur bei unverändertem Ziel ersetzen; siehe [Auswahl bereinigen](docs/auswahl-bereinigen.md).
 - [ ] Parakeet und Silero gegen den bestehenden Weg messen und geeignete Kandidaten evidenzbasiert integrieren.
 - [ ] Native iPhone-App, TLS-/QR-Kopplung und lokales Offline-Diktat aufbauen.
 - [ ] Die wesentlichen Kombinationen auf realen Geräten abnehmen und beide Nutzungsanleitungen aktualisieren.
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
 [docs/ausgangspruefung-2026-10-16.md](docs/ausgangspruefung-2026-10-16.md) dokumentiert.
-Noch offen sind Listen-/Anführungszeichenbefehle und die Auswahlbereinigung.
+Noch offen sind Listen-/Anführungszeichenbefehle und die weiteren Modell-/Geräteabnahmen.
 Gerätefälle bleiben bis zu ihrer tatsächlichen Abnahme erhalten.
 
 ## Offene Abnahmen nach dem Review 2026-10-04

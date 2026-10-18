@@ -15,6 +15,7 @@ mkdir -p "$FIXTURE/Sources/StillePostCore"
 cp -R Sources/StillePostCore/Resources "$FIXTURE/Sources/StillePostCore/"
 mkdir -p "$FIXTURE/Resources"
 cp Resources/StillePost.entitlements "$FIXTURE/Resources/"
+cp -R Resources/Services "$FIXTURE/Resources/"
 
 TEST_SWIFT_OUTPUT="$FIXTURE/.build/fixture/release"
 export TEST_SWIFT_OUTPUT
@@ -77,6 +78,19 @@ for scenario in none other; do
     grep -Fq -- '--force --sign - ' "$TEST_CODESIGN_LOG"
     [[ $(wc -l < "$TEST_CODESIGN_LOG") -eq 1 ]]
     grep -Fxq 'aktuelle Ressourcen' "$FIXTURE/build/StillePost.app/Contents/Resources/StillePost_StillePostCore.bundle/marker"
+    /usr/bin/python3 - "$FIXTURE/build/StillePost.app" <<'PY'
+from pathlib import Path
+import plistlib,sys
+app=Path(sys.argv[1])
+service=plistlib.loads((app/'Contents/Info.plist').read_bytes())['NSServices'][0]
+assert service['NSMessage']=='cleanSelectedTextService'
+assert 'public.utf8-plain-text' in service['NSSendTypes']
+assert 'NSRequiredContext' in service
+# Eine Dienstrückgabe würde macOS ohne unsere ausdrückliche Übernahme einfügen.
+assert 'NSReturnTypes' not in service
+for language in ('de','en'):
+    assert (app/f'Contents/Resources/{language}.lproj/ServicesMenu.strings').is_file()
+PY
 done
 
 run_build developer

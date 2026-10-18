@@ -30,6 +30,9 @@ Manage profiles for language, dictionary, cleanup and retention in Settings, ass
 
 Optional explicit German and English commands create paragraphs and line breaks, including with LLM cleanup disabled. Quoted text stays literal; see [spoken formatting](docs/gesprochene-formatierung.md) (German).
 
+Explicitly clean up selected text in another app through the menu or a macOS service. A preview and a fresh target check precede confirmed replacement. See [selected text cleanup](docs/auswahl-bereinigen.md) (German).
+
+
 
 Choose Toggle or Hold to talk for the dictation hotkey in Settings. See [hold to talk](docs/gedrueckthalten.md) (German).
 

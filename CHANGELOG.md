@@ -10,6 +10,19 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.38] — 2026-10-18
+
+### Neu
+
+- Ausdrücklich ausgewählter Text lässt sich über das Menü oder einen macOS-Dienst
+  mit dem aufgelösten Profil bereinigen. Die Vorschau zeigt ursprüngliche Auswahl,
+  Ergebnis und Herkunft; Auswahlaufträge erzeugen keinen Verlaufseintrag.
+- „Auswahl ersetzen“ prüft ursprünglichen Prozess, Textfeld, Auswahlbereich und Text
+  erneut. Zielwechsel oder veränderte Auswahl sperren die Übernahme. Nicht zugängliche
+  oder nicht schreibbare Textfelder melden eine klare Beschränkung.
+- Abruf und direktes Ersetzen verwenden keine Zwischenablage. Kopieren ist eine
+  eigene ausdrückliche Aktion. Schließen verwirft den Auftrag und verspätete Antworten.
+
 ## [0.9.37] — 2026-10-18
 
 ### Neu

@@ -5,7 +5,7 @@ import Darwin
 import Glibc
 #endif
 
-/// Laden, Prüfen und atomarer Schreibabschluss teilen denselben Dateilock.
+/// Laden für Änderungen, Prüfen und atomarer Schreibabschluss teilen denselben Dateilock.
 /// Wörterbuchaktionen ändern nur ihre Felder im frischen Konfigurationsstand.
 public final class ConfigFile: @unchecked Sendable {
     public let url: URL
@@ -20,6 +20,11 @@ public final class ConfigFile: @unchecked Sendable {
     public func load() throws -> Config {
         try locked { try read() }
     }
+
+    /// Reine Aufträge lesen die atomar ausgetauschte Datei ohne Schreiblock.
+    /// Defekte Daten dürfen dabei keine gespeicherte Datenschutzregel durch
+    /// Standardwerte ersetzen und deshalb nicht still abgefangen werden.
+    public func loadSnapshot() throws -> Config { try read() }
 
     public func save(_ config: Config, expected: Config? = nil) throws {
         try locked {

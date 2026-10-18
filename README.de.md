@@ -30,6 +30,9 @@ Profile für Sprache, Wörterbuch, Bereinigung und Aufbewahrung lassen sich in d
 
 Ausdrückliche deutsche und englische Absatz-/Zeilenbefehle lassen sich optional aktivieren, auch ohne LLM. Zitate bleiben wörtlich; siehe [gesprochene Formatierung](docs/gesprochene-formatierung.md).
 
+Ausgewählter Text anderer Apps lässt sich ausdrücklich über Menü oder macOS-Dienst bereinigen. Eine Vorschau und erneute Zielprüfung gehen dem bestätigten Ersetzen voraus. Siehe [Auswahl bereinigen](docs/auswahl-bereinigen.md).
+
+
 
 Der Diktier-Hotkey kann umschalten oder zum Sprechen gehalten werden. Siehe [Gedrückthalten](docs/gedrueckthalten.md).
 

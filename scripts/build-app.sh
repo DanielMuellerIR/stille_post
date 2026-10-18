@@ -146,12 +146,24 @@ cat > "$APP/Contents/Info.plist" <<PLIST
     <key>SURequireSignedFeed</key><true/>
     <!-- Menüleisten-App: kein Dock-Symbol, kein App-Switcher-Eintrag. -->
     <key>LSUIElement</key><true/>
+    <key>NSServices</key>
+    <array><dict>
+        <key>NSMenuItem</key><dict><key>default</key><string>Clean Up Selection with Stille Post</string></dict>
+        <key>NSMessage</key><string>cleanSelectedTextService</string>
+        <key>NSPortName</key><string>Stille Post</string>
+        <key>NSSendTypes</key><array><string>public.utf8-plain-text</string><string>NSStringPboardType</string></array>
+        <key>NSRequiredContext</key><dict/>
+    </dict></array>
     <!-- Begründung für den Mikrofon-Zugriff (zeigt macOS im Berechtigungs-Dialog). -->
     <key>NSMicrophoneUsageDescription</key>
     <string>Stille Post nimmt deine Stimme auf, um sie lokal in Text umzuwandeln. Aufnahmen verlassen den Rechner nicht.</string>
 </dict>
 </plist>
 PLIST
+for language in de en; do
+    mkdir -p "$APP/Contents/Resources/$language.lproj"
+    cp "Resources/Services/$language.lproj/ServicesMenu.strings" "$APP/Contents/Resources/$language.lproj/ServicesMenu.strings"
+done
 
 # Debug-Symbole aus den selbst gebauten Binaries entfernen, BEVOR signiert wird
 # (strip macht eine vorhandene Signatur ungültig). `swift build -c release` legt
