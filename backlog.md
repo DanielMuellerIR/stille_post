@@ -28,7 +28,7 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
 - [x] Silero als Opt-in mit festem, SHA-256-geprüftem Modell und RMS-Rückfall integrieren; siehe [Silero](docs/silero-vad.md).
 - [ ] Silero mit menschlichen Mikrofonaufnahmen abnehmen (kurze/leise Wörter, Klicks, Rauschen, lange Pausen und Pause/Fortsetzen).
 - [x] Native iPhone-App mit Aufnahme, Brückenzugriff und manuellem Kopieren umsetzen und am echten Gerät prüfen; [Entwicklungsclient](iOS/README.md), HTTP ausschließlich für ausdrücklich freigegebene Debug-Tests.
-- [ ] TLS-/QR-Kopplung: 0.9.42 implementiert und automatisiert geprüft; reale iPhone-Kopplungs-/TLS-Abnahme noch offen. Danach lokales Offline-Diktat aufbauen.
+- [ ] TLS-/QR-Kopplung: 0.9.42 implementiert und automatisiert geprüft; Mac-Kopplungsansicht in DE/EN nativ auf Öffnen, Fokuswechsel und Schließen geprüft, Zweiminutenfrist unter DE bestätigt. Reale iPhone-Kopplungs-/TLS-Abnahme und der Ausblendfall bleiben offen. Danach lokales Offline-Diktat aufbauen.
 - [ ] Die wesentlichen Kombinationen auf realen Geräten abnehmen und beide Nutzungsanleitungen aktualisieren.
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
