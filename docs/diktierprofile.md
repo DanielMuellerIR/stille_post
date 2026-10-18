@@ -1,7 +1,7 @@
 # Diktierprofile
 
 Unter **Einstellungen → Profile** lassen sich Profile anlegen, umbenennen und
-löschen. Ein Profil kann Sprache, Wörterbuch, Bereinigung und Aufbewahrung
+löschen. Ein Profil kann Sprache, Wörterbuch, Bereinigung, gesprochene Formatierung und Aufbewahrung
 überschreiben. Jeder Bereich übernimmt zunächst die globalen Einstellungen aus
 den übrigen Tabs. Wird die Übernahme ausgeschaltet, beginnt der eigene Bereich
 mit einer Kopie der globalen Werte. Spätere globale Änderungen erreichen nur
@@ -82,3 +82,7 @@ Die deterministische Rohtext-Nachstufe repariert Satzzeichen/Großschreibung, di
 Anzeige erklärt den lokalen Rückfall. Eine Neubereinigung meldet den Ausfall und
 behält die bisherige Fassung. Ein Profil- oder Fokuswechsel kann die Richtlinie
 eines bereits gestarteten Auftrags nicht lockern.
+
+Die [gesprochene Formatierung](gesprochene-formatierung.md) besitzt einen eigenen
+vererbbaren Schalter. Alte Profile übernehmen den standardmäßig ausgeschalteten
+globalen Wert; ein eigener Bereinigungsbereich verändert diesen Schalter nicht.

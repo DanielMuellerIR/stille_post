@@ -28,6 +28,9 @@ In the editor, **Add to dictionary …** adopts explicitly confirmed spellings f
 
 Manage profiles for language, dictionary, cleanup and retention in Settings, assign them to apps, or select them manually from the menu. Inherited areas use global settings; running requests keep their initial configuration. A local policy also confines every text request to loopback. See [dictation profiles](docs/diktierprofile.md) (German).
 
+Optional explicit German and English commands create paragraphs and line breaks, including with LLM cleanup disabled. Quoted text stays literal; see [spoken formatting](docs/gesprochene-formatierung.md) (German).
+
+
 Choose Toggle or Hold to talk for the dictation hotkey in Settings. See [hold to talk](docs/gedrueckthalten.md) (German).
 
 Pause and resume longer dictations from the menu or recording overlay. See [pause and resume](docs/aufnahme-pausieren.md) (German).

@@ -206,8 +206,8 @@ struct TestDictationView: View {
                     if let result = model.session?.result {
                         GroupBox {
                             VStack(alignment: .leading, spacing: 8) {
-                                Text(L10n.text(result.entry?.cleanupFellBack == true ? "test_dictation.raw" :
-                                    (model.session?.configuration?.cleanup.enabled == false ? "test_dictation.cleanup_off" : "test_dictation.cleaned")))
+                                Text(L10n.text(transcriptOriginLabelKey(result,
+                                    cleanupEnabled: model.session?.configuration?.cleanup.enabled != false)))
                                     .font(.caption).foregroundColor(.secondary)
                                 Text(result.text).font(.body).textSelection(.enabled)
                                     .frame(maxWidth: .infinity, alignment: .leading).accessibilityIdentifier("testDictationResult")

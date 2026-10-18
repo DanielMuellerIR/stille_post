@@ -8,10 +8,23 @@ public extension Config {
         public var vocabulary: Vocabulary?
         public var cleanup: CleanupOptions?
         public var history: History?
+        public var spokenFormatting: Bool?
 
         public init(id: UUID = UUID(), name: String) {
             self.id = id
             self.name = name
+        }
+
+        private enum CodingKeys: String, CodingKey { case id, name, language, vocabulary, cleanup, history, spokenFormatting }
+        public init(from decoder: Decoder) throws {
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            id = try c.decode(UUID.self, forKey: .id); name = try c.decode(String.self, forKey: .name)
+            language = try c.decodeIfPresent(String.self, forKey: .language)
+            vocabulary = try c.decodeIfPresent(Vocabulary.self, forKey: .vocabulary)
+            cleanup = try c.decodeIfPresent(CleanupOptions.self, forKey: .cleanup)
+            history = try c.decodeIfPresent(History.self, forKey: .history)
+            if !c.contains(.spokenFormatting) || (try? c.decodeNil(forKey: .spokenFormatting)) == true { spokenFormatting = nil }
+            else { spokenFormatting = (try? c.decode(Bool.self, forKey: .spokenFormatting)) ?? false }
         }
     }
 
@@ -96,6 +109,7 @@ public extension Config {
             result.cleanup = profile.cleanup?.applying(to: cleanup) ?? cleanup
             result.cleanup = profile.vocabulary?.applying(to: result.cleanup) ?? result.cleanup
             result.history = profile.history ?? history
+            result.cleanup.spokenFormatting = profile.spokenFormatting ?? cleanup.spokenFormatting
         }
         return result
     }

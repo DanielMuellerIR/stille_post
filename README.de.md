@@ -28,6 +28,9 @@ Im Editor übernimmt **Ins Wörterbuch …** ausdrücklich bestätigte Schreibwe
 
 Profile für Sprache, Wörterbuch, Bereinigung und Aufbewahrung lassen sich in den Einstellungen verwalten, Apps zuordnen und im Menü manuell wechseln. Geerbte Bereiche verwenden globale Einstellungen; laufende Aufträge behalten ihren Startstand. Eine lokale Richtlinie begrenzt auch sämtliche Textanfragen auf Loopback. Siehe [Diktierprofile](docs/diktierprofile.md).
 
+Ausdrückliche deutsche und englische Absatz-/Zeilenbefehle lassen sich optional aktivieren, auch ohne LLM. Zitate bleiben wörtlich; siehe [gesprochene Formatierung](docs/gesprochene-formatierung.md).
+
+
 Der Diktier-Hotkey kann umschalten oder zum Sprechen gehalten werden. Siehe [Gedrückthalten](docs/gedrueckthalten.md).
 
 Längere Diktate lassen sich über Menü und Aufnahmefeld pausieren. Siehe [Pause und Fortsetzen](docs/aufnahme-pausieren.md).

@@ -276,7 +276,7 @@ case "transcribe":
             let started = Date()
             let raw = try await whisperClient.transcribe(wavFile: URL(fileURLWithPath: wavPath))
             log(String(format: "STT: %.2f s", Date().timeIntervalSince(started)))
-            if rawOnly || !config.cleanup.enabled { return raw }
+            if rawOnly || (!config.cleanup.enabled && !config.cleanup.spokenFormatting) { return raw }
             let cleanupStarted = Date()
             let result = await CleanupService(config: config.cleanup).clean(raw)
             let suffix = result.usedFallback
@@ -285,7 +285,7 @@ case "transcribe":
             log(L10n.format(
                 "cli.cleanup.timing_with_suffix",
                 Date().timeIntervalSince(cleanupStarted),
-                result.endpoint ?? "—",
+                result.endpoint ?? L10n.text("editor.origin.\(result.origin.rawValue)"),
                 suffix
             ))
             return result.text
@@ -308,7 +308,7 @@ case "cleanup":
     log(L10n.format(
         "cli.cleanup.timing",
         Date().timeIntervalSince(started),
-        result.endpoint ?? "—"
+        result.endpoint ?? L10n.text("editor.origin.\(result.origin.rawValue)")
     ))
     if result.usedFallback {
         log(L10n.format("cli.cleanup.raw_fallback", result.fallbackReason ?? "?"))

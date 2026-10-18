@@ -7,7 +7,7 @@ struct ProfilesTab: View {
     @State private var section = Section.language
 
     private enum Section: String, CaseIterable {
-        case language, vocabulary, cleanup, history
+        case language, vocabulary, cleanup, formatting, history
         var title: String { L10n.text("profiles." + rawValue) }
     }
 
@@ -105,8 +105,19 @@ struct ProfilesTab: View {
                     options.localOnly = nil
                 }
                 profile.wrappedValue.cleanup = options
-            }), showsVocabulary: false)
+            }), showsVocabulary: false, showsFormatting: false)
                 .disabled(profile.wrappedValue.cleanup == nil)
+        case .formatting:
+            Form {
+                Toggle(L10n.text("profiles.inherit"), isOn: inherited(profile.spokenFormatting, initial: config.cleanup.spokenFormatting))
+                    .accessibilityIdentifier("profileInheritFormatting")
+                Toggle(L10n.text("formatting.enabled"), isOn: Binding(
+                    get: { profile.wrappedValue.spokenFormatting ?? config.cleanup.spokenFormatting },
+                    set: { profile.wrappedValue.spokenFormatting = $0 }))
+                    .disabled(profile.wrappedValue.spokenFormatting == nil)
+                    .accessibilityIdentifier("profileSpokenFormatting")
+                SpokenFormattingHelp()
+            }.formStyle(.grouped)
         case .history:
             Toggle(L10n.text("profiles.inherit"), isOn: inherited(profile.history, initial: config.history))
                 .padding(.horizontal, 20)

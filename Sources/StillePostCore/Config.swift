@@ -54,6 +54,7 @@ public struct Config: Codable, Equatable {
     /// primäre nicht erreichbar ist oder einen Fehler liefert (z. B. Laptop unterwegs
     /// -> Desktop-Mac nicht im Netz -> lokales Ollama übernimmt).
     public struct Cleanup: Codable, Equatable {
+        public var spokenFormatting: Bool = false
         /// Textbereinigung überhaupt durchführen? (false = nur rohe Transkription)
         public var enabled: Bool = true
         public var localOnly: Bool = false
@@ -477,11 +478,12 @@ extension Config.Whisper {
 }
 
 extension Config.Cleanup {
-    private enum CodingKeys: String, CodingKey { case enabled, localOnly, provider, ollamaURL, model, numCtx, keepAlive, remote, fallbacks, dictionary, dictionaryVariants }
+    private enum CodingKeys: String, CodingKey { case enabled, localOnly, spokenFormatting, provider, ollamaURL, model, numCtx, keepAlive, remote, fallbacks, dictionary, dictionaryVariants }
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
         enabled = c.decodeOrDefault(Bool.self, forKey: .enabled, default: enabled)
+        spokenFormatting = c.decodeOrDefault(Bool.self, forKey: .spokenFormatting, default: false)
         if c.contains(.localOnly) { localOnly = (try? c.decode(Bool.self, forKey: .localOnly)) ?? true }
         provider = c.decodeOrDefault(String.self, forKey: .provider, default: provider)
         ollamaURL = c.decodeOrDefault(String.self, forKey: .ollamaURL, default: ollamaURL)

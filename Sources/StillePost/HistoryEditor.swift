@@ -369,6 +369,9 @@ struct HistoryEditorView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(L10n.text("editor.recleanup.help")).font(.callout).fixedSize(horizontal: false, vertical: true)
             if let candidate = model.candidate {
+                Text(L10n.text("editor.origin.\(candidate.result.origin.rawValue)"))
+                    .font(.caption).foregroundColor(.secondary)
+                    .accessibilityIdentifier("historyRecleanupOrigin")
                 ScrollView {
                     Text(verbatim: candidate.result.text).textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)

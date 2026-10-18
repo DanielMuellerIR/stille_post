@@ -105,6 +105,9 @@ private struct ResultPreviewView: View {
                     .font(.caption)
                     .foregroundColor(.orange)
                     .fixedSize(horizontal: false, vertical: true)
+            } else if result.origin == .raw || result.origin == .formatting {
+                Text(L10n.text("editor.origin.\(result.origin.rawValue)"))
+                    .font(.caption).foregroundColor(.secondary)
             }
             ScrollView {
                 Text(result.text)

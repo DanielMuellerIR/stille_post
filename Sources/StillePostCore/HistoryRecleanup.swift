@@ -24,7 +24,7 @@ public enum HistoryRecleanup {
         // darf eine danach geänderte Profilauswahl nicht in diesen Auftrag holen.
         let config = try configFile.load().resolvedForRequest(appBundleID: appBundleID)
         _ = try await history.withEditableSnapshotAsync(expected: expected) { true }
-        guard config.cleanup.enabled else { throw Failure.disabled }
+        guard config.cleanup.enabled || config.cleanup.spokenFormatting else { throw Failure.disabled }
         try config.validate()
         guard !expected.rawText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw Failure.unsuccessful }
         try Task.checkCancellation()
@@ -34,7 +34,8 @@ public enum HistoryRecleanup {
         else { result = await CleanupService(config: config.cleanup).clean(expected.rawText) }
         try Task.checkCancellation()
         if result.usedFallback && config.cleanup.localOnly && result.endpoint == nil { throw Failure.localUnavailable }
-        guard !result.usedFallback, result.endpoint != nil,
+        let localFormatting = !config.cleanup.enabled && config.cleanup.spokenFormatting && (result.origin == .formatting || result.origin == .raw)
+        guard !result.usedFallback, result.endpoint != nil || localFormatting,
               !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw Failure.unsuccessful }
         _ = try await history.withEditableSnapshotAsync(expected: expected) { true }
         return Candidate(expected: expected, result: result, durationSec: Date().timeIntervalSince(start))

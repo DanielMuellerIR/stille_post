@@ -18,7 +18,7 @@ public final class HistoryStore: @unchecked Sendable {
 
     /// Ein Eintrag im Verlauf.
     public struct Entry: Codable, Identifiable, Equatable, Sendable {
-        public enum ResultOrigin: String, Codable, Sendable { case cleanup, rawFallback, manual }
+        public typealias ResultOrigin = TranscriptOrigin
         public struct ResultMetadata: Codable, Equatable, Sendable {
             public var date: Date
             public var origin: ResultOrigin
@@ -54,6 +54,7 @@ public final class HistoryStore: @unchecked Sendable {
         /// nil bei regulären/älteren Aufnahmen. true/false kennzeichnet geprüfte
         /// Importkopien; false sperrt Retry unvollständiger oder ungültiger Kopien.
         public var audioIsComplete: Bool?
+        public var originalOrigin: ResultOrigin?
         /// Dauer der Aufnahme in Sekunden (fürs Anzeigen).
         public var durationSec: Double
         /// Wurde bei der Bereinigung auf den Rohtext zurückgefallen? (Diagnose)
@@ -79,7 +80,7 @@ public final class HistoryStore: @unchecked Sendable {
         public var resultMetadata: ResultMetadata?
 
         public var canEdit: Bool { status == "ok" && !isTextPrivate && !isDeletionPending }
-        public var originalResultOrigin: ResultOrigin { cleanupFellBack == true ? .rawFallback : .cleanup }
+        public var originalResultOrigin: ResultOrigin { originalOrigin ?? (cleanupFellBack == true ? .rawFallback : .cleanup) }
         public var resultOrigin: ResultOrigin { resultMetadata?.origin ?? ((manualEditCount ?? 0) > 0 ? .manual : originalResultOrigin) }
 
         public var isAudioExpired: Bool { audioExpiresAt.map { $0 <= Date() } == true }
@@ -121,7 +122,7 @@ public final class HistoryStore: @unchecked Sendable {
                     textExpiresAt: Date? = nil, audioExpiresAt: Date? = nil,
                     originalCleanText: String? = nil, manualEditDate: Date? = nil,
                     manualEditCount: Int? = nil, previousResults: [Revision]? = nil,
-                    audioIsComplete: Bool? = nil) {
+                    audioIsComplete: Bool? = nil, originalOrigin: ResultOrigin? = nil) {
             self.id = id
             self.date = date
             self.rawText = rawText
@@ -130,6 +131,7 @@ public final class HistoryStore: @unchecked Sendable {
             self.errorMessage = errorMessage
             self.audioFileName = audioFileName
             self.audioIsComplete = audioIsComplete
+            self.originalOrigin = originalOrigin
             self.durationSec = durationSec
             self.cleanupFellBack = cleanupFellBack
             self.cleanupFallbackReason = cleanupFallbackReason
@@ -417,7 +419,8 @@ public final class HistoryStore: @unchecked Sendable {
     }
 
     public func saveRecleanupAsync(_ result: CleanupService.Result, durationSec: Double, expected: Entry) async throws -> Entry {
-        guard !result.usedFallback, result.endpoint != nil, durationSec.isFinite, durationSec >= 0,
+        guard !result.usedFallback, result.endpoint != nil || result.origin == .formatting || result.origin == .raw,
+              durationSec.isFinite, durationSec >= 0,
               !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw PersistenceError.correctionUnavailable
         }
@@ -438,7 +441,7 @@ public final class HistoryStore: @unchecked Sendable {
                 current.previousResults = Array(revisions.prefix(3))
                 current.cleanText = result.text
                 current.resultMetadata = .init(date: Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970)),
-                                               origin: .cleanup, generation: generation, endpoint: result.endpoint,
+                                               origin: result.origin, generation: generation, endpoint: result.endpoint,
                                                durationSec: durationSec)
                 fresh[index] = current
                 try self.saveLocked(fresh)
@@ -590,6 +593,7 @@ public final class HistoryStore: @unchecked Sendable {
         result.manualEditCount = nil
         result.previousResults = nil
         result.resultMetadata = nil
+        result.originalOrigin = nil
         result.status = "failed"
         result.errorMessage = nil
         return result

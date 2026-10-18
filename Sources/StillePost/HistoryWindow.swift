@@ -349,6 +349,9 @@ struct EntryRow: View {
                         .background(Color.orange.opacity(0.2))
                         .cornerRadius(4)
                         .help(entry.cleanupFallbackReason ?? "")
+                } else if entry.resultOrigin == .raw || entry.resultOrigin == .formatting {
+                    Text(L10n.text("editor.origin.\(entry.resultOrigin.rawValue)"))
+                        .font(.caption2).foregroundColor(.secondary)
                 } else if entry.resultMetadata?.origin == .cleanup {
                     Text(L10n.text("editor.origin.cleanup"))
                         .font(.caption2)

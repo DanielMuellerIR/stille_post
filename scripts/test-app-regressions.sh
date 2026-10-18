@@ -27,5 +27,6 @@ swiftc -parse-as-library -I "$MODULE_DIR" \
 "$TEST_DIR/diagnostics-regression"
 swiftc -parse-as-library -I "$MODULE_DIR" \
     Sources/StillePost/AudioImportWindow.swift scripts/fixtures/audio-import-selection-regression.swift \
+    Sources/StillePost/TranscriptOriginLabel.swift \
     "${OBJECTS[@]}" -o "$TEST_DIR/audio-import-selection-regression"
 "$TEST_DIR/audio-import-selection-regression"

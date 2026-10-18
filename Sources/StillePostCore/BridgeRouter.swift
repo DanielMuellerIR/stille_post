@@ -192,14 +192,14 @@ public actor BridgeRouter {
         // Leeres Ergebnis ist kein Fehler: Whisper hat nur Stille gehört.
         guard !raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .json(status: 200, object: [
-                "text": "", "raw": "", "sttSec": rounded(sttSeconds),
+                "text": "", "raw": "", "sttSec": rounded(sttSeconds), "origin": TranscriptOrigin.raw.rawValue,
             ])
         }
 
         let wantsRaw = request.query["raw"] == "1"
         guard !wantsRaw, configuration.cleanupEnabled else {
             return .json(status: 200, object: [
-                "text": raw, "raw": raw, "sttSec": rounded(sttSeconds),
+                "text": raw, "raw": raw, "sttSec": rounded(sttSeconds), "origin": TranscriptOrigin.raw.rawValue,
             ])
         }
         let cleanupStarted = Date()
@@ -287,6 +287,7 @@ public actor BridgeRouter {
             "raw": raw,
             "cleanupSec": rounded(cleanupSeconds),
             "usedFallback": result.usedFallback,
+            "origin": result.origin.rawValue,
         ]
         if let endpoint = result.endpoint { object["endpoint"] = endpoint }
         if let reason = result.fallbackReason { object["fallbackReason"] = reason }
@@ -317,7 +318,8 @@ public extension BridgeHandlers {
                 try Task.checkCancellation()
                 try await serverManager.ensureRunning(reachability: request.transcriber)
                 return try await request.transcriber.transcribe(samples: samples)
-            }, cleanup: { text in await request.cleanup.clean(text) }, cleanupEnabled: request.config.cleanup.enabled)
+            }, cleanup: { text in await request.cleanup.clean(text) },
+                cleanupEnabled: request.config.cleanup.enabled || request.config.cleanup.spokenFormatting)
         }
         let initial = snapshot()
         var handlers = BridgeHandlers(transcribe: initial.transcribe, cleanup: initial.cleanup,

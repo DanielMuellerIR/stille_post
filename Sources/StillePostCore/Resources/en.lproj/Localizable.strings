@@ -678,3 +678,12 @@
 "audio_import.segment_one" = "1 segment completed";
 "audio_import.segment_many" = "%d segments completed";
 "audio_import.already_completed" = "This import is already complete. Import the original file again for a new transcription; existing raw text and the original output remain unchanged.";
+"profiles.formatting" = "Formatting";
+"formatting.title" = "Spoken formatting";
+"formatting.enabled" = "Enable spoken formatting";
+"formatting.help" = "Explicit commands create paragraphs and line breaks. Off by default; also works without LLM cleanup. Running dictations keep their setting.";
+"formatting.examples" = "English: “format new paragraph” and “format new line”.\nDeutsch: „Format neuer Absatz“ und „Format neue Zeile“.";
+"formatting.literal_help" = "Quoted passages stay literal. Delimit a literal block with “format literal start” and “format literal end”; in German „Format wörtlich Anfang/Ende“. The block commands are omitted from the output.";
+"formatting.marker_failed" = "Formatting markers changed. The raw text is formatted safely on this Mac.";
+"editor.origin.raw" = "Raw text (local)";
+"editor.origin.formatting" = "Formatted locally";

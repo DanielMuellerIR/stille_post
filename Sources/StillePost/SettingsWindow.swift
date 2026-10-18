@@ -391,10 +391,12 @@ private struct HotkeyRecorder: View {
 struct CleanupTab: View {
     @Binding var cleanup: Config.Cleanup
     var showsVocabulary = true
+    var showsFormatting = true
 
-    init(cleanup: Binding<Config.Cleanup>, showsVocabulary: Bool = true) {
+    init(cleanup: Binding<Config.Cleanup>, showsVocabulary: Bool = true, showsFormatting: Bool = true) {
         self._cleanup = cleanup
         self.showsVocabulary = showsVocabulary
+        self.showsFormatting = showsFormatting
     }
 
     var body: some View {
@@ -412,6 +414,13 @@ struct CleanupTab: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            if showsFormatting {
+                Section(L10n.text("formatting.title")) {
+                    Toggle(L10n.text("formatting.enabled"), isOn: $cleanup.spokenFormatting)
+                        .accessibilityIdentifier("spokenFormatting")
+                    SpokenFormattingHelp()
+                }
+            }
             if showsVocabulary { VocabularyEditor(cleanup: $cleanup) }
 
             Section(L10n.text("settings.cleanup.primary")) {

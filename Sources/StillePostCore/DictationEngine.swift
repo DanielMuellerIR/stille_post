@@ -730,7 +730,7 @@ public final class DictationEngine {
             durationSec: duration, cleanupFellBack: cleaned.usedFallback,
             cleanupFallbackReason: cleaned.fallbackReason,
             cleanupEndpoint: cleaned.endpoint,
-            cleanupSec: cleanupDuration
+            cleanupSec: cleanupDuration, originalOrigin: cleaned.origin
         ))
         let finalized: PersistedEntryResult
         do {
@@ -1066,6 +1066,7 @@ public final class DictationEngine {
         updated.cleanupFellBack = cleaned.usedFallback
         updated.cleanupFallbackReason = cleaned.fallbackReason
         updated.cleanupEndpoint = cleaned.endpoint
+        if stored.status == "failed" { updated.originalOrigin = cleaned.origin }
         updated.cleanupSec = Date().timeIntervalSince(cleanupStarted)
         let finalized = try await Self.persistSuccessfulEntry(
             updated,

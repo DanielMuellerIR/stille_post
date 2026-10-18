@@ -678,3 +678,12 @@
 "audio_import.segment_one" = "1 Abschnitt abgeschlossen";
 "audio_import.segment_many" = "%d Abschnitte abgeschlossen";
 "audio_import.already_completed" = "Dieser Import ist bereits abgeschlossen. Für eine neue Transkription die Originaldatei erneut importieren; vorhandener Rohtext und ursprüngliche Ausgabe bleiben erhalten.";
+"profiles.formatting" = "Formatierung";
+"formatting.title" = "Gesprochene Formatierung";
+"formatting.enabled" = "Gesprochene Formatierung aktivieren";
+"formatting.help" = "Ausdrückliche Befehle erzeugen Absätze und Zeilenumbrüche. Die Funktion ist standardmäßig aus und funktioniert auch ohne LLM-Bereinigung. Laufende Diktate behalten ihre Einstellung.";
+"formatting.examples" = "Deutsch: „Format neuer Absatz“ und „Format neue Zeile“.\nEnglish: “format new paragraph” and “format new line”.";
+"formatting.literal_help" = "Zitierte Passagen bleiben wörtlich. Einen wörtlichen Block mit „Format wörtlich Anfang“ und „Format wörtlich Ende“ begrenzen; auf Englisch “format literal start/end”. Die Blockbefehle erscheinen nicht in der Ausgabe.";
+"formatting.marker_failed" = "Formatierungsmarkierungen wurden verändert. Der Rohtext wird sicher lokal formatiert.";
+"editor.origin.raw" = "Rohtext (lokal)";
+"editor.origin.formatting" = "Lokal formatiert";

@@ -7,12 +7,14 @@ public struct TransientResultStore {
         public let text: String
         public let rawFallback: Bool
         public let note: String?
+        public let origin: TranscriptOrigin
 
-        public init?(text: String, rawFallback: Bool, failed: Bool = false, note: String? = nil) {
+        public init?(text: String, rawFallback: Bool, failed: Bool = false, note: String? = nil, origin: TranscriptOrigin? = nil) {
             guard !failed, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
             self.text = text
             self.rawFallback = rawFallback
             self.note = note
+            self.origin = origin ?? (rawFallback ? .rawFallback : .cleanup)
         }
     }
 
@@ -21,8 +23,8 @@ public struct TransientResultStore {
     public init() {}
 
     @discardableResult
-    public mutating func accept(text: String, rawFallback: Bool, failed: Bool = false, note: String? = nil) -> Result? {
-        guard let result = Result(text: text, rawFallback: rawFallback, failed: failed, note: note) else { return nil }
+    public mutating func accept(text: String, rawFallback: Bool, failed: Bool = false, note: String? = nil, origin: TranscriptOrigin? = nil) -> Result? {
+        guard let result = Result(text: text, rawFallback: rawFallback, failed: failed, note: note, origin: origin) else { return nil }
         last = result
         return result
     }

@@ -10,6 +10,19 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.37] — 2026-10-18
+
+### Neu
+
+- Optionale gesprochene Formatierung erkennt ausdrückliche deutsche und englische
+  Absatz- und Zeilenbefehle. Sie ist standardmäßig ausgeschaltet, global und
+  unabhängig pro Profil einstellbar und funktioniert auch bei deaktivierter LLM-Bereinigung.
+- Zitate und ausdrücklich begrenzte wörtliche Blöcke bleiben wortgetreu. Veränderte
+  Formatierungsmarkierungen führen sicher zum lokal formatierten Rohtext zurück.
+- Verlauf, Ergebnisvorschau und Netzwerk-Brücke unterscheiden lokale Formatierung,
+  Rohtext und Modellbereinigung. Neubereinigung bleibt eine ausdrückliche Vorschau
+  mit anschließender Übernahme; Rohtext und ursprüngliche Ausgabe bleiben erhalten.
+
 ## [0.9.36] — 2026-10-18
 
 ### Neu

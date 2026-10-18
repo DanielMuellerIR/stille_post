@@ -277,9 +277,8 @@ struct AudioImportView: View {
                         if !text.isEmpty {
                             GroupBox {
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text(L10n.text(partial ? "audio_import.partial" :
-                                        (result.entry?.cleanupFellBack == true ? "test_dictation.raw" :
-                                            (model.session?.configuration?.cleanup.enabled == false ? "test_dictation.cleanup_off" : "test_dictation.cleaned"))))
+                                    Text(L10n.text(transcriptOriginLabelKey(result,
+                                        cleanupEnabled: model.session?.configuration?.cleanup.enabled != false, partial: partial)))
                                         .font(.caption).foregroundColor(.secondary)
                                     Text(text).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                                         .accessibilityIdentifier("audioImportResult")

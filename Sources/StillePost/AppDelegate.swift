@@ -921,7 +921,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             defer { self.pasteTarget = nil }
             if let entry = result.entry,
                let usable = TransientResultStore.Result(text: result.text,
-                    rawFallback: entry.cleanupFellBack == true, failed: entry.isFailed, note: self.engine.sessionConfiguration.cleanup.localOnly ? entry.cleanupFallbackReason : nil) {
+                    rawFallback: entry.cleanupFellBack == true, failed: entry.isFailed, note: self.engine.sessionConfiguration.cleanup.localOnly ? entry.cleanupFallbackReason : nil, origin: entry.resultOrigin) {
                 if self.engine.sessionConfiguration.ui.previewBeforePaste || !self.pendingResults.isEmpty {
                     self.overlay.hide()
                     self.showPreview(usable, target: self.pasteTarget)
@@ -939,7 +939,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         engine.onPrivateRetryResult = { [weak self, weak source] entry in
             guard let self, self.engine === source, let result = TransientResultStore.Result(text: entry.cleanText,
-                rawFallback: entry.cleanupFellBack == true, note: entry.cleanupFallbackReason) else { return }
+                rawFallback: entry.cleanupFellBack == true, note: entry.cleanupFallbackReason, origin: entry.resultOrigin) else { return }
             self.showPreview(result, target: PasteService.captureTarget(), focus: self.canRecallResult, floating: false)
         }
 
@@ -1007,7 +1007,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     private func remember(_ result: TransientResultStore.Result) {
-        resultMemory.accept(text: result.text, rawFallback: result.rawFallback, note: result.note)
+        resultMemory.accept(text: result.text, rawFallback: result.rawFallback, note: result.note, origin: result.origin)
     }
 
     private func showPreview(_ result: TransientResultStore.Result, target: PasteService.Target?, focus: Bool = false, floating: Bool = true) {
