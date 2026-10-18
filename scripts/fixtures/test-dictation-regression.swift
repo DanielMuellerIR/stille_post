@@ -21,9 +21,10 @@ import Sparkle
         var wrapped = false
         let clipboard = NSPasteboard.general.changeCount
         let delegate = AppDelegate(makeEngine: { config in
+            let effective = config.resolvedForRequest()
             let cleanup = FixtureCleanup(counts: counts, fallback: scenario == "private")
             let value = DictationEngine(config: config, history: HistoryStore(), dependencies: .init(
-                transcriber: FixtureTranscriber(counts: counts, language: config.whisper.language, scenario: scenario),
+                transcriber: FixtureTranscriber(counts: counts, language: effective.whisper.language, scenario: scenario),
                 server: FixtureServer(), cleanup: cleanup,
                 makeRecorder: { _ in
                     let value = FixtureRecorder(counts: counts, fails: scenario == "failure", automatic: !scenario.hasPrefix("preview"))
@@ -33,6 +34,7 @@ import Sparkle
                 makeWavWriter: { try WavFileWriter(url: $0) },
                 makeTranscriber: { FixtureTranscriber(counts: counts, language: $0.language, scenario: scenario) },
                 requestMicrophoneAccess: {
+                    counts.permission()
                     if scenario == "delay" { try? await Task.sleep(nanoseconds: 10_000_000_000) }
                     return true
                 }))
@@ -69,6 +71,8 @@ import Sparkle
                     }
                     if value["command"] == "pause" { app.sendAction(NSSelectorFromString("togglePauseResume"), to: delegate, from: nil) }
                     if value["command"] == "cancel" { app.sendAction(NSSelectorFromString("cancelDictation"), to: delegate, from: nil) }
+                    if value["command"] == "open-import" { app.sendAction(NSSelectorFromString("showAudioImport"), to: delegate, from: nil) }
+                    if value["command"] == "open-test" { app.sendAction(NSSelectorFromString("showTestDictation"), to: delegate, from: nil) }
                     if value["command"] == "profile" {
                         let item = NSMenuItem(); item.representedObject = Config.load().profiles.last?.id.uuidString
                         app.sendAction(NSSelectorFromString("selectProfile:"), to: delegate, from: item)
@@ -101,16 +105,17 @@ import Sparkle
 private enum FixtureFailure: Error { case isolation, device }
 private final class FixtureCounts {
     private let lock = NSLock()
-    private var recorders = 0, transcriptions = 0, cleanup = 0, warmups = 0, results = 0
+    private var recorders = 0, transcriptions = 0, cleanup = 0, warmups = 0, results = 0, permissions = 0
     private var rawFallback = false
     func recorder() { lock.withLock { recorders += 1 } }
+    func permission() { lock.withLock { permissions += 1 } }
     func transcribed() { lock.withLock { transcriptions += 1 } }
     func cleaned() { lock.withLock { cleanup += 1 } }
     func warmed() { lock.withLock { warmups += 1 } }
     func delivered(_ result: DictationResult) { lock.withLock { results += 1; rawFallback = result.entry?.cleanupFellBack == true } }
     var snapshot: [String: Any] {
         lock.withLock { ["recorders":recorders,"transcriptions":transcriptions,"cleanupCalls":cleanup,
-                        "warmups":warmups,"results":results,"rawFallback":rawFallback] }
+                        "warmups":warmups,"results":results,"rawFallback":rawFallback,"permissions":permissions] }
     }
 }
 private final class FixtureRecorder: DictationRecorder {
@@ -153,6 +158,10 @@ private final class FixtureTranscriber: DictationTranscriber {
             try await Task.sleep(nanoseconds: number == 1 ? 600_000_000 : 100_000_000)
             if scenario == "preview-failure", number == 2 { throw FixtureFailure.device }
             return language == "en" ? "Segment \(number): do not restart." : "Abschnitt \(number): nicht neu starten."
+        }
+        if scenario.hasPrefix("import") {
+            try await Task.sleep(nanoseconds: 200_000_000)
+            return language == "en" ? "Imported synthetic audio: 128, not 256." : "Importiertes künstliches Audio: 128, nicht 256."
         }
         try await Task.sleep(nanoseconds: 200_000_000)
         return language == "en" ? "Synthetic microphone test: 128, not 256." : "Künstlicher Mikrofontest: 128, nicht 256."

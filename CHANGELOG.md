@@ -10,6 +10,24 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.35] — 2026-10-18
+
+### Neu
+
+- Kurze Audiodateien lassen sich über eine eigene Ansicht auswählen und lokal
+  transkribieren. Profil, Sprache und Aufbewahrung stehen vor dem ausdrücklichen
+  Start fest; bis zu fünf Minuten und 50 MiB werden mit begrenzten Puffern verarbeitet.
+- Originaldateien bleiben unverändert. Ergebnisse erscheinen ohne automatisches
+  Einfügen oder Änderung des letzten regulären Textes; Kopieren ist ausdrücklich.
+- Abbruch und Beenden warten auf Decoder und Writer. Unvollständige Fehlerkopien
+  bleiben erreichbar und lassen sich nicht als vollständiges Audio erneut transkribieren.
+
+### Behoben
+
+- Der globale Abbruch beendet ein Testdiktat nun auch in seiner eigenen Ansicht
+  zutreffend. Wechsel zwischen Testdiktat, Dateiimport und regulärem Diktat halten
+  die Ergebniszuordnung getrennt.
+
 ## [0.9.34] — 2026-10-18
 
 ### Neu

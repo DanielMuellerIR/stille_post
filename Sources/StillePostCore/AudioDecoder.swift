@@ -36,108 +36,99 @@ public enum AudioDecoder {
         try data.write(to: temporaryURL, options: .atomic)
         defer { try? FileManager.default.removeItem(at: temporaryURL) }
 
-        let file: AVAudioFile
-        do {
-            file = try AVAudioFile(forReading: temporaryURL)
-        } catch {
-            throw DecodeError.unsupported(error.localizedDescription)
-        }
-
-        let inputFormat = file.processingFormat
-        guard let outputFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false
-        ), let converter = AVAudioConverter(from: inputFormat, to: outputFormat) else {
-            throw DecodeError.unsupported(L10n.text("core.bridge.audio_format"))
-        }
-
+        let reader = try FileReader(url: temporaryURL, maxSampleCount: maxSampleCount)
         var samples: [Float] = []
-        // Grobe Vorausschau auf die Zielgröße, damit das Array nicht ständig
-        // wächst — gekappt auf die harte Obergrenze, damit eine gelogene
-        // Container-Länge keine Riesen-Reservierung auslösen kann.
-        //
-        // Die Kappung passiert bewusst NOCH IN `Double`: `file.length` kommt aus
-        // dem Container und darf gelogen sein. Bei einer absurden Länge (oder
-        // einer Abtastrate 0, die `inf` ergibt) würde `Int(...)` abstürzen,
-        // bevor `min` überhaupt greift — der Prozess wäre weg, statt sauber
-        // `tooLong` zu melden.
-        let estimated = Double(file.length) * 16000 / inputFormat.sampleRate + 16000
-        let capped = estimated.isFinite ? min(max(estimated, 0), Double(maxSampleCount)) : 0
-        samples.reserveCapacity(Int(capped))
-
-        let chunkFrames: AVAudioFrameCount = 16384
-        var inputExhausted = false
-        // Lesefehler aus dem Eingabe-Closure hier festhalten: `convert` meldet
-        // sie nicht zuverlässig selbst, und ein Lesefehler darf nicht wie ein
-        // normales Dateiende aussehen — sonst würde still abgeschnittenes Audio
-        // als Erfolg transkribiert.
-        var readError: Error?
-        while true {
-            try Task.checkCancellation()
-            guard let output = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: chunkFrames) else {
-                throw DecodeError.unsupported(L10n.text("core.bridge.audio_format"))
-            }
-            var conversionError: NSError?
-            // Der Umwandler holt sich seine Eingabe selbst häppchenweise. Das ist
-            // der einzige Weg, der auch die Abtastrate ändern darf (44,1 -> 16 kHz).
-            let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
-                if inputExhausted {
-                    inputStatus.pointee = .endOfStream
-                    return nil
-                }
-                guard let input = AVAudioPCMBuffer(pcmFormat: inputFormat, frameCapacity: chunkFrames) else {
-                    inputExhausted = true
-                    inputStatus.pointee = .endOfStream
-                    return nil
-                }
-                do {
-                    try file.read(into: input)
-                } catch {
-                    // AVAudioFile wirft am REGULÄREN Dateiende teils einen
-                    // inhaltsleeren Fehler (Code 0). Nur wenn die Leseposition
-                    // noch vor der angekündigten Länge liegt, ist es ein echter
-                    // Lesefehler — etwa eine abgeschnittene Datei.
-                    if file.framePosition < file.length {
-                        readError = error
-                    }
-                    inputExhausted = true
-                    inputStatus.pointee = .endOfStream
-                    return nil
-                }
-                if input.frameLength == 0 {
-                    inputExhausted = true
-                    inputStatus.pointee = .endOfStream
-                    return nil
-                }
-                inputStatus.pointee = .haveData
-                return input
-            }
-            try Task.checkCancellation()
-            if let readError {
-                throw DecodeError.unsupported(readError.localizedDescription)
-            }
-            if let conversionError {
-                throw DecodeError.unsupported(conversionError.localizedDescription)
-            }
-            if status == .error {
-                // `.error` ohne gesetzten NSError darf trotzdem kein stiller
-                // Teilerfolg werden.
-                throw DecodeError.unsupported(L10n.text("core.bridge.audio_format"))
-            }
-            if let channel = output.floatChannelData?[0], output.frameLength > 0 {
-                samples.append(contentsOf: UnsafeBufferPointer(start: channel,
-                                                              count: Int(output.frameLength)))
-                // Obergrenze bei jedem Häppchen erzwingen, nicht erst am Ende —
-                // sonst wäre der Speicher schon verbraucht, bevor es kracht.
-                guard samples.count <= maxSampleCount else {
-                    throw DecodeError.tooLong(seconds: maxSampleCount / 16000)
-                }
-            }
-            if status == .endOfStream { break }
-            if output.frameLength == 0 && inputExhausted { break }
-        }
-
+        samples.reserveCapacity(reader.estimatedSampleCount)
+        while let chunk = try reader.read() { samples.append(contentsOf: chunk) }
         guard !samples.isEmpty else { throw DecodeError.empty }
         return samples
+    }
+
+    /// Ein Leser gehört genau einem Auftrag. Die Brücke sammelt seine begrenzten
+    /// Blöcke, Dateiimporte schreiben sie ohne vollständige Float-Kopie auf Platte.
+    final class FileReader {
+        private let file: AVAudioFile
+        private let converter: AVAudioConverter
+        private let inputFormat: AVAudioFormat
+        private let outputFormat: AVAudioFormat
+        private let maximum: Int
+        private let chunkFrames: AVAudioFrameCount = 16384
+        private var inputExhausted = false
+        private var ended = false
+        private(set) var sampleCount = 0
+        let estimatedSampleCount: Int
+        let estimatedDuration: TimeInterval?
+
+        init(url: URL, maxSampleCount: Int) throws {
+            try Task.checkCancellation()
+            do { file = try AVAudioFile(forReading: url) }
+            catch { throw DecodeError.unsupported(error.localizedDescription) }
+            inputFormat = file.processingFormat
+            guard inputFormat.sampleRate.isFinite, inputFormat.sampleRate > 0, inputFormat.channelCount > 0,
+                  let output = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
+                  let converter = AVAudioConverter(from: inputFormat, to: output) else {
+                throw DecodeError.unsupported(L10n.text("core.bridge.audio_format"))
+            }
+            outputFormat = output; self.converter = converter
+            maximum = min(AudioDecoder.maxSampleCount, max(0, maxSampleCount))
+            let duration = Double(file.length) / inputFormat.sampleRate
+            estimatedDuration = duration.isFinite && duration >= 0 ? duration : nil
+            // Containerlängen können falsch sein. Vor Int-Konvertierung kappen;
+            // die tatsächliche Grenze wird zusätzlich nach jedem Block geprüft.
+            let estimated = duration * 16000 + 16000
+            estimatedSampleCount = Int(estimated.isFinite ? min(max(estimated, 0), Double(maximum)) : 0)
+        }
+
+        func read() throws -> [Float]? {
+            while !ended {
+                try Task.checkCancellation()
+                guard let output = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: chunkFrames) else {
+                    throw DecodeError.unsupported(L10n.text("core.bridge.audio_format"))
+                }
+                var conversionError: NSError?
+                var readError: Error?
+                let status = converter.convert(to: output, error: &conversionError) { _, inputStatus in
+                    if self.inputExhausted { inputStatus.pointee = .endOfStream; return nil }
+                    guard let input = AVAudioPCMBuffer(pcmFormat: self.inputFormat, frameCapacity: self.chunkFrames) else {
+                        readError = DecodeError.unsupported(L10n.text("core.bridge.audio_format"))
+                        self.inputExhausted = true; inputStatus.pointee = .endOfStream; return nil
+                    }
+                    do { try self.file.read(into: input) }
+                    catch {
+                        // AVAudioFile liefert am regulären Ende teils Code 0.
+                        // Ein Fehler vor der angekündigten Länge ist Datenverlust.
+                        if self.file.framePosition < self.file.length { readError = error }
+                        self.inputExhausted = true; inputStatus.pointee = .endOfStream; return nil
+                    }
+                    guard input.frameLength > 0 else {
+                        self.inputExhausted = true; inputStatus.pointee = .endOfStream; return nil
+                    }
+                    inputStatus.pointee = .haveData
+                    return input
+                }
+                try Task.checkCancellation()
+                if let readError { throw DecodeError.unsupported(readError.localizedDescription) }
+                if let conversionError { throw DecodeError.unsupported(conversionError.localizedDescription) }
+                if status == .error { throw DecodeError.unsupported(L10n.text("core.bridge.audio_format")) }
+                ended = status == .endOfStream || (output.frameLength == 0 && inputExhausted)
+                if output.frameLength > 0 {
+                    guard let channel = output.floatChannelData?[0] else {
+                        throw DecodeError.unsupported(L10n.text("core.bridge.audio_format"))
+                    }
+                    let count = Int(output.frameLength)
+                    guard count <= maximum - sampleCount else {
+                        throw DecodeError.tooLong(seconds: maximum / 16000)
+                    }
+                    sampleCount += count
+                    let samples = Array(UnsafeBufferPointer(start: channel, count: count))
+                    guard samples.allSatisfy(\.isFinite) else {
+                        throw DecodeError.unsupported(L10n.text("core.bridge.audio_format"))
+                    }
+                    return samples
+                }
+            }
+            return nil
+        }
     }
 
     /// Rät die Dateiendung aus den ersten Bytes. AVFoundation erkennt das Format

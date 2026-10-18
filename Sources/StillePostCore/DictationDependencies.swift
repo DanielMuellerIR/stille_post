@@ -62,6 +62,7 @@ struct DictationDependencies {
     let makeWavWriter: (URL) throws -> any DictationWavWriter
     var makeTranscriber: ((Config.Whisper) -> any DictationTranscriber)? = nil
     var monotonicTime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    var beforeFileDecodeChunk: ((Int) async -> Void)? = nil
     var requestMicrophoneAccess: () async -> Bool = { await AudioRecorder.requestMicrophoneAccess() }
 
     static func live(config: Config) -> Self {

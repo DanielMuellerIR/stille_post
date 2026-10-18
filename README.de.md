@@ -34,6 +34,7 @@ Längere Diktate lassen sich über Menü und Aufnahmefeld pausieren. Siehe [Paus
 Einrichtung und Fehler lassen sich über die [Diagnose](docs/diagnose.md) prüfen.
 Ein [Testdiktat](docs/testdiktat.md) zeigt Aufnahme, Vorschau und getrennte Phasenzeiten ohne automatisches Einfügen.
 - Optionale [laufende Rohtextvorschau](docs/rohtextvorschau.md) im fokusfreien Aufnahmeoverlay.
+- [Audiodateien auswählen und lokal transkribieren](docs/audioimport.md), mit geschütztem Original und Vorschau ohne Einfügen.
 
 ## In fünf Minuten startklar
 

@@ -11,9 +11,10 @@ final class TestDictationWindowController: NSObject, NSWindowDelegate {
     init(engine: @escaping () -> DictationEngine?, configuration: @escaping () -> Config,
          nextConfiguration: @escaping () -> Config, canStart: @escaping () -> Bool,
          onSettings: @escaping (DiagnosticFinding.Action) -> Void, onClosingError: @escaping (String) -> Void,
-         context: @escaping (Config) -> DiagnosticContext = { AppDiagnosticContext.capture(configuration: $0) }) {
+         context: @escaping (Config) -> DiagnosticContext = { AppDiagnosticContext.capture(configuration: $0) },
+         onBegin: @escaping () -> Bool = { true }) {
         model = TestDictationViewModel(engine: engine, configuration: configuration,
-            nextConfiguration: nextConfiguration, canStart: canStart, onSettings: onSettings, context: context)
+            nextConfiguration: nextConfiguration, canStart: canStart, onSettings: onSettings, context: context, onBegin: onBegin)
         closingError = onClosingError
         super.init()
         observers = [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification,
@@ -62,15 +63,18 @@ final class TestDictationViewModel: ObservableObject {
     private let nextConfiguration: () -> Config
     private let canStart: () -> Bool
     private let contextProvider: (Config) -> DiagnosticContext
+    private let onBegin: () -> Bool
     private var availabilityTimer: Timer?
     private var wasActive = false
 
     init(engine: @escaping () -> DictationEngine?, configuration: @escaping () -> Config,
          nextConfiguration: @escaping () -> Config, canStart: @escaping () -> Bool,
          onSettings: @escaping (DiagnosticFinding.Action) -> Void,
-         context: @escaping (Config) -> DiagnosticContext = { AppDiagnosticContext.capture(configuration: $0) }) {
+         context: @escaping (Config) -> DiagnosticContext = { AppDiagnosticContext.capture(configuration: $0) },
+         onBegin: @escaping () -> Bool = { true }) {
         engineProvider = engine; configurationProvider = configuration; self.nextConfiguration = nextConfiguration
         self.canStart = canStart; self.onSettings = onSettings; contextProvider = context
+        self.onBegin = onBegin
     }
     deinit { availabilityTimer?.invalidate() }
     var state: TestDictationSession.State { session?.state ?? .ready }
@@ -110,7 +114,7 @@ final class TestDictationViewModel: ObservableObject {
         if permissionBlocked { revision &+= 1; return }
         session?.start(configuration: reviewed, currentConfiguration: configurationProvider(),
             nextRequestConfiguration: nextConfiguration(), inputAvailable: inputAvailable,
-            allowed: canStart() && !permissionBlocked)
+            allowed: canStart() && !permissionBlocked, beforeStart: onBegin)
     }
     func stop() { session?.stop() }
     func cancel() { session?.cancel() }

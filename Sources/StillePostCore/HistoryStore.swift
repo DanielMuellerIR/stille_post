@@ -51,6 +51,8 @@ public final class HistoryStore: @unchecked Sendable {
         /// Dateiname einer noch nicht nachweislich gelöschten Aufnahme.
         /// Bewusst nur der Name, kein absoluter Pfad — der Basis-Ordner kann sich ändern.
         public var audioFileName: String?
+        /// nil bei älteren Einträgen; false sperrt Retry unvollständiger Arbeitskopien.
+        public var audioIsComplete: Bool?
         /// Dauer der Aufnahme in Sekunden (fürs Anzeigen).
         public var durationSec: Double
         /// Wurde bei der Bereinigung auf den Rohtext zurückgefallen? (Diagnose)
@@ -82,7 +84,7 @@ public final class HistoryStore: @unchecked Sendable {
         public var isAudioExpired: Bool { audioExpiresAt.map { $0 <= Date() } == true }
 
         public var canRetry: Bool {
-            audioFileName != nil && !isDeletionPending && !isAudioExpired
+            audioFileName != nil && audioIsComplete != false && !isDeletionPending && !isAudioExpired
         }
 
         public var diagnosticMessage: String? {
@@ -116,7 +118,8 @@ public final class HistoryStore: @unchecked Sendable {
                     deletionPending: Bool? = nil, storesText: Bool? = nil,
                     textExpiresAt: Date? = nil, audioExpiresAt: Date? = nil,
                     originalCleanText: String? = nil, manualEditDate: Date? = nil,
-                    manualEditCount: Int? = nil, previousResults: [Revision]? = nil) {
+                    manualEditCount: Int? = nil, previousResults: [Revision]? = nil,
+                    audioIsComplete: Bool? = nil) {
             self.id = id
             self.date = date
             self.rawText = rawText
@@ -124,6 +127,7 @@ public final class HistoryStore: @unchecked Sendable {
             self.status = status
             self.errorMessage = errorMessage
             self.audioFileName = audioFileName
+            self.audioIsComplete = audioIsComplete
             self.durationSec = durationSec
             self.cleanupFellBack = cleanupFellBack
             self.cleanupFallbackReason = cleanupFallbackReason

@@ -34,6 +34,7 @@ Pause and resume longer dictations from the menu or recording overlay. See [paus
 Use the [diagnostics window](docs/diagnose.md) to check setup and failures (German).
 An explicit [test dictation](docs/testdiktat.md) provides a preview and phase timings without automatic insertion (German).
 - Optional [live raw transcript preview](docs/rohtextvorschau.md) in the recording overlay without changing focus.
+- [Choose and transcribe audio files locally](docs/audioimport.md), preserving the original and previewing without insertion.
 
 ## Ready in five minutes
 

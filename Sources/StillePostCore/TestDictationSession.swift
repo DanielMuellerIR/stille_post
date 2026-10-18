@@ -36,12 +36,14 @@ public final class TestDictationSession {
     public func uses(_ source: DictationEngine) -> Bool { engine === source }
 
     public func start(configuration reviewed: Config, currentConfiguration: Config,
-                      nextRequestConfiguration: Config, inputAvailable: Bool, allowed: Bool) {
+                      nextRequestConfiguration: Config, inputAvailable: Bool, allowed: Bool,
+                      beforeStart: () -> Bool = { true }) {
         guard !isActive else { return }
         attemptedAt = Date()
         guard allowed, !engine.hasInFlightRequests else { fail("test_dictation.busy"); return }
         guard reviewed == currentConfiguration else { fail("test_dictation.changed"); return }
         guard inputAvailable else { fail("test_dictation.no_input"); return }
+        guard beforeStart() else { fail("test_dictation.busy"); return }
         configuration = reviewed.resolvedForRequest()
         result = nil; timings = .empty; audioDuration = 0; levelDb = -120
         cancelling = false; recordingBegan = nil
