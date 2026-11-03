@@ -10,6 +10,15 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.46] — 2026-11-03
+
+### Korrigiert
+
+- Das Aufnahmeoverlay wird bei Änderungen der Bildschirmanzahl, Anordnung oder
+  Auflösung auf einem aktuell verfügbaren Bildschirm neu platziert. Eine
+  ausgeblendete Menüleisten-App versteckt das aktive Overlay nicht mehr;
+  die Ziel-App behält weiterhin den Tastaturfokus.
+
 ## [0.9.45] — 2026-11-03
 
 ### Korrigiert

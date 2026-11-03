@@ -30,6 +30,7 @@ final class OverlayController {
     private let model = OverlayModel()
     private var levelTimer: Timer?
     private var hideTimer: Timer?
+    private var screenObserver: NSObjectProtocol?
     private let config: Config.UI
     var recordingContext: String = "" { didSet { model.recordingContext = recordingContext } }
     var recordingVad: String = "" {
@@ -52,6 +53,21 @@ final class OverlayController {
 
     init(config: Config.UI) {
         self.config = config
+        screenObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self, self.panel != nil else { return }
+            // Ein laufendes Overlay darf nach Abstecken oder Neuordnen der
+            // Monitore nicht auf einer nicht mehr sichtbaren Fläche bleiben.
+            self.presentPanel()
+        }
+    }
+
+    deinit {
+        if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
+        levelTimer?.invalidate()
+        hideTimer?.invalidate()
     }
 
     /// Liefert den aktuellen Pegel/die Dauer für die Live-Anzeige.
@@ -147,6 +163,9 @@ final class OverlayController {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
+        // Ausblenden der Menüleisten-App darf die laufende Aufnahme nicht
+        // unsichtbar machen. Das Panel bleibt dabei weiterhin ohne Fokus.
+        panel.canHide = false
         // Über allem schweben, auch über Vollbild-Apps und auf jedem Space.
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]

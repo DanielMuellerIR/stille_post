@@ -30,3 +30,15 @@ swiftc -parse-as-library -I "$MODULE_DIR" \
     Sources/StillePost/TranscriptOriginLabel.swift \
     "${OBJECTS[@]}" -o "$TEST_DIR/audio-import-selection-regression"
 "$TEST_DIR/audio-import-selection-regression"
+mkdir -p "$TEST_DIR/OverlayProbe.app/Contents/MacOS" "$TEST_DIR/OverlayProbe.app/Contents/Resources"
+cat > "$TEST_DIR/OverlayProbe.app/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0"?><plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>org.example.stillepost.overlayprobe</string>
+<key>CFBundleExecutable</key><string>OverlayProbe</string><key>LSUIElement</key><true/>
+</dict></plist>
+PLIST
+ditto "$BIN_DIR/StillePost_StillePostCore.bundle" "$TEST_DIR/OverlayProbe.app/Contents/Resources/StillePost_StillePostCore.bundle"
+swiftc -parse-as-library -I "$MODULE_DIR" \
+    Sources/StillePost/OverlayController.swift scripts/fixtures/overlay-regression.swift \
+    "${OBJECTS[@]}" -o "$TEST_DIR/OverlayProbe.app/Contents/MacOS/OverlayProbe"
+"$TEST_DIR/OverlayProbe.app/Contents/MacOS/OverlayProbe"
