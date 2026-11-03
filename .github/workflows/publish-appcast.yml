@@ -21,7 +21,8 @@ concurrency:
 
 jobs:
   appcast:
-    runs-on: macos-15
+    # Das macOS-15-Image verlor bei der Ticketprüfung die CloudKit-Verbindung (Fehler 68).
+    runs-on: macos-26
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -131,7 +131,8 @@ final class AudioFileImportTests: XCTestCase {
             XCTAssertTrue(Thread.isMainThread); progress.append(value)
         }
         f.engine.importAudioFile(f.source)
-        let end = Date().addingTimeInterval(30)
+        // Der 30-Minuten-Dekodierlauf braucht auf geteilten CI-Rechnern mehr Zeit.
+        let end = Date().addingTimeInterval(120)
         while f.engine.hasInFlightRequests, Date() < end { try await Task.sleep(nanoseconds: 10_000_000) }
         XCTAssertFalse(f.engine.hasInFlightRequests)
         XCTAssertEqual(f.results.count, 1)
