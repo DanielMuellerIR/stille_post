@@ -13,7 +13,8 @@ struct PasteRegression {
         let otherWindow = AXUIElementCreateApplication(100004)
         let board = NSPasteboard(name: .init("stillepost-regression-\(UUID())"))
         defer { board.releaseGlobally() }
-        var focusedField = fieldA
+        var focusedField: AXUIElement? = fieldA
+        var role = kAXTextAreaRole
         var focusedWindow = window
         var onRole: (() -> Void)?
         var sent = 0
@@ -29,12 +30,12 @@ struct PasteRegression {
             case kAXFocusedUIElementAttribute: return focusedField
             case kAXRoleAttribute:
                 onRole?()
-                return kAXTextAreaRole as CFString
+                return role as CFString
             case kAXWindowAttribute: return window
             default: return nil
             }
         }
-        let target = PasteService.captureTarget(access: access)
+        var target = PasteService.captureTarget(access: access)
         precondition(target != nil)
         func attempt(_ expected: PasteService.Outcome, _ label: String) {
             let prior = sent
@@ -59,6 +60,20 @@ struct PasteRegression {
         onRole = { Thread.sleep(forTimeInterval: 0.26) }
         attempt(.clipboardOnlyTargetUnavailable, "AX-Zeitbudget ausgeschöpft")
         onRole = nil
+        focusedField = nil
+        attempt(.clipboardOnlyTargetUnavailable, "Erkanntes Feld verschwindet")
+        target = PasteService.captureTarget(access: access)
+        attempt(.pasted, "App ohne AX-Fokusfeld im selben Fenster")
+        focusedWindow = otherWindow
+        attempt(.clipboardOnlyTargetChanged, "App ohne AX-Fokusfeld wechselt Fenster")
+        focusedWindow = window
+        focusedField = fieldA
+        attempt(.clipboardOnlyTargetUnavailable, "AX-Fokusfeld erscheint erst später")
+        role = kAXButtonRole
+        target = PasteService.captureTarget(access: access)
+        attempt(.clipboardOnlyTargetUnavailable, "Erkannter Button ist kein Textfeld")
+        role = kAXTextAreaRole
+        target = PasteService.captureTarget(access: access)
         trusted = false
         attempt(.noPermission, "Berechtigung fehlt")
         print("Keine Fenster aktiviert, keine Tastendrücke versandt; eigene benannte Zwischenablage.")

@@ -2,7 +2,9 @@
 
 Seit 0.9.22 merkt sich Stille Post beim Aufnahmebeginn die aktive Anwendung,
 ihren laufenden Prozess, das fokussierte Fenster und das Textfeld. Vor dem
-Einfügen müssen diese Identitäten wieder übereinstimmen. Die Prüfung liest
+Einfügen müssen diese Identitäten wieder übereinstimmen. Seit 0.9.45 genügt
+bei Apps ohne AX-Fokusfeld das unveränderte Fenster desselben Prozesses.
+Die Prüfung liest
 keinen Inhalt fremder Textfelder. Abfragen an eine langsame Ziel-App sind
 zeitlich begrenzt.
 
@@ -26,15 +28,19 @@ dann nicht statt.
 Die Prüfung gilt für App, Fenster und Textfeld. Sie speichert keine Cursorposition
 oder Auswahl innerhalb des Felds. Ein verschobener Cursor im gleichen Textfeld
 bleibt daher das aktuelle Einfügeziel. Manche Apps stellen über die
-Bedienungshilfen keine stabilen oder unterstützten Textfeldidentitäten bereit;
-in diesem Fall wird ausschließlich kopiert.
+Bedienungshilfen gar kein fokussiertes Element bereit, etwa die ChatGPT-App.
+Fehlt es bei Aufnahmebeginn und vor dem Einfügen, genügt dasselbe eindeutig
+erkannte Fenster. Ein Feldwechsel innerhalb dieses Fensters kann dann nicht
+erkannt werden. Ein bereits erkanntes Feld, das später verschwindet, oder ein
+erkennbares Element ohne unterstützte Textrolle erlaubt dagegen kein
+automatisches Einfügen.
 
 macOS bietet keine atomare Operation aus Fokusprüfung und synthetischem ⌘V.
 Ein Fokuswechsel genau während der Eventzustellung lässt sich deshalb nicht
 vollständig ausschließen. Nach den Metadaten-Abfragen werden Fenster- und Feldfokus erneut mit dem
 ursprünglichen Ziel verglichen. App, Berechtigung und eigener
 Clipboard-Änderungszähler werden unmittelbar vor dem Senden ebenfalls geprüft.
-Alle AX-Abfragen teilen ein Zeitbudget von 250 ms; eine fehlende Zuordnung oder
+Alle AX-Abfragen teilen ein Zeitbudget von 250 ms; eine fehlende Fensterzuordnung oder
 ein ausgeschöpftes Budget erlaubt kein automatisches Einfügen.
 
 ## Prüfung am 2026-10-16
@@ -59,3 +65,19 @@ Die beiden neuen Hinweise wurden in DE/EN am installierten, notarisierten Bundle
 verwendete künstliche Textfelder; sie ersetzt keine mehrtägige Abnahme sämtlicher
 Zielprogramme oder einen vollständigen Live-Diktierlauf mit physischem Mikrofon.
 Die offenen Gerätefälle stehen weiterhin im [Backlog](../backlog.md).
+
+## Prüfung am 2026-11-03
+
+Die laufende ChatGPT-App lieferte ein fokussiertes Fenster, aber kein
+AX-Fokuselement. Eine Probe mit dem produktiven PasteService und echten
+AX-Abfragen reproduzierte mit dem bisherigen Code den manuellen Fallback;
+der korrigierte Code gab dasselbe Fenster zum Einfügen frei. Dabei waren
+Tastendrücke ersetzt und die Zwischenablage separat benannt; diese Probe
+belegt die Zielentscheidung, nicht die tatsächliche Eventzustellung.
+
+Kern- und native Regressionstests prüften außerdem das fehlende Feld, ein
+später erscheinendes oder verschwindendes Feld, ein erkennbares Nichttextfeld,
+Fensterwechsel sowie die bisherigen Berechtigungs-, Zeitbudget- und
+Zwischenablage-Grenzen. Der vollständige App-Bundle-Build startete im
+Hintergrund mit isolierten Nutzerdaten. Ein neuer vollständiger Mikrofonlauf
+war kein Bestandteil dieser Prüfung.

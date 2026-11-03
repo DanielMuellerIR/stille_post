@@ -94,7 +94,9 @@ task a small, disciplined model cleans better than the large ones.
 
 Now place the cursor in a text field, press **⌘⌥D**, speak, and press **⌘⌥D**
 again. Stille Post pastes only while the original app, window and text field are
-still focused. If the target changes or cannot be identified, a blue notice
+still focused. If an app exposes no focused element through Accessibility, the
+unchanged window is sufficient; field changes within that window cannot then be
+detected. If the target changes or cannot be identified, a blue notice
 confirms that the text is in the clipboard for manual pasting. The app never
 switches back to an earlier window. Moving the cursor within the same text field
 uses its current position; the original cursor position is not saved.

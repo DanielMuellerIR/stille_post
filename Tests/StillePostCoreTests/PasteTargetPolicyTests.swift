@@ -32,6 +32,12 @@ final class PasteTargetPolicyTests: XCTestCase {
         }
     }
 
+    func testUnexposedFieldAllowsPasteOnlyInTheSameKnownWindow() {
+        XCTAssertEqual(decide(field: .notExposed), .paste)
+        XCTAssertEqual(decide(window: .different, field: .notExposed), .clipboardOnlyTargetChanged)
+        XCTAssertEqual(decide(window: .unavailable, field: .notExposed), .clipboardOnlyTargetUnavailable)
+    }
+
     func testScreenSharingAlwaysRequiresManualPaste() {
         XCTAssertEqual(PasteTargetPolicy.decide(
             originalApplication: nil, currentApplication: nil,

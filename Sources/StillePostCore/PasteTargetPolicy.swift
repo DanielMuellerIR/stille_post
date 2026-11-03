@@ -1,7 +1,7 @@
 import Foundation
 
 /// Entscheidet ohne AppKit-Zugriff, ob das ursprüngliche Diktierziel noch passt.
-/// Fehlende Zielinformationen erlauben kein automatisches Einfügen.
+/// Ohne Feldidentität müssen App und Fenster weiterhin eindeutig passen.
 public enum PasteTargetPolicy {
     public struct ApplicationIdentity: Equatable, Sendable {
         public let processIdentifier: Int32
@@ -15,6 +15,8 @@ public enum PasteTargetPolicy {
 
     public enum ElementMatch: Sendable {
         case same, different, unavailable
+        /// Die App stellt bei beiden Erfassungen kein fokussiertes Element bereit.
+        case notExposed
     }
 
     public enum Decision: Equatable, Sendable {
@@ -42,7 +44,7 @@ public enum PasteTargetPolicy {
             return .clipboardOnlyTargetChanged
         }
         if window == .different || field == .different { return .clipboardOnlyTargetChanged }
-        guard window == .same, field == .same else { return .clipboardOnlyTargetUnavailable }
+        guard window == .same, field == .same || field == .notExposed else { return .clipboardOnlyTargetUnavailable }
         return .paste
     }
 }

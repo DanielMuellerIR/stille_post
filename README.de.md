@@ -95,7 +95,9 @@ ein diszipliniertes kleines Modell putzt hier besser als die großen.
 
 Danach: Cursor in ein Textfeld setzen, **⌘⌥D** drücken, sprechen und **⌘⌥D**
 erneut drücken. Stille Post fügt nur ein, solange die ursprüngliche App, das
-Fenster und das Textfeld weiterhin fokussiert sind. Bei einem Zielwechsel oder
+Fenster und das Textfeld weiterhin fokussiert sind. Meldet eine App kein
+fokussiertes Element über die Bedienungshilfen, genügt das unveränderte Fenster;
+ein Feldwechsel innerhalb dieses Fensters ist dann nicht erkennbar. Bei einem Zielwechsel oder
 fehlender Zuordnung bestätigt ein blauer Hinweis, dass der Text zum manuellen
 Einfügen in der Zwischenablage liegt. Die App wechselt nie selbst zum früheren
 Fenster zurück. Wird der Cursor innerhalb desselben Textfelds verschoben, gilt

@@ -26,6 +26,7 @@ enum PasteService {
         fileprivate let identity: PasteTargetPolicy.ApplicationIdentity
         fileprivate let window: AXUIElement?
         fileprivate let field: AXUIElement?
+        fileprivate let fieldNotExposed: Bool
     }
 
     /// Liest nur Zielidentitäten, niemals den Inhalt eines fremden Textfelds.
@@ -41,6 +42,7 @@ enum PasteService {
         let app = AXUIElementCreateApplication(application.processIdentifier)
         let window = element(kAXFocusedWindowAttribute, of: app, deadline: deadline, access: access)
         var field = element(kAXFocusedUIElementAttribute, of: app, deadline: deadline, access: access)
+        let fieldNotExposed = field == nil
         if let candidate = field {
             let role = access.read(kAXRoleAttribute, candidate, deadline) as? String
             let supportedRoles = [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole]
@@ -49,7 +51,7 @@ enum PasteService {
                 field = nil
             }
         }
-        return Target(application: application, identity: identity, window: window, field: field)
+        return Target(application: application, identity: identity, window: window, field: field, fieldNotExposed: fieldNotExposed)
     }
 
     /// Prüft die Berechtigung und zeigt beim ersten Mal den System-Hinweis an.
@@ -110,7 +112,7 @@ enum PasteService {
             originalApplication: original,
             currentApplication: current?.identity ?? identity(of: frontmost),
             window: compare(target?.window, current?.window),
-            field: compare(target?.field, current?.field),
+            field: compareFields(target, current),
             accessibilityGranted: permission,
             screenSharingActive: screenSharing
         )
@@ -147,7 +149,7 @@ enum PasteService {
             return .clipboardOnlyTargetChanged
         }
         guard access.trusted(), compare(target.window, window) == .same,
-              compare(target.field, field) == .same,
+              (compare(target.field, field) == .same || (target.fieldNotExposed && field == nil)),
               ProcessInfo.processInfo.systemUptime < deadline else {
             return .clipboardOnlyTargetUnavailable
         }
@@ -166,6 +168,16 @@ enum PasteService {
     private static func identity(of application: NSRunningApplication?) -> PasteTargetPolicy.ApplicationIdentity? {
         guard let application, let bundleIdentifier = application.bundleIdentifier else { return nil }
         return .init(processIdentifier: application.processIdentifier, bundleIdentifier: bundleIdentifier)
+    }
+
+    // Einige Apps liefern ein Fenster, aber grundsätzlich kein AX-Fokusfeld.
+    // Nur wenn beide Erfassungen so ausfallen, genügt dasselbe Fenster.
+    // Ein einmal erkanntes Feld darf dagegen niemals still verloren gehen.
+    private static func compareFields(_ original: Target?, _ current: Target?) -> PasteTargetPolicy.ElementMatch {
+        if original?.fieldNotExposed == true, current?.fieldNotExposed == true {
+            return .notExposed
+        }
+        return compare(original?.field, current?.field)
     }
 
     private static func compare(_ original: AXUIElement?, _ current: AXUIElement?) -> PasteTargetPolicy.ElementMatch {

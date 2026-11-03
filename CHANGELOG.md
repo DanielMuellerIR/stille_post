@@ -10,6 +10,15 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.45] — 2026-11-03
+
+### Korrigiert
+
+- Automatisches Einfügen funktioniert wieder in Apps, die über die
+  Bedienungshilfen kein fokussiertes Element melden, etwa ChatGPT. In diesem
+  Fall müssen App-Prozess und Fenster unverändert sein. Ein zuvor erkanntes
+  Textfeld bleibt weiterhin an seine ursprüngliche Identität gebunden.
+
 ## [0.9.43] — 2026-10-18
 
 Lokale iPhone-Modellverwaltung; die Diktatansicht verwendet weiterhin den Mac.
