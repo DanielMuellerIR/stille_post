@@ -6,6 +6,8 @@ Local dictation app for macOS: Global hotkey, speech-to-text with Whisper, and t
 cleanup with a local language model. The finished text lands right at your cursor.
 Recordings never leave your machine.
 
+A first Linux version is available as a source build for CachyOS/KDE/Wayland and Linux Mint 22.2/Cinnamon/X11. It shares the dictation core and copies results for manual insertion. See [Linux installation and limits](docs/linux.md) (German). Public GitHub releases currently contain macOS packages; the Linux update feed awaits its first release.
+
 The complete interface — menu, settings, history, overlays, model download, and
 user-facing errors — is available in English and German. macOS chooses the language
 from the system or per-app language preferences. CLI diagnostics are localized as

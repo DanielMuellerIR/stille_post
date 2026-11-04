@@ -1,5 +1,10 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+#if canImport(CFNetwork)
 import CFNetwork
+#endif
 
 /// Schmale HTTP-Grenze der Textbereinigung. Sie hält Netzwerkdetails aus der
 /// Fallback-Logik heraus und erlaubt vollständige Stream-Fehlerpfade ohne echten
@@ -21,6 +26,9 @@ final class URLSessionCleanupTransport: CleanupTransport {
     init(localOnly: Bool = false) {
         self.localOnly = localOnly
         redirectGuard = CleanupRedirectGuard(localOnly: localOnly)
+#if os(Linux)
+        LinuxNetworkBootstrap.prepare()
+#endif
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.timeoutIntervalForRequest = 120
         Self.configure(sessionConfig, localOnly: localOnly)
@@ -57,6 +65,9 @@ final class URLSessionCleanupTransport: CleanupTransport {
     func streamLines(for request: URLRequest, freshConnection: Bool) async throws
         -> (AsyncThrowingStream<String, Error>, URLResponse) {
         try check(request)
+#if os(Linux)
+        return try await LinuxLineStream.open(request, localOnly: localOnly)
+#else
         let selectedSession = freshConnection ? Self.makeStreamSession(localOnly: localOnly) : streamSession
         let bytes: URLSession.AsyncBytes
         let response: URLResponse
@@ -79,6 +90,7 @@ final class URLSessionCleanupTransport: CleanupTransport {
             continuation.onTermination = { @Sendable _ in task.cancel() }
         }
         return (lines, response)
+#endif
     }
 
     private func check(_ request: URLRequest) throws {
@@ -88,11 +100,15 @@ final class URLSessionCleanupTransport: CleanupTransport {
     private static func configure(_ config: URLSessionConfiguration, localOnly: Bool) {
         guard localOnly else { return }
         // Auch ein Systemproxy/PAC darf lokale Diktate nicht ausleiten.
+#if canImport(CFNetwork)
         config.connectionProxyDictionary = [
             kCFNetworkProxiesHTTPEnable as String: 0, kCFNetworkProxiesHTTPSEnable as String: 0,
             kCFNetworkProxiesSOCKSEnable as String: 0, kCFNetworkProxiesProxyAutoConfigEnable as String: 0,
             kCFNetworkProxiesProxyAutoDiscoveryEnable as String: 0,
         ]
+#else
+        config.connectionProxyDictionary = [:]
+#endif
         config.urlCredentialStorage = nil
         config.httpShouldSetCookies = false
     }

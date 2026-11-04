@@ -1,6 +1,8 @@
 # Linux-Portierung: lokales Diktat unter CachyOS und Linux Mint
 
-Stand: 2026-11-04. **Umsetzungsplan, noch keine Linux-Version.** Grundlage ist
+Stand: 2026-11-04. **Ursprünglicher Umsetzungsplan.** Eine erste installierbare
+Fassung ist inzwischen vorhanden; aktueller Umfang und offene Abnahme stehen in
+[Linux-Nutzung und Grenzen](linux.md). Grundlage ist
 Quellstand `dd9169c` / Version `0.9.46`. Offene Arbeit wird in
 [backlog.md](../backlog.md) geführt; dieses Dokument beschreibt die Umsetzung.
 

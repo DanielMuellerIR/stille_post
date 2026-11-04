@@ -1,0 +1,21 @@
+name: Linux build and contracts
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Build portable archive and Swift contracts
+        run: ./build.sh
+      - name: Pipeline and updater contracts
+        run: |
+          python3 linux/test_pipeline.py
+          python3 linux/test_update.py
+          QT_QPA_PLATFORM=offscreen build/linux/StillePost.AppDir/AppRun --smoke-test

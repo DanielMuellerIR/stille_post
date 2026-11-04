@@ -14,6 +14,12 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+if [[ $(uname -s) == Linux ]]; then
+    if (( $# > 0 )); then echo 'Linux-Installation nimmt keine Argumente.' >&2; exit 2; fi
+    scripts/build-linux.sh
+    exec build/linux/StillePost.AppDir/install.sh
+fi
+
 if [[ -z "${NOTARY_PROFILE:-}" ]]; then
     NOTARY_PROFILE="$(git config --local --get stillePost.notaryProfile 2>/dev/null || true)"
 fi

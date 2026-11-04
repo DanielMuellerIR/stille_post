@@ -74,6 +74,9 @@ public final class WhisperServerManager: DictationServer {
         process.executableURL = URL(fileURLWithPath: binary)
         process.arguments = Self.launchArguments(model: model, endpoint: endpoint,
                                                  threads: config.threads)
+#if os(Linux)
+        if !config.useGPU { process.arguments?.append("--no-gpu") }
+#endif
         // Server-Logs nicht in unser Terminal mischen.
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
@@ -113,7 +116,11 @@ public final class WhisperServerManager: DictationServer {
     public func stop() {
         let ownedProcess = process
         process = nil
+#if os(Linux)
+        LinuxChildProcess.stop(ownedProcess)
+#else
         if ownedProcess?.isRunning == true { ownedProcess?.terminate() }
+#endif
     }
 
     public enum ServerError: Error, LocalizedError {

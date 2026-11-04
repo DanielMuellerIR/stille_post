@@ -6,6 +6,8 @@ Lokale Diktier-App für macOS: Globaler Hotkey, Spracherkennung mit Whisper und
 Textbereinigung mit einem lokalen Sprachmodell. Der fertige Text landet direkt an
 der Cursor-Position. Aufnahmen verlassen den Rechner nicht.
 
+Eine erste Linux-Fassung lässt sich für CachyOS/KDE/Wayland und Linux Mint 22.2/Cinnamon/X11 bauen. Sie verwendet denselben Diktierkern und kopiert Ergebnisse zum manuellen Einfügen. Siehe [Linux-Installation und Grenzen](docs/linux.md). Öffentliche GitHub-Releases enthalten derzeit macOS-Pakete; der Linux-Updatefeed folgt mit dem ersten Linux-Release.
+
 Die vollständige Oberfläche — Menü, Einstellungen, Verlauf, Overlays,
 Modell-Download und nutzernahe Fehler — ist auf Deutsch und Englisch verfügbar.
 macOS wählt die Sprache aus den systemweiten oder app-spezifischen

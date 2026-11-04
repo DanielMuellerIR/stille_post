@@ -35,6 +35,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+if [[ $(uname -s) == Linux ]]; then
+    echo 'Linux: ./build.sh erzeugt das Installationsarchiv; Veröffentlichung und signierter Feed sind ein eigener Freigabeschritt.' >&2
+    exit 2
+fi
+
 # Ein Release muss einen gespeicherten Quellstand abbilden. Auch neue, noch
 # unversionierte Dateien zählen; ignorierte Build-Artefakte dagegen nicht.
 # Die Prüfung steht vor Konfiguration, Build und Notarisierung, damit bei einem

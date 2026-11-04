@@ -19,3 +19,6 @@ xcuserdata/
 
 # Lokaler Schutz gegen gleichzeitige Commits mehrerer Sessions
 .commit-lock
+
+# Python-Hilfsprogramme der Linux-Auslieferung
+/linux/__pycache__/

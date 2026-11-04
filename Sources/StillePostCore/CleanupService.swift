@@ -1,5 +1,10 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+#if canImport(Security)
 import Security
+#endif
 
 /// Textbereinigung: bekommt den rohen Whisper-Text des GESAMTEN Diktats (alle
 /// Segmente zusammengefügt) und entfernt Füllwörter, Versprecher und Stottern;
@@ -361,10 +366,19 @@ public final class CleanupService {
             "model": endpoint.model,
             "prompt": "",
             "keep_alive": Self.keepAliveValue(endpoint.keepAlive),
-            "options": ["num_ctx": endpoint.numCtx],
+            "options": Self.ollamaOptions(endpoint: endpoint),
         ] as [String: Any])
         guard allowed(request) else { return }
         transport.sendWarmUp(request)  // Antwort ist egal, reines Vorwärmen
+    }
+
+    private static func ollamaOptions(endpoint: Config.Cleanup.Endpoint, chat: Bool = false) -> [String: Any] {
+        var options: [String: Any] = ["num_ctx": endpoint.numCtx]
+        if chat { options["temperature"] = 0; options["repeat_penalty"] = 1.0 }
+#if os(Linux)
+        if CleanupNetworkPolicy.allows(URL(string: endpoint.ollamaURL)) { options["num_thread"] = 4 }
+#endif
+        return options
     }
 
     /// Übersetzt den keep_alive-Wert aus der Config in das, was Ollama im JSON erwartet.
@@ -1146,11 +1160,7 @@ public final class CleanupService {
             // des Endpoints (siehe keepAliveValue). Muss identisch zum Vorwärm-Request
             // sein, sonst verschiebt jeder Diktat-Zyklus die Frist anders als gedacht.
             "keep_alive": Self.keepAliveValue(endpoint.keepAlive),
-            "options": [
-                "temperature": 0,        // deterministisch, kein kreatives Umschreiben
-                "repeat_penalty": 1.0,   // wichtig: >1 drängt aktiv zu Synonymen/Umformulierung
-                "num_ctx": endpoint.numCtx, // begrenztes Kontextfenster (RAM! siehe Config)
-            ],
+            "options": Self.ollamaOptions(endpoint: endpoint, chat: true),
             "messages": [
                 ["role": "system", "content": requestSystemPrompt],
                 ["role": "user", "content": text],
@@ -1302,6 +1312,7 @@ public final class CleanupService {
         if let fromEnv = ProcessInfo.processInfo.environment[envVar], !fromEnv.isEmpty {
             return fromEnv
         }
+#if canImport(Security)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keychainService,
@@ -1315,16 +1326,23 @@ public final class CleanupService {
             return nil
         }
         return key
+#else
+        return LinuxSecretStore.load()
+#endif
     }
 
     /// Speichert den API-Key im macOS-Schlüsselbund. Ein vorhandener Eintrag
     /// wird aktualisiert statt vorher gelöscht — sonst wäre der alte Key bei
     /// einem Speicherfehler bereits verloren (Details: `KeychainUpsert`).
     public static func storeRemoteAPIKey(_ key: String) throws {
+#if canImport(Security)
         let status = KeychainUpsert.store(service: keychainService, value: Data(key.utf8))
         guard status == errSecSuccess else {
             throw CleanupError.badConfig(L10n.format("core.cleanup.keychain_error", status))
         }
+#else
+        try LinuxSecretStore.store(key)
+#endif
     }
 
     // MARK: - Hilfsfunktionen

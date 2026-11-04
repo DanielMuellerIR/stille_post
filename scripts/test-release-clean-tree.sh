@@ -22,6 +22,12 @@ git -C "$FIXTURE" init -q
 git -C "$FIXTURE" add release.sh VERSION .gitignore scripts/build-app.sh
 git -C "$FIXTURE" -c user.name=Test -c user.email=test@example.invalid commit -qm fixture
 
+# Dieser Vertrag prüft den macOS-Releasepfad auch auf einem Linux-Testhost.
+mkdir -p "$TEST_ROOT/bin"
+printf '#!/bin/sh\necho Darwin\n' > "$TEST_ROOT/bin/uname"
+chmod +x "$TEST_ROOT/bin/uname"
+export PATH="$TEST_ROOT/bin:$PATH"
+
 run_release() {
     set +e
     output=$(cd "$FIXTURE" && NOTARY_PROFILE=test DEVELOPER_TEAM_ID=test bash release.sh 2>&1)

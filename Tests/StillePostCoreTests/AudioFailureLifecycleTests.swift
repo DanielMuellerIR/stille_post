@@ -430,6 +430,9 @@ final class AudioFailureLifecycleTests: XCTestCase {
 
     @MainActor
     func testShutdownPersistsUndeletableRecordingBeforeProcessExit() async throws {
+#if os(Linux)
+        throw XCTSkip("Der separate xcrun-Prozessvertrag benötigt macOS; Linux-Worker erhält einen eigenen Prozesstest.")
+#else
         let variable = "STILLEPOST_SHUTDOWN_CHILD"
         if let path = ProcessInfo.processInfo.environment[variable] {
             let fixture = try LossFixture(directory: URL(fileURLWithPath: path))
@@ -470,6 +473,7 @@ final class AudioFailureLifecycleTests: XCTestCase {
         try store.deleteAll()
         XCTAssertTrue(try store.list().isEmpty)
         XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: store.recordingsDir.path).isEmpty)
+#endif
     }
 
     @MainActor

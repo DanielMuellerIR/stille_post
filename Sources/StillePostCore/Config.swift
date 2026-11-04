@@ -28,12 +28,22 @@ public struct Config: Codable, Equatable {
         /// Soll die App den whisper-server selbst starten, falls er nicht läuft?
         public var autostart: Bool = true
         /// Pfad zum whisper-server-Binary (Homebrew-Standardpfad).
+#if os(Linux)
+        public var binaryPath: String = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL.deletingLastPathComponent().appendingPathComponent("whisper-server").path
+#else
         public var binaryPath: String = "/opt/homebrew/bin/whisper-server"
+#endif
         /// Pfad zur Modell-Datei (ggml-Format). Tilde wird expandiert.
         /// Default: eigener Modell-Ordner; `scripts/install-model.sh` legt das Modell dort ab.
+#if os(Linux)
+        public var modelPath: String = Config.appSupportDir.appendingPathComponent("models/ggml-large-v3-turbo.bin").path
+#else
         public var modelPath: String = "~/Library/Application Support/StillePost/models/ggml-large-v3-turbo.bin"
+#endif
         /// Anzahl CPU-Threads für den Server.
         public var threads: Int = 4
+        /// Linux: GPU nur auf dafür geprüften Geräten verwenden.
+        public var useGPU: Bool = true
         /// Sprache für Whisper: "auto" = automatisch erkennen, sonst z. B. "de".
         public var language: String = "auto"
 
@@ -317,8 +327,13 @@ public struct Config: Codable, Equatable {
            !override.isEmpty {
             return URL(fileURLWithPath: expandPath(override))
         }
+#if os(Linux)
+        let root = ProcessInfo.processInfo.environment["XDG_DATA_HOME"] ?? "~/.local/share"
+        return URL(fileURLWithPath: expandPath(root)).appendingPathComponent("stillepost")
+#else
         return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("StillePost")
+#endif
     }
 
     public static var configFile: URL {
@@ -327,7 +342,12 @@ public struct Config: Codable, Equatable {
         if let override = ProcessInfo.processInfo.environment["STILLEPOST_CONFIG"], !override.isEmpty {
             return URL(fileURLWithPath: expandPath(override))
         }
+#if os(Linux)
+        let root = ProcessInfo.processInfo.environment["XDG_CONFIG_HOME"] ?? "~/.config"
+        return URL(fileURLWithPath: expandPath(root)).appendingPathComponent("stillepost/config.json")
+#else
         return appSupportDir.appendingPathComponent("config.json")
+#endif
     }
 
     /// Lädt die Config von Platte; fehlt sie, werden Defaults geschrieben und benutzt.
@@ -467,7 +487,7 @@ private extension KeyedDecodingContainer {
 // Auch die Unterstrukturen tolerant dekodieren: Jedes fehlende Feld fällt auf den
 // Default zurück. Dafür nutzen wir `decodeIfPresent` in Hand-Implementierungen.
 extension Config.Whisper {
-    private enum CodingKeys: String, CodingKey { case serverURL, autostart, binaryPath, modelPath, threads, language }
+    private enum CodingKeys: String, CodingKey { case serverURL, autostart, binaryPath, modelPath, threads, language, useGPU }
     public init(from decoder: Decoder) throws {
         self.init()
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -476,6 +496,7 @@ extension Config.Whisper {
         binaryPath = c.decodeOrDefault(String.self, forKey: .binaryPath, default: binaryPath)
         modelPath = c.decodeOrDefault(String.self, forKey: .modelPath, default: modelPath)
         threads = c.decodeOrDefault(Int.self, forKey: .threads, default: threads)
+        useGPU = c.decodeOrDefault(Bool.self, forKey: .useGPU, default: useGPU)
         language = c.decodeOrDefault(String.self, forKey: .language, default: language)
     }
 }

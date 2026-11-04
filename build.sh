@@ -20,4 +20,8 @@ if (( $# > 0 )); then
     exit 2
 fi
 
+if [[ $(uname -s) == Linux ]]; then
+    exec scripts/build-linux.sh
+fi
+
 exec scripts/build-app.sh

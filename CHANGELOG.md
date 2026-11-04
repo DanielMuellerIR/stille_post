@@ -10,6 +10,27 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.47] — 2026-11-04
+
+### Hinzugefügt
+
+- Erste installierbare Linux-Fassung für x86_64: gemeinsame Swift-Pipeline und
+  Qt-Oberfläche mit Mikrofonwahl, globalem Toggle, Audiodateiimport, Verlauf und
+  sicherem Kopieren. Lokales Whisper mit CPU/Vulkan; Textbereinigung über einen
+  konfigurierten LAN-Dienst und einen lokalen Ollama-Fallback.
+- Benutzerlokales Installationsarchiv mit mitgelieferter Laufzeit und geprüfter
+  Modelleinrichtung. Die Root-Einstiege erkennen Linux; der macOS-Bau bleibt
+  erhalten. Linux-CI ergänzt die bestehenden macOS-Prüfungen.
+- Signierter Linux-Updateclient mit Paketprüfung, atomarem Versionswechsel und
+  Start-Rollback. Der öffentliche Feed ist noch nicht freigegeben.
+
+### Grenzen
+
+- Linux kopiert zum manuellen Einfügen; Gedrückthalten, iPhone-Empfängerbrücke,
+  CoreML-Silero und vollständige macOS-Oberflächenparität sind nicht enthalten.
+  Physische Mikrofon-/Hotkey-Abnahme und mehrtägiger Pilot stehen noch aus.
+  Einzelheiten: [Linux](docs/linux.md).
+
 ## [0.9.46] — 2026-11-03
 
 ### Korrigiert

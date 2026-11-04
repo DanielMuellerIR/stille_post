@@ -1,5 +1,9 @@
 import Foundation
+#if canImport(Darwin)
 import Darwin
+#else
+import Glibc
+#endif
 
 /// Keine Namensauflösung: Eine lokale Richtlinie vertraut nur numerischen
 /// Loopback-Zielen. Dieselbe Grenze gilt vor Requests und vor Weiterleitungen.

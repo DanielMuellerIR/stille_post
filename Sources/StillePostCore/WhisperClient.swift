@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// HTTP-Client für den lokalen whisper-server (whisper.cpp).
 ///
@@ -27,6 +30,9 @@ public final class WhisperClient {
 
     public init(config: Config.Whisper) {
         self.config = config
+#if os(Linux)
+        LinuxNetworkBootstrap.prepare()
+#endif
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.timeoutIntervalForRequest = 300  // sehr lange Aufnahmen abdecken
         self.session = URLSession(configuration: sessionConfig,

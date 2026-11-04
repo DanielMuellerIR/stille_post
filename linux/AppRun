@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+app_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+export LD_LIBRARY_PATH="$app_dir/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export QT_PLUGIN_PATH="$app_dir/plugins"
+export QT_MEDIA_BACKEND=ffmpeg
+export FONTCONFIG_FILE="$app_dir/fontconfig/fonts.conf"
+export FONTCONFIG_PATH="$app_dir/fontconfig"
+if [ "${1:-}" = --cli ]; then
+    shift
+    exec "$app_dir/bin/stillepost-linux" "$@"
+fi
+exec "$app_dir/bin/stillepost" "$@"

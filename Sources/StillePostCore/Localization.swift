@@ -21,7 +21,11 @@ public enum L10n {
     /// Kandidaten in dieser Reihenfolge, erster Treffer gewinnt; ganz zuletzt
     /// SwiftPMs `Bundle.module` (greift nur noch in Tests / auf der Build-Maschine).
     private static let resourceBundle: Bundle = {
+#if os(Linux)
+        let bundleName = "StillePost_StillePostCore.resources"
+#else
         let bundleName = "StillePost_StillePostCore.bundle"
+#endif
         var candidates: [URL] = []
         if let resourceURL = Bundle.main.resourceURL {
             candidates.append(resourceURL.appendingPathComponent(bundleName))     // App: Contents/Resources

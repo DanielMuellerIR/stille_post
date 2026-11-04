@@ -7,6 +7,21 @@
 //   stillepost-cli  — Headless-Zugang für Tests und AI-Agenten (transcribe/cleanup/doctor/history).
 import PackageDescription
 
+#if os(Linux)
+let linuxExcluded = ["AudioRecorder.swift", "AudioInputDevice.swift", "AudioDecoder.swift",
+    "SileroModel.swift", "KeychainUpsert.swift", "PasteboardSnapshot.swift", "Diagnostics.swift",
+    "ModelInstaller.swift", "TestDictationSession.swift", "BridgeToken.swift", "BridgeServer.swift", "BridgeRouter.swift",
+    "BridgeProtocol.swift", "BridgePairing.swift", "BridgeLogFile.swift", "BridgeInterfaces.swift",
+    "BridgeIdentity.swift"]
+let package = Package(name: "StillePost", defaultLocalization: "de", targets: [
+    .target(name: "StillePostCore", exclude: linuxExcluded, resources: [.process("Resources")],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
+    .executableTarget(name: "stillepost-linux", dependencies: ["StillePostCore"],
+            swiftSettings: [.swiftLanguageMode(.v5)]),
+    .testTarget(name: "LinuxCoreTests", dependencies: ["StillePostCore"], path: "Tests", sources: ["LinuxCoreTests", "StillePostCoreTests/AudioFailureLifecycleTests.swift", "StillePostCoreTests/HistoryCorrectionTests.swift", "StillePostCoreTests/HistoryManagementTests.swift", "StillePostCoreTests/HistoryPrivacyTests.swift", "StillePostCoreTests/HotkeyStateTests.swift", "StillePostCoreTests/PasteTargetPolicyTests.swift", "StillePostCoreTests/SelectionCleanupTests.swift", "StillePostCoreTests/TextDifferenceTests.swift", "StillePostCoreTests/VadSegmenterTests.swift", "StillePostCoreTests/WhisperHealthTests.swift"],
+            swiftSettings: [.swiftLanguageMode(.v5)])
+])
+#else
 let package = Package(
     name: "StillePost",
     defaultLocalization: "de",
@@ -52,3 +67,5 @@ let package = Package(
         ),
     ]
 )
+
+#endif
