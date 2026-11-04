@@ -1,9 +1,14 @@
 #!/usr/bin/env python3
 """Realer Textdienst/Whisper, ausschließlich das übergebene künstliche Referenzaudio."""
-import argparse,json,os,pathlib,queue,subprocess,threading,time
+import argparse,json,os,pathlib,queue,subprocess,tempfile,threading,time
 p=argparse.ArgumentParser();p.add_argument('--bundle',required=True);p.add_argument('--config',required=True);p.add_argument('--audio');p.add_argument('--cleanup-only',action='store_true');a=p.parse_args()
 bundle=pathlib.Path(a.bundle).resolve();config=pathlib.Path(a.config).resolve()
-env=dict(os.environ,STILLEPOST_CONFIG=str(config),LD_LIBRARY_PATH=str(bundle/'lib'))
+isolation=tempfile.TemporaryDirectory(prefix='stillepost-real-smoke-')
+if not os.environ.get('STILLEPOST_APP_SUPPORT'):
+ data_root=pathlib.Path(os.environ.get('XDG_DATA_HOME',str(pathlib.Path.home()/'.local/share')))/'stillepost'
+ for name in ['models','ollama-models']:
+  if (data_root/name).is_dir():(pathlib.Path(isolation.name)/name).symlink_to(data_root/name,target_is_directory=True)
+env=dict(os.environ,STILLEPOST_CONFIG=str(config),LD_LIBRARY_PATH=str(bundle/'lib'),STILLEPOST_APP_SUPPORT=os.environ.get('STILLEPOST_APP_SUPPORT') or isolation.name)
 start=time.monotonic()
 if a.cleanup_only:
  r=subprocess.run([str(bundle/'bin/stillepost-linux'),'--cleanup'],input=b'dies ist ein synthetischer test morgen beginnt die besprechung um zehn uhr',capture_output=True,env=env,timeout=180,check=True)
