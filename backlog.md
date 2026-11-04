@@ -4,6 +4,7 @@
 
 Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](docs/erweiterungsplan.md).
 
+- [ ] Linux-Portierung für CachyOS/KDE unter Wayland und Linux Mint/Cinnamon unter X11 umsetzen: lokale Spracherkennung, Textbereinigung über den konfigurierten LAN-Dienst mit lokalem Modell als Rückfall und signierte automatische Updates über GitHub. Vorgehen und Abnahmekriterien: [Linux-Portierungsplan](docs/linux-portierung.md).
 - [ ] Bestehende Geräte- und Bundle-Abnahmen abschließen und den Ausgangsstand dokumentieren.
 - [x] Einfügeziel vor automatischem Einfügen prüfen; siehe [sicheres Einfügen](docs/sicheres-einfuegen.md).
 - [x] Optionale Ergebnisvorschau und schnellen Abruf des letzten Textes ergänzen; siehe [Ergebnisvorschau](docs/ergebnisvorschau.md).
