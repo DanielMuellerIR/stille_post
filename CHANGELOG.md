@@ -31,6 +31,13 @@ Datei mit dem Versions-Bump fortgeschrieben.
 - Native Audioaufnahme mit beobachteter Geräteauswahl und sicherem Abbruch
   bei Geräteverlust; geordneter Worker-Abschluss bei getrennten Pipes.
 
+### Veröffentlichung
+
+- Linux-Installationsarchiv und signierter Auto-Updatefeed auf GitHub freigegeben.
+  Die gemeinsame Pages-Ausgabe erhält den bestehenden macOS-Appcast.
+- Der Linux-Build verwendet einen beschreibbaren Swift-Cache auch bei einer
+  Container-Benutzerkennung ohne eigenen Home-Eintrag, etwa auf CI-Runnern.
+
 ### Prüfgrenzen
 
 - Native Desktopprüfungen verwenden künstliche Audioquellen. Physische

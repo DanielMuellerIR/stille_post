@@ -20,7 +20,8 @@ fi
 source_dir=$(mktemp -d "${TMPDIR:-/tmp}/stillepost-linux-source.XXXXXXXX")
 trap 'rm -rf -- "$source_dir"' EXIT
 cp -a Package.swift Sources Tests "$source_dir/"
-docker run --rm --user "$(id -u):$(id -g)" -v "$root:/src" -v "$source_dir:/source:ro" -w /src -e SWIFT_SOURCE=/source "$builder" bash -eu -c '
+docker run --rm --user "$(id -u):$(id -g)" -v "$root:/src" -v "$source_dir:/source:ro" -w /src -e SWIFT_SOURCE=/source -e XDG_CACHE_HOME=/src/build/linux/cache "$builder" bash -eu -c '
+    mkdir -p "$XDG_CACHE_HOME"
     swift test -j 4 --package-path "$SWIFT_SOURCE" --scratch-path /src/build/linux/swift
     swift build -j 4 --package-path "$SWIFT_SOURCE" --scratch-path /src/build/linux/swift -c release --product stillepost-linux
     cmake -S linux -B build/linux/qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTILLEPOST_BUILD_DESKTOP_TESTS=OFF

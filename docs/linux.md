@@ -7,8 +7,8 @@ eine PulseAudio-kompatible Audiositzung (zum Beispiel PipeWire) und für den
 GPU-Pfad einen funktionierenden Vulkan-Treiber. CPU bleibt konfigurierbar.
 
 **Stand 0.9.48:** Der erweiterte Funktionsumfang ist auf den beiden Zielsystemen
-installiert und mit künstlichen Audioquellen geprüft. Physische Geräteabnahme,
-mehrtägiger Betrieb und öffentliche Updatefreigabe stehen noch aus.
+installiert und mit künstlichen Audioquellen geprüft. Release und signierter Updatefeed sind veröffentlicht. Physische Geräteabnahme
+und mehrtägiger Betrieb stehen noch aus.
 Verbindliche Funktionen, bestandene Prüfungen und offene Grenzen stehen im
 [Mac-/Linux-Abgleich](linux-paritaet.md). Die [erste Paketprüfung](linux-abnahme.md)
 dokumentiert ausdrücklich den älteren, eingeschränkten Stand von 0.9.47.
@@ -141,11 +141,11 @@ Links und übergroße Inhalte geprüft. Die neue Laufzeit wird vor dem atomaren
 Versionswechsel isoliert gestartet. Der Launcher kann bei fehlgeschlagenem Start
 einmal auf das bereits geprüfte Vorgängerpaket zurückgehen.
 
-**Noch kein öffentliches Linux-Release veröffentlicht:** Der Updateclient und
-sein Vertrauensanker sind enthalten; solange kein signierter Linux-Feed
-veröffentlicht ist, meldet die manuelle Prüfung dessen fehlende Erreichbarkeit.
-Ein normales Prüfen im Hintergrund bleibt bei diesem Zustand still. Das
-Erzeugen des lokalen Installationspakets veröffentlicht nichts. Der vorhandene
+**Seit 0.9.48 öffentlich verfügbar:** [Linux-Release](https://github.com/DanielMuellerIR/stille_post/releases/tag/v0.9.48)
+und [signierter Linux-Feed](https://danielmuellerir.github.io/stille_post/linux/stable.json)
+mit [separater Signatur](https://danielmuellerir.github.io/stille_post/linux/stable.json.sig).
+Die installierte App prüft diesen Feed mit ihrem mitgelieferten Vertrauensanker.
+Das Erzeugen eines lokalen Installationspakets veröffentlicht nichts. Der
 macOS-Sparkle-Feed bleibt unter seiner eigenen Adresse erhalten. Die gemeinsame
 Pages-Veröffentlichung wählt für jede Plattform das neueste stabile Release;
 Linux-Manifest und Signatur werden vor der Übernahme erneut geprüft.

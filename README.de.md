@@ -6,7 +6,7 @@ Lokale Diktier-App für macOS: Globaler Hotkey, Spracherkennung mit Whisper und
 Textbereinigung mit einem lokalen Sprachmodell. Der fertige Text landet direkt an
 der Cursor-Position. Aufnahmen verlassen den Rechner nicht.
 
-Die Linux-Version 0.9.48 für CachyOS/KDE/Wayland und Linux Mint/Cinnamon/X11 bietet die erweiterten Mac-Funktionen und ist auf beiden Zielsystemen mit künstlichen Audioquellen geprüft. Physische Geräteabnahme und mehrtägiger Betrieb stehen noch aus. Siehe [Linux-Nutzung und Status](docs/linux.md) und [Mac-/Linux-Abgleich](docs/linux-paritaet.md). Ein öffentliches Linux-Release mit signiertem Updatefeed steht noch aus.
+Die Linux-Version 0.9.48 für CachyOS/KDE/Wayland und Linux Mint/Cinnamon/X11 bietet die erweiterten Mac-Funktionen und ist auf beiden Zielsystemen mit künstlichen Audioquellen geprüft. Physische Geräteabnahme und mehrtägiger Betrieb stehen noch aus. Siehe [Linux-Nutzung und Status](docs/linux.md) und [Mac-/Linux-Abgleich](docs/linux-paritaet.md). [Linux 0.9.48 herunterladen](https://github.com/DanielMuellerIR/stille_post/releases/tag/v0.9.48); der signierte Linux-Updatefeed ist verfügbar.
 
 Die vollständige Oberfläche — Menü, Einstellungen, Verlauf, Overlays,
 Modell-Download und nutzernahe Fehler — ist auf Deutsch und Englisch verfügbar.

@@ -255,5 +255,8 @@ führen zur sichtbaren manuellen Zustellung und niemals zu blindem Einfügen.
 
 Nicht durch diese Abnahme belegt sind physische Mikrofone, ein echter
 Suspend-/Resume-Zyklus, mehrtägiger Alltag und eine reale iPhone-Kopplung.
-Die öffentliche Updatefreigabe bleibt bis zur lokalen Release-Signatur und
-Veröffentlichungsfreigabe offen.
+Release 0.9.48 und signierter Updatefeed sind seit 2026-11-05 öffentlich.
+Die Signatur wurde gegen den eingebauten Vertrauensanker geprüft; Größe und
+SHA-256 des öffentlichen Release-Assets entsprechen dem installierten Paket.
+Der gemeinsame Pages-Lauf erhält Paketadresse, Version und Signatur des
+bisherigen Mac-Appcasts.
