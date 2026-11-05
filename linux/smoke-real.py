@@ -27,7 +27,7 @@ else:
   while True:
    event=events.get(timeout=180)
    if event['event']=='error':raise AssertionError(event['message'])
-   if event['event']=='result':
+   if event['event'] in ['result','importResult']:
     text=event['text'].lower()
     assert 'künstlicher' in text and 'besprechung' in text, 'Referenzwörter fehlen'
     print(json.dumps({'ok':True,'seconds':round(time.monotonic()-start,3),'characters':len(text),'rawFallback':event['rawFallback']}));break

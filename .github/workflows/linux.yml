@@ -18,4 +18,5 @@ jobs:
         run: |
           python3 linux/test_pipeline.py
           python3 linux/test_update.py
+          python3 linux/test_update_site.py
           QT_QPA_PLATFORM=offscreen build/linux/StillePost.AppDir/AppRun --smoke-test

@@ -1,4 +1,4 @@
-name: Sparkle-Appcast veröffentlichen
+name: Signierte Updatefeeds veröffentlichen
 
 on:
   release:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Bereits veröffentlichtes Release-Tag, zum Beispiel v0.8.5
+        description: Prüfanlass (Release-Tag); Feeds verwenden jeweils die neueste stabile Plattformversion
         required: true
         type: string
 
@@ -35,6 +35,18 @@ jobs:
 
       - name: GitHub Pages vorbereiten
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+
+      - name: Neueste stabile Plattform-Releases zusammenführen
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p site
+          gh api --paginate --slurp "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > releases.json
+          python3 linux/prepare-update-site.py --releases releases.json --site site \
+            --repository "$GITHUB_REPOSITORY" \
+            --openssl "$(brew --prefix openssl@3)/bin/openssl" >> "$GITHUB_ENV"
 
       - name: Release-DMG und Release Notes laden
         shell: bash

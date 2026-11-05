@@ -10,6 +10,34 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.48] — 2026-11-05
+
+### Hinzugefügt
+
+- Linux-Oberfläche mit getrennten Einstellungen, Verlauf, Diagnose, Testdiktat
+  und Audioimport; vollständige Profil-, Wörterbuch-, Dienstketten- und
+  Datenschutzoptionen in Deutsch und Englisch.
+- Sicheres Einfügen über AT-SPI, bearbeitbare Vorschau, Auswahlbereinigung,
+  Wiederaufruf und Verlaufskorrekturen mit demselben Swift-Kern wie unter macOS.
+- Linux-Empfängerbrücke mit HTTPS und Secret Service sowie optionales
+  Silero-VAD über ONNX Runtime. Audioverarbeitung bleibt lokal.
+
+### Korrigiert
+
+- Globale Tastenkürzel unter KDE/Wayland und X11, einschließlich Haltemodus,
+  Konfliktanzeige und erneuter Registrierung nach einem Portalneustart.
+- Fokusfreie Wayland-Anzeigen und zuverlässiges Kopieren über Data Control;
+  Overlayposition und Größenänderungen berücksichtigen die Arbeitsfläche.
+- Native Audioaufnahme mit beobachteter Geräteauswahl und sicherem Abbruch
+  bei Geräteverlust; geordneter Worker-Abschluss bei getrennten Pipes.
+
+### Prüfgrenzen
+
+- Native Desktopprüfungen verwenden künstliche Audioquellen. Physische
+  Mikrofonhardware, mehrtägiger Betrieb und eine reale iPhone-Kopplung bleiben
+  getrennte Praxistests. Plattformabhängige Berechtigungsgrenzen und die
+  Updatefreigabe sind in [Linux](docs/linux.md) dokumentiert.
+
 ## [0.9.47] — 2026-11-04
 
 ### Hinzugefügt

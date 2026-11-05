@@ -1,10 +1,17 @@
 # Stille Post unter Linux
 
-Die erste Linux-Fassung verwendet denselben Swift-Diktierkern wie macOS und eine
-Qt-Oberfläche. Geprüfte Ziele sind x86_64 mit CachyOS/KDE unter Wayland und Linux
+Der Linux-Port verwendet denselben Swift-Diktierkern wie macOS und eine
+Qt-Oberfläche. Zielplattformen sind x86_64 mit CachyOS/KDE unter Wayland und Linux
 Mint 22.2/Cinnamon unter X11. Sie benötigt mindestens glibc 2.39, Python 3.10,
 eine PulseAudio-kompatible Audiositzung (zum Beispiel PipeWire) und für den
 GPU-Pfad einen funktionierenden Vulkan-Treiber. CPU bleibt konfigurierbar.
+
+**Stand 0.9.48:** Der erweiterte Funktionsumfang ist auf den beiden Zielsystemen
+installiert und mit künstlichen Audioquellen geprüft. Physische Geräteabnahme,
+mehrtägiger Betrieb und öffentliche Updatefreigabe stehen noch aus.
+Verbindliche Funktionen, bestandene Prüfungen und offene Grenzen stehen im
+[Mac-/Linux-Abgleich](linux-paritaet.md). Die [erste Paketprüfung](linux-abnahme.md)
+dokumentiert ausdrücklich den älteren, eingeschränkten Stand von 0.9.47.
 
 ## Installieren und starten
 
@@ -29,25 +36,43 @@ Start über das App-Menü **Stille Post** oder:
 $HOME/.local/bin/stillepost
 ```
 
-Die App bietet gespeicherte Mikrofonwahl, Start/Stopp, Abbruch, Pegelanzeige, Audiodateiimport,
-Textausgabe, Kopieren, Verlauf mit Einzellöschung und Bereinigungseinstellungen.
-Das Schließen des Fensters lässt die App im Tray weiterlaufen; Beenden erfolgt
-über dessen Menü. Der erste Linux-Oberflächenstand ist deutsch; der gemeinsame
-Kern behält seine deutschen und englischen Ressourcen.
+Die App läuft im Tray und öffnet eigene Fenster für Einstellungen, Verlauf,
+Diagnose, Testdiktat, Audioimport und Ergebnisse. Die Einstellungen folgen den sieben
+Mac-Bereichen Allgemein, Profile, Apps, Bereinigung, Spracherkennung, Aufnahme
+und Verlauf. Deutsch, Englisch und helle/dunkle Darstellung sind verfügbar.
+Das Schließen eines Fensters beendet die App nicht; dazu dient das Tray-Menü.
 
-Als globale Vorgabe dient **Strg+Alt+Leertaste**. KDE verwendet das
-GlobalShortcuts-Portal und kann beim ersten Start eine Freigabe verlangen. Unter
-X11 wird die Kombination direkt registriert, falls sie noch frei ist. Ist das
-Portal nicht verfügbar oder das Kürzel belegt, bleibt die Aufnahmeschaltfläche
-benutzbar. Alternativ im Desktop ein eigenes Kürzel für
-`$HOME/.local/bin/stillepost --toggle` einrichten. Gedrückthalten ist in der ersten
-Linux-Fassung noch nicht freigegeben.
+Die globalen Vorgaben sind **Strg+Alt+Leertaste** für Diktate und
+**Strg+Alt+R** für den letzten bestätigten Text. Start/Stopp und Gedrückthalten
+sind wählbar. Unter Wayland verwaltet das GlobalShortcuts-Portal die Freigaben
+und tatsächlichen Kombinationen; die Einstellungen zeigen dessen Zuweisung
+und öffnen die Desktop-Konfiguration. Unter X11 werden freie Kombinationen
+direkt registriert. Maßgeblich ist die tatsächlich von der Tastatur gelieferte
+Kombination. Konflikte und ausstehende Freigaben werden angezeigt; die
+Aufnahmeschaltfläche bleibt benutzbar.
 
-**Der fertige Text wird kopiert und manuell eingefügt.** Die Linux-Fassung sendet
-keine ungesicherten Tastaturereignisse an ein unbekanntes Eingabeziel und stellt
-den vorherigen Clipboard-Inhalt nicht automatisch wieder her. Automatisches
-Einfügen und anwendungsbezogene Profile sind noch keine abgenommenen
-Linux-Funktionen. Die macOS-Fassung behält ihr bisheriges Einfügeverhalten.
+Automatisches Einfügen prüft über AT-SPI das ursprüngliche Feld, Text, Auswahl,
+Fokus und Schreibbarkeit erneut. Ein zwischenzeitlich geändertes oder
+ungeeignetes Ziel wird nicht blind beschrieben. Dann wird der Text zum
+manuellen Einfügen kopiert oder bei fehlender Clipboard-Berechtigung sichtbar
+in einer Vorschau erhalten. Geschützte Felder werden nicht ausgelesen. Bei
+erfolgreichem direktem Einfügen bleibt die Zwischenablage unverändert.
+
+Die optionale schreibgeschützte Ergebnisvorschau bietet Verwerfen, Kopieren und
+Einfügen. Mehrere offene Ergebnisse bleiben in Zustellreihenfolge erhalten;
+„Letzter Text“ übernimmt nur ausdrücklich bestätigte Vorschauen. Der Verlauf
+bietet Suche, Status-/Zeitraumfilter, Rohtext und Ergebnis, Änderungsvergleich,
+Korrekturen, erneute Bereinigung, Wiederholung fehlgeschlagener Aufnahmen und
+bewusste Wörterbuchübernahme. Profile vererben ihre Bereiche unabhängig und
+lassen sich Linux-Apps zuordnen oder manuell wählen.
+
+Testdiktat und Audioimport zeigen das angewendete Profil und seine
+Aufbewahrungsregeln vor dem Start. Ändern sich diese Einstellungen, muss die
+Freigabe ausdrücklich aktualisiert werden. Audiodateien lassen sich auswählen
+oder einzeln ins Importfenster ziehen; die Transkription beginnt erst nach
+Bestätigung. Ergebnisse bleiben schreibgeschützt und werden nicht automatisch
+eingefügt. Der Phasenbericht des Testdiktats lässt sich ohne Testtext oder private
+Konfigurationsdaten kopieren.
 
 ## Mac-Bereinigung mit lokalem Fallback
 
@@ -91,9 +116,20 @@ zum deterministisch lesbar gemachten Rohtext. Die Oberfläche meldet diesen Fall
 `whisper.threads` begrenzt die CPU-Threads. Der mitgelieferte Server enthält CPU-
 und Vulkan-Backend. Ein Modellwechsel erfolgt nicht automatisch.
 
-Die Netzwerkbrücke für iPhone-Audio und CoreML-Silero sind in dieser Linux-Fassung
-nicht enthalten. RMS-VAD bleibt verfügbar; eine übernommene Silero-Auswahl meldet
-die fehlende Linux-Unterstützung und verwendet RMS.
+Silero ist optional und lädt das gepinnte offizielle ONNX-Modell erst auf
+Anforderung in den Aufnahmeeinstellungen. Die CPU-Laufzeit ist mitgeliefert.
+Fehlende, beschädigte oder nicht ausführbare Modelle fallen ausdrücklich auf
+RMS zurück. Linux und die Mac-CoreML-Referenz verwenden dieselbe Schwelle und
+Aggregation; der datierte Vergleich steht im Abnahmebericht.
+
+Die optionale iPhone-Brücke empfängt über HTTPS; sie sendet selbst kein Audio.
+Sie bleibt standardmäßig aus und verlangt Token, Zertifikat-Pin und eigenes
+Netz. Kopplung und Erneuerung sind in Allgemein verfügbar. Für `.local`-Adressen
+muss die lokale mDNS-Auflösung funktionieren, beispielsweise über Avahi.
+Zertifikat und privater Softwareschlüssel liegen im Secret Service; der
+TLS-Prozess lädt den Schlüssel zur Verwendung in seinen RAM. Linux verwendet
+hier keinen nicht exportierbaren macOS-Schlüsselbundschlüssel. Die echte
+Gerätekopplung bleibt Bestandteil der noch offenen Abnahme.
 
 ## Updates
 
@@ -110,7 +146,9 @@ sein Vertrauensanker sind enthalten; solange kein signierter Linux-Feed
 veröffentlicht ist, meldet die manuelle Prüfung dessen fehlende Erreichbarkeit.
 Ein normales Prüfen im Hintergrund bleibt bei diesem Zustand still. Das
 Erzeugen des lokalen Installationspakets veröffentlicht nichts. Der vorhandene
-macOS-Sparkle-Feed bleibt separat.
+macOS-Sparkle-Feed bleibt unter seiner eigenen Adresse erhalten. Die gemeinsame
+Pages-Veröffentlichung wählt für jede Plattform das neueste stabile Release;
+Linux-Manifest und Signatur werden vor der Übernahme erneut geprüft.
 
 Ein Release-Manifest beschreibt `product`, `channel`, `arch`, monotone `build`,
 `version`, `min_glibc`, `size`, `sha256` und die GitHub-Release-`url`. Die Signatur
@@ -124,6 +162,7 @@ keine unbestätigten Schlüsselwechsel.
 ```bash
 python3 linux/test_pipeline.py
 python3 linux/test_update.py
+python3 linux/test_update_site.py
 QT_QPA_PLATFORM=offscreen build/linux/StillePost.AppDir/AppRun --smoke-test
 ```
 
@@ -138,11 +177,11 @@ einmalige Bereinigung, Ausfall, Worttreue, Redirect-/Proxy-Grenzen und WAV-Datei
 Referenzaudio gegen echte lokale Dienste, ohne dessen Text zu protokollieren.
 
 Die erste Geräteprüfung umfasst korrekte deutsche Referenztranskription auf
-beiden GPU-Pfaden, M5-Bereinigung und reale lokale Gemma-Fallbacks. Der Qt-
+beiden GPU-Pfaden, LAN-Bereinigung und reale lokale Gemma-Fallbacks. Der Qt-
 Aufnahmepfad unter Wayland und X11 wurde mit virtuellen Mikrofonen und künstlicher
 Sprache geprüft. Ein physischer Mikrofontest, Hotkey-Abnahme am tatsächlich
 gewählten Desktopkürzel, Gerätewechsel/Suspend und mehrtägiger Pilotbetrieb
 bleiben eigene Abnahmeschritte. Ein reiner Monitor-Eingang ersetzt auf einem
 Rechner ohne angeschlossenes Mikrofon keine echte Mikrofonabnahme.
 
-Datierte Belege und offene Grenzen: [erste Linux-Abnahme](linux-abnahme.md).
+Datierte Belege und offene Grenzen: [Mac-/Linux-Abgleich](linux-paritaet.md).

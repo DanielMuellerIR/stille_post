@@ -767,3 +767,23 @@
 "settings.bridge.renewed" = "Certificate renewed. Pair every iPhone again using the QR code.";
 
 "common.close" = "Close";
+
+"vad.fallback.linux_runtime" = "Silero runtime unavailable";
+
+"linux.error.capture" = "Audio input unavailable.";
+"linux.error.decode" = "Audio could not be fully decoded.";
+"linux.error.secret" = "Secret Service is unavailable or locked.";
+"linux.error.protocol" = "Invalid or oversized worker message.";
+"linux.audio.empty" = "Audio is empty.";
+"linux.audio.unsupported" = "Unsupported audio format.";
+"linux.audio.too_long" = "Audio exceeds the duration limit.";
+"linux.bridge.disabled" = "Bridge is disabled.";
+"linux.bridge.ready" = "HTTPS bridge is ready.";
+"linux.bridge.failed" = "HTTPS bridge could not start. Check the token, Secret Service and port.";
+"linux.worker.disconnected" = "The connection to the interface was interrupted.";
+"linux.history.delete_failed" = "The entry could not be deleted.";
+"linux.config.save_failed" = "Settings are invalid or have changed since opening.";
+
+"linux.bridge.environment_token" = "The bridge token is set by an environment variable. Change it there and restart the app.";
+
+"linux.clipboard.failed" = "The clipboard is unavailable. Please try again.";

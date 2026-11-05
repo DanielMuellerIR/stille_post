@@ -6,7 +6,7 @@ Local dictation app for macOS: Global hotkey, speech-to-text with Whisper, and t
 cleanup with a local language model. The finished text lands right at your cursor.
 Recordings never leave your machine.
 
-A first Linux version is available as a source build for CachyOS/KDE/Wayland and Linux Mint 22.2/Cinnamon/X11. It shares the dictation core and copies results for manual insertion. See [Linux installation and limits](docs/linux.md) (German). Public GitHub releases currently contain macOS packages; the Linux update feed awaits its first release.
+Linux version 0.9.48 for CachyOS/KDE/Wayland and Linux Mint/Cinnamon/X11 includes the expanded Mac features and has been tested on both target systems using artificial audio sources. Physical device acceptance and extended daily use are still pending. See [Linux usage and status](docs/linux.md) and the [Mac/Linux checklist](docs/linux-paritaet.md) (German). A public Linux release and signed update feed are still pending.
 
 The complete interface — menu, settings, history, overlays, model download, and
 user-facing errors — is available in English and German. macOS chooses the language
@@ -269,7 +269,7 @@ without delay):
 
 ```jsonc
 "cleanup": {
-  "ollamaURL": "http://192.168.1.50:11434",   // another machine on the LAN (primary)
+  "ollamaURL": "http://llm.example.test:11434",   // another machine on the LAN (primary)
   "model": "gemma4:e4b-it-qat",
   "keepAlive": "2h",                          // "-1" = keep loaded forever
   "fallbacks": [

@@ -2,6 +2,8 @@
 
 Stand: 2026-11-04, Kandidat 0.9.47. Diese Prüfung belegt eine erste installierbare
 Fassung, keine vollständige Gleichwertigkeit zur macOS-Oberfläche.
+Die spätere Erweiterung und ihre Nachweise stehen getrennt im
+[Mac-/Linux-Abgleich](linux-paritaet.md); die folgenden Grenzen beschreiben 0.9.47.
 
 ## Bestanden
 

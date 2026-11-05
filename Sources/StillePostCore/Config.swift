@@ -12,12 +12,44 @@ public struct Config: Codable, Equatable {
     // Die aufgelöste Auswahl ist flüchtig; optimistische Speicherung vergleicht
     // ausschließlich den dauerhaft gespeicherten Konfigurationsstand.
     public static func == (lhs: Config, rhs: Config) -> Bool {
-        lhs.whisper == rhs.whisper && lhs.cleanup == rhs.cleanup && lhs.bridge == rhs.bridge
+        lhs.linux == rhs.linux && lhs.whisper == rhs.whisper && lhs.cleanup == rhs.cleanup && lhs.bridge == rhs.bridge
             && lhs.vad == rhs.vad && lhs.audio == rhs.audio && lhs.ui == rhs.ui && lhs.history == rhs.history
             && lhs.hotkey == rhs.hotkey && lhs.lastResultHotkey == rhs.lastResultHotkey && lhs.hotkeyMode == rhs.hotkeyMode
             && lhs.profiles == rhs.profiles && lhs.defaultProfileID == rhs.defaultProfileID
             && lhs.selectedProfileID == rhs.selectedProfileID && lhs.appProfiles == rhs.appProfiles
     }
+
+    /// Linux-Desktopdaten bleiben von den macOS-Keycodes getrennt. Die übrigen
+    /// Profile und Verarbeitungsoptionen verwenden weiterhin dieselben Typen.
+    public struct LinuxOptions: Codable, Equatable {
+        public var dictationShortcut = "CTRL+ALT+space"
+        public var recallShortcut = "CTRL+ALT+r"
+        public var automaticPaste = true
+        public var startAtLogin = false
+        public var language = "system"
+        public init() {}
+        var isValid: Bool {
+            func normalized(_ value: String) -> String? {
+                let parts=value.split(separator:"+",omittingEmptySubsequences:false).map(String.init)
+                guard parts.count>=2,let key=parts.last,key.range(of:"^[A-Za-z0-9_]{1,32}$",options:.regularExpression) != nil else { return nil }
+                let modifiers=Array(parts.dropLast()),allowed:Set<String>=["CTRL","ALT","SHIFT","LOGO"]
+                guard Set(modifiers).count==modifiers.count,modifiers.allSatisfy(allowed.contains),modifiers.contains(where:{["CTRL","ALT","LOGO"].contains($0)}) else { return nil }
+                return modifiers.sorted().joined(separator:"+")+"+"+key.lowercased()
+            }
+            guard let dictate=normalized(dictationShortcut),let recall=normalized(recallShortcut) else { return false }
+            return dictate != recall && ["system","de","en"].contains(language)
+        }
+        private enum CodingKeys: String,CodingKey { case dictationShortcut,recallShortcut,automaticPaste,startAtLogin,language }
+        public init(from decoder: Decoder) throws {
+            self.init();let c=try decoder.container(keyedBy:CodingKeys.self)
+            dictationShortcut=(try? c.decode(String.self,forKey:.dictationShortcut)) ?? dictationShortcut
+            recallShortcut=(try? c.decode(String.self,forKey:.recallShortcut)) ?? recallShortcut
+            automaticPaste=c.contains(.automaticPaste) ? ((try? c.decode(Bool.self,forKey:.automaticPaste)) ?? false) : true
+            startAtLogin=(try? c.decode(Bool.self,forKey:.startAtLogin)) ?? false
+            language=(try? c.decode(String.self,forKey:.language)) ?? "system"
+        }
+    }
+    public var linux = LinuxOptions()
 
     // MARK: - Unterbereiche
 
@@ -377,6 +409,9 @@ public struct Config: Codable, Equatable {
     /// nutzt dieselbe Grenze wie `save()`, damit unzulässige Werte gar nicht erst
     /// persistent werden.
     public func validate() throws {
+#if os(Linux)
+        guard linux.isValid else { throw ValidationError.invalidHotkeys }
+#endif
         _ = try WhisperEndpoint(serverURL: whisper.serverURL)
         guard history.isValid else { throw ValidationError.invalidHistory }
         try VocabularyRules.validate(cleanup)
@@ -421,11 +456,12 @@ public struct Config: Codable, Equatable {
 
     // MARK: - Tolerantes Dekodieren (fehlende Felder -> Defaults)
 
-    private enum CodingKeys: String, CodingKey { case whisper, cleanup, bridge, vad, audio, ui, history, hotkey, hotkeyMode, lastResultHotkey, profiles, defaultProfileID, selectedProfileID, appProfiles }
+    private enum CodingKeys: String, CodingKey { case whisper, cleanup, bridge, vad, audio, ui, history, hotkey, hotkeyMode, lastResultHotkey, profiles, defaultProfileID, selectedProfileID, appProfiles, linux }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         profiles = c.decodeOrDefault(ProfileCollection.self, forKey: .profiles, default: ProfileCollection()).profiles
+        linux = c.decodeOrDefault(LinuxOptions.self, forKey: .linux, default: LinuxOptions())
         appProfiles = c.decodeOrDefault(AppProfileRules.self, forKey: .appProfiles, default: AppProfileRules()).values
         defaultProfileID = try? c.decodeIfPresent(UUID.self, forKey: .defaultProfileID)
         selectedProfileID = try? c.decodeIfPresent(UUID.self, forKey: .selectedProfileID)

@@ -6,7 +6,7 @@ Lokale Diktier-App für macOS: Globaler Hotkey, Spracherkennung mit Whisper und
 Textbereinigung mit einem lokalen Sprachmodell. Der fertige Text landet direkt an
 der Cursor-Position. Aufnahmen verlassen den Rechner nicht.
 
-Eine erste Linux-Fassung lässt sich für CachyOS/KDE/Wayland und Linux Mint 22.2/Cinnamon/X11 bauen. Sie verwendet denselben Diktierkern und kopiert Ergebnisse zum manuellen Einfügen. Siehe [Linux-Installation und Grenzen](docs/linux.md). Öffentliche GitHub-Releases enthalten derzeit macOS-Pakete; der Linux-Updatefeed folgt mit dem ersten Linux-Release.
+Die Linux-Version 0.9.48 für CachyOS/KDE/Wayland und Linux Mint/Cinnamon/X11 bietet die erweiterten Mac-Funktionen und ist auf beiden Zielsystemen mit künstlichen Audioquellen geprüft. Physische Geräteabnahme und mehrtägiger Betrieb stehen noch aus. Siehe [Linux-Nutzung und Status](docs/linux.md) und [Mac-/Linux-Abgleich](docs/linux-paritaet.md). Ein öffentliches Linux-Release mit signiertem Updatefeed steht noch aus.
 
 Die vollständige Oberfläche — Menü, Einstellungen, Verlauf, Overlays,
 Modell-Download und nutzernahe Fehler — ist auf Deutsch und Englisch verfügbar.
@@ -281,7 +281,7 @@ fast verzögerungsfrei das lokale Ollama):
 
 ```jsonc
 "cleanup": {
-  "ollamaURL": "http://192.168.1.50:11434",   // anderer Rechner im LAN (primär)
+  "ollamaURL": "http://llm.example.test:11434",   // anderer Rechner im LAN (primär)
   "model": "gemma4:e4b-it-qat",
   "keepAlive": "2h",                          // "-1" = dauerhaft geladen halten
   "fallbacks": [

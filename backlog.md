@@ -5,6 +5,7 @@
 Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](docs/erweiterungsplan.md).
 
 - [x] Installierbare erste Linux-Fassung für CachyOS/KDE/Wayland und Mint/Cinnamon/X11 mit lokalem Whisper, LAN-Bereinigung und lokalem Modellfallback herstellen; [Nutzung und Grenzen](docs/linux.md), [Plan](docs/linux-portierung.md).
+- [x] Linux-Funktionsumfang und gegliederte Oberfläche an die Mac-App angleichen; 0.9.48 auf beiden Zielsystemen installiert und mit künstlichen Audioquellen geprüft. Konkrete Nachweise und verbleibende Plattform-/Gerätegrenzen: [Mac-/Linux-Abgleich](docs/linux-paritaet.md).
 - [ ] Linux-Geräteabnahme abschließen: physische Mikrofone, Hotkeys, Hotplug/Suspend, mehrtägiger Pilot und unabhängiges Updater-Review; erst danach öffentliches Linux-Release und signierten GitHub-Feed freigeben.
 - [ ] Bestehende Geräte- und Bundle-Abnahmen abschließen und den Ausgangsstand dokumentieren.
 - [x] Einfügeziel vor automatischem Einfügen prüfen; siehe [sicheres Einfügen](docs/sicheres-einfuegen.md).

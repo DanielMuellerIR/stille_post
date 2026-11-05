@@ -1,4 +1,7 @@
 import Foundation
+#if os(Linux)
+import Glibc
+#endif
 
 /// Ein IPv6-Netzbereich: 16 Byte Adresse plus Länge des Präfixes in Bit.
 ///
@@ -71,9 +74,9 @@ public enum LocalNetworkInterfaces {
         var prefixes: [IPv6Prefix] = []
         for entry in sequence(first: first, next: { $0.pointee.ifa_next }) {
             let flags = Int32(entry.pointee.ifa_flags)
-            guard flags & IFF_UP != 0, flags & IFF_LOOPBACK == 0 else { continue }
+            guard flags & Int32(IFF_UP) != 0, flags & Int32(IFF_LOOPBACK) == 0 else { continue }
             guard let rawAddress = entry.pointee.ifa_addr,
-                  rawAddress.pointee.sa_family == UInt8(AF_INET6),
+                  rawAddress.pointee.sa_family == sa_family_t(AF_INET6),
                   let rawMask = entry.pointee.ifa_netmask else { continue }
 
             let address = bytes(of: rawAddress)

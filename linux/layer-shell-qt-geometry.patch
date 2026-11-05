@@ -1,0 +1,28 @@
+--- a/src/qwaylandlayersurface_p.h
++++ b/src/qwaylandlayersurface_p.h
+@@ -37,6 +37,7 @@
+     void setLayer(uint32_t layer);
+ 
+     void applyConfigure() override;
++    void setWindowGeometry(const QRect &geometry) override;
+ 
+ private:
+     void zwlr_layer_surface_v1_configure(uint32_t serial, uint32_t width, uint32_t height) override;
+--- a/src/qwaylandlayersurface.cpp
++++ b/src/qwaylandlayersurface.cpp
+@@ -103,6 +103,15 @@
+     window()->resizeFromApplyConfigure(m_pendingSize);
+ }
+ 
++void QWaylandLayerSurface::setWindowGeometry(const QRect &geometry)
++{
++    Q_UNUSED(geometry);
++    const QSize size = window()->surfaceSize();
++    if (!size.isEmpty()) {
++        set_size(size.width(), size.height());
++    }
++}
++
+ void QWaylandLayerSurface::setAnchor(uint anchor)
+ {
+     set_anchor(anchor);

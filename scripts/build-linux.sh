@@ -1,13 +1,11 @@
 #!/bin/bash
-# Linux-Build bleibt vollständig im Projektverzeichnis und installiert nichts.
+# Linux-Build legt Artefakte im Projektverzeichnis ab und installiert nichts.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 root=$PWD
 builder=stillepost-linux-builder:6.2.1
 mkdir -p build/linux
-if ! docker image inspect "$builder" >/dev/null 2>&1; then
-    docker build -t "$builder" -f linux/Dockerfile .
-fi
+docker build -t "$builder" -f linux/Dockerfile .
 if [[ ! -d build/linux/whisper-src/.git ]]; then
     git clone --depth 1 --branch v1.8.4 https://github.com/ggml-org/whisper.cpp.git build/linux/whisper-src
 fi
@@ -19,14 +17,13 @@ if [[ ! -x build/linux/ollama/bin/ollama ]]; then
     tar --zstd -xf build/linux/ollama-linux-amd64.tar.zst -C build/linux/ollama --exclude='lib/ollama/cuda*'
 fi
 # SwiftPM verändert unter Linux sonst Package.resolved des macOS-Targets.
-source_dir=$(mktemp -d "$root/build/linux/source.XXXXXXXX")
+source_dir=$(mktemp -d "${TMPDIR:-/tmp}/stillepost-linux-source.XXXXXXXX")
 trap 'rm -rf -- "$source_dir"' EXIT
 cp -a Package.swift Sources Tests "$source_dir/"
-source_relative=${source_dir#"$root/"}
-docker run --rm --user "$(id -u):$(id -g)" -v "$root:/src" -w /src -e SWIFT_SOURCE="$source_relative" "$builder" bash -eu -c '
-    swift test --package-path "$SWIFT_SOURCE" --scratch-path /src/build/linux/swift
-    swift build --package-path "$SWIFT_SOURCE" --scratch-path /src/build/linux/swift -c release --product stillepost-linux
-    cmake -S linux -B build/linux/qt -G Ninja -DCMAKE_BUILD_TYPE=Release
+docker run --rm --user "$(id -u):$(id -g)" -v "$root:/src" -v "$source_dir:/source:ro" -w /src -e SWIFT_SOURCE=/source "$builder" bash -eu -c '
+    swift test -j 4 --package-path "$SWIFT_SOURCE" --scratch-path /src/build/linux/swift
+    swift build -j 4 --package-path "$SWIFT_SOURCE" --scratch-path /src/build/linux/swift -c release --product stillepost-linux
+    cmake -S linux -B build/linux/qt -G Ninja -DCMAKE_BUILD_TYPE=Release -DSTILLEPOST_BUILD_DESKTOP_TESTS=OFF
     cmake --build build/linux/qt -j4
     cmake -S build/linux/whisper-src -B build/linux/whisper -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=ON -DGGML_NATIVE=OFF -DBUILD_SHARED_LIBS=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_CURL=OFF
     cmake --build build/linux/whisper --target whisper-server -j8

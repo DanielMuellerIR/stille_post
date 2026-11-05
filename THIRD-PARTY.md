@@ -135,13 +135,46 @@ LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
 NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
 EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+## Linux-Laufzeit
+
+Die Linux-Ausgabe enthält dynamisch geladene Bibliotheken und separate Programme
+für Qt 6, FFmpeg, OpenSSL, libsecret, AT-SPI, libpulse, libqrencode sowie deren
+Laufzeitabhängigkeiten. Die unveränderten Copyright- und Lizenzdateien der
+Build-Distribution liegen im Paket unter `licenses/`; die Bibliotheken bleiben
+als einzelne Dateien austauschbar. whisper.cpp und Ollama werden als separate
+Programme eingebunden.
+
+[ONNX Runtime 1.28.2](https://github.com/microsoft/onnxruntime/releases/tag/v1.28.2)
+wird als CPU-Laufzeit für Silero mitgeliefert. Die MIT-Lizenz und die Hinweise
+zu weiteren Bestandteilen liegen unter `licenses/onnxruntime.LICENSE` und
+`licenses/onnxruntime.ThirdPartyNotices.txt`.
+
+
+[Layer Shell Qt 5.27.9](https://invent.kde.org/plasma/layer-shell-qt/-/tree/v5.27.9)
+(LGPL-3.0-or-later) vermittelt die fokusfreien Wayland-Flächen. Der fest gepinnte
+Stand wird gegen dieselbe Qt-6.4-Laufzeit gebaut wie die App. Der kleine
+Geometrie-Backport liegt in `linux/layer-shell-qt-geometry.patch`; Quellenbezug
+und SHA-256 stehen im Dockerfile, Lizenzen und Patch auch im fertigen Paket.
+Die eigene Shell-Einbindung verwendet diese Flächen für automatische Anzeigen
+und die normale Qt-XDG-Einbindung für reguläre Fenster.
+
+[wl-clipboard 2.3.0](https://github.com/bugaevc/wl-clipboard/tree/v2.3.0)
+(GPL-3.0-or-later) wird als separates Programm zum Kopieren auf Wayland
+mitgeliefert. Der fest gepinnte Quellbezug und SHA-256 stehen im Dockerfile;
+die Lizenz liegt unter `licenses/wl-clipboard.LICENSE`.
+
 ## Optionales Silero-Modell
 
-Silero VAD 6.2.1, CoreML-Konvertierung durch das FluidAudio-Team, wird ausschließlich
-auf ausdrückliche Anforderung separat geladen. Feste Modellrevision:
+Silero VAD 6.2.1 wird ausschließlich auf ausdrückliche Anforderung separat
+geladen. macOS verwendet die CoreML-Konvertierung durch das FluidAudio-Team. Feste Modellrevision:
 `b419383c55c110e2c9271fa6ee0ea83d03c70d96`.
 [Modellkarte und MIT-Lizenzangabe](https://huggingface.co/FluidInference/silero-vad-coreml/blob/b419383c55c110e2c9271fa6ee0ea83d03c70d96/README.md).
 Die App verwendet keine FluidAudio-SDK-Quelltexte.
+
+Linux verwendet das offizielle ONNX-Modell aus
+[Silero VAD](https://github.com/snakers4/silero-vad/tree/7e30209a3e901f9842f81b225f3e93d8199902b1),
+Revision `7e30209a3e901f9842f81b225f3e93d8199902b1`, unter derselben MIT-Lizenz.
+Dateigröße und SHA-256 werden vor der Installation und Verwendung geprüft.
 
 MIT License
 

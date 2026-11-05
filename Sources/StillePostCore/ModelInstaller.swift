@@ -1,5 +1,12 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+#if os(Linux)
+import Glibc
+#else
 import Darwin
+#endif
 
 /// Rechnet Byte-Zahlen in die Einheit um, in der Oberfläche und CLI Modellgrößen
 /// nennen.
@@ -419,25 +426,25 @@ public final class ModelInstaller {
         // FIFO-Open darf nicht auf eine Gegenseite warten; erst danach kann
         // fstat den Dateityp auf demselben Deskriptor sicher prüfen.
         let descriptor = path.withCString {
-            Darwin.open($0, O_WRONLY | O_CREAT | O_NOFOLLOW | O_NONBLOCK, mode_t(0o600))
+            open($0, O_WRONLY | O_CREAT | O_NOFOLLOW | O_NONBLOCK, mode_t(0o600))
         }
         guard descriptor >= 0 else { throw InstallError.partialNotReplaceable(path) }
 
         var metadata = stat()
         guard fstat(descriptor, &metadata) == 0,
               (metadata.st_mode & S_IFMT) == S_IFREG else {
-            _ = Darwin.close(descriptor)
+            _ = close(descriptor)
             throw InstallError.partialNotReplaceable(path)
         }
 
         if append {
             guard metadata.st_size == requestedOffset,
                   lseek(descriptor, 0, SEEK_END) == requestedOffset else {
-                _ = Darwin.close(descriptor)
+                _ = close(descriptor)
                 throw InstallError.partialNotReplaceable(path)
             }
         } else if ftruncate(descriptor, 0) != 0 {
-            _ = Darwin.close(descriptor)
+            _ = close(descriptor)
             throw InstallError.partialNotReplaceable(path)
         }
         return FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
@@ -446,18 +453,18 @@ public final class ModelInstaller {
     /// Größe einer regulären Teildatei. Ein fehlender Pfad bedeutet einen
     /// neuen Download; Symlinks und Spezialdateien werden ausdrücklich abgewiesen.
     static func partialFileSize(atPath path: String) throws -> Int64 {
-        let descriptor = path.withCString { Darwin.open($0, O_RDONLY | O_NOFOLLOW | O_NONBLOCK) }
+        let descriptor = path.withCString { open($0, O_RDONLY | O_NOFOLLOW | O_NONBLOCK) }
         if descriptor < 0 {
             if errno == ENOENT { return 0 }
             throw InstallError.partialNotReplaceable(path)
         }
-        defer { _ = Darwin.close(descriptor) }
+        defer { _ = close(descriptor) }
         var metadata = stat()
         guard fstat(descriptor, &metadata) == 0,
               (metadata.st_mode & S_IFMT) == S_IFREG else {
             throw InstallError.partialNotReplaceable(path)
         }
-        return metadata.st_size
+        return Int64(metadata.st_size)
     }
 
     /// Was liegt am Zielpfad — und darf der Installer es ersetzen?
