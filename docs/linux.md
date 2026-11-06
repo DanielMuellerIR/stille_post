@@ -116,6 +116,13 @@ zum deterministisch lesbar gemachten Rohtext. Die Oberfläche meldet diesen Fall
 `whisper.threads` begrenzt die CPU-Threads. Der mitgelieferte Server enthält CPU-
 und Vulkan-Backend. Ein Modellwechsel erfolgt nicht automatisch.
 
+Seit 0.9.49 startet Whisper ohne das vom Qt-Launcher gesetzte
+`LD_LIBRARY_PATH`: Die mitgelieferten XCB-/Wayland-Bibliotheken können zu alt
+für einen aktuellen Mesa-Treiber sein. Trotz aktivierter GPU fiel Whisper dann
+ohne sichtbare Fehlermeldung auf CPU zurück. Bei der Diagnose vom 2026-11-06
+brauchte dieselbe elfsekündige Referenzaufnahme rund zehn Sekunden auf CPU
+und 1,8 Sekunden mit Vulkan. Die Qt-Oberfläche behält ihre eigene Laufzeit.
+
 Silero ist optional und lädt das gepinnte offizielle ONNX-Modell erst auf
 Anforderung in den Aufnahmeeinstellungen. Die CPU-Laufzeit ist mitgeliefert.
 Fehlende, beschädigte oder nicht ausführbare Modelle fallen ausdrücklich auf

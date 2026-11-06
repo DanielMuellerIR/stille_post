@@ -10,6 +10,14 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.49] — 2026-11-06
+
+### Korrigiert
+
+- Linux: Whisper startet ohne den Bibliothekspfad des Qt-Bundles. Dadurch kann
+  Mesa seine passenden Systembibliotheken laden, statt bei neueren Treibern
+  unbemerkt auf die deutlich langsamere CPU-Berechnung zurückzufallen.
+
 ## [0.9.48] — 2026-11-05
 
 ### Hinzugefügt

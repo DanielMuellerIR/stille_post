@@ -76,6 +76,11 @@ public final class WhisperServerManager: DictationServer {
                                                  threads: config.threads)
 #if os(Linux)
         if !config.useGPU { process.arguments?.append("--no-gpu") }
+        // Mesa lädt weitere Systembibliotheken. Die älteren XCB-/Wayland-Kopien
+        // des Qt-Bundles verhindern sonst Vulkan und erzwingen CPU-Berechnung.
+        var environment = ProcessInfo.processInfo.environment
+        environment.removeValue(forKey: "LD_LIBRARY_PATH")
+        process.environment = environment
 #endif
         // Server-Logs nicht in unser Terminal mischen.
         process.standardOutput = FileHandle.nullDevice
