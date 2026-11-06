@@ -15,15 +15,6 @@ namespace {
 class MixedShell final : public QWaylandShellIntegration {
 public:
   bool initialize(QWaylandDisplay *display) override {
-    QCoreApplication::instance()->setProperty("stillepostDataControl", false);
-    display->addRegistryListener(
-        [](void *, wl_registry *, uint32_t, const QString &name, uint32_t) {
-          if (name == QStringLiteral("zwlr_data_control_manager_v1") ||
-              name == QStringLiteral("ext_data_control_manager_v1"))
-            QCoreApplication::instance()->setProperty("stillepostDataControl",
-                                                      true);
-        },
-        nullptr);
     for (const auto &path : QCoreApplication::libraryPaths()) {
       loader.setFileName(
           QDir(path).filePath("wayland-shell-integration/libxdg-shell.so"));

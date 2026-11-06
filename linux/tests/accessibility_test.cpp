@@ -1,8 +1,10 @@
 #include "accessibility.h"
+#include "ui_common.h"
 #include <QtDBus>
 #include <QtTest>
 #include <QtWidgets>
 #include <unistd.h>
+#include <X11/Xlib.h>
 namespace {
 int runTarget(QApplication &app) {
   QAccessible::setActive(true);
@@ -23,7 +25,19 @@ int runTarget(QApplication &app) {
     }
   });
   password->setEchoMode(QLineEdit::Password);
-  layout->addWidget(text);
+  // Tiefe Web-Formulare auch mit den nativen Schutzprüfungen abdecken.
+  auto nested = new QWidget;
+  layout->addWidget(nested);
+  for (int depth = 0; depth < 20; depth++) {
+    auto row = new QVBoxLayout(nested);
+    row->setContentsMargins(0, 0, 0, 0);
+    auto child = new QWidget;
+    row->addWidget(child);
+    nested = child;
+  }
+  auto deepLayout = new QVBoxLayout(nested);
+  deepLayout->setContentsMargins(0, 0, 0, 0);
+  deepLayout->addWidget(text);
   layout->addWidget(other);
   layout->addWidget(password);
   layout->addWidget(rich);
@@ -330,9 +344,74 @@ private slots:
 };
 } // namespace
 int main(int argc, char **argv) {
+  XInitThreads();
   QApplication app(argc, argv);
+  if (app.arguments().contains("--clipboard-only")) {
+    if (QApplication::focusWindow())
+      return 2;
+    return copyText("Stille-Post-Einfügetest 🐧.") ? 0 : 3;
+  }
   if (app.arguments().contains("--target"))
     return runTarget(app);
+  if (app.arguments().contains("--external-target")) {
+    AccessibleTarget target;
+    auto saved = std::make_unique<QMimeData>();
+    const auto source = app.clipboard()->mimeData();
+    qsizetype bytes = 0;
+    if (source) {
+      if (source->formats().size() > 32)
+        return 3;
+      for (const auto &format : source->formats()) {
+        const auto data = source->data(format);
+        bytes += data.size();
+        if (bytes > 8 * 1024 * 1024)
+          return 3;
+        saved->setData(format, data);
+      }
+    }
+    QObject::connect(&target, &AccessibleTarget::captured, &app,
+                     [&](QJsonObject value) {
+                       if (app.arguments().contains("--capture-only")) {
+                         qInfo().noquote() << QJsonDocument(QJsonObject{
+                             {"hasToken", !value["token"].toString().isEmpty()},
+                             {"editable", value["editable"]},
+                             {"application", value["application"]},
+                             {"reason", value["reason"]}}).toJson(QJsonDocument::Compact);
+                         app.exit(0);
+                         return;
+                       }
+                       if (value["token"].toString().isEmpty()) {
+                         qInfo() << value["reason"].toString();
+                         app.exit(4);
+                         return;
+                       }
+                       target.insert(value["token"].toString(),
+                                     "Stille-Post-Einfügetest 🐧.");
+                     });
+    QObject::connect(&target, &AccessibleTarget::clipboardRequested, &app,
+                     [&](QString token, QString text, bool restore) {
+                       if (!copyText(text)) {
+                         app.exit(3);
+                         return;
+                       }
+                       QTimer::singleShot(100, &app, [&, token, text, restore] {
+                         target.insert(token, text, restore, true);
+                       });
+                     });
+    QObject::connect(&target, &AccessibleTarget::inserted, &app,
+                     [&](QString, bool ok, QString reason, bool modified) {
+                       qInfo().noquote()
+                           << QJsonDocument(QJsonObject{{"ok", ok},
+                                                        {"reason", reason},
+                                                        {"modified", modified}})
+                                  .toJson(QJsonDocument::Compact);
+                       app.clipboard()->setMimeData(saved.release());
+                       QTimer::singleShot(100, &app, [&, ok] { app.exit(ok ? 0 : 5); });
+                     });
+    QTimer::singleShot(300, &app, [&] { target.capture("external"); });
+    QTimer::singleShot(8000, &app, [&] { app.exit(6); });
+    return app.exec();
+  }
   InsertionTests tests;
   return QTest::qExec(&tests, argc, argv);
 }

@@ -3,11 +3,16 @@
 #include <atspi/atspi.h>
 #include <optional>
 #include <unistd.h>
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
+#include <X11/keysym.h>
+#include <X11/extensions/XTest.h>
 namespace {
 struct InsertionOutcome {
   bool success;
   QString reason;
   bool modified = false;
+  bool needsClipboard = false;
 };
 struct Snapshot {
   AtspiAccessible *object = nullptr;
@@ -16,11 +21,75 @@ struct Snapshot {
   bool remote = false;
   bool invalidated = false;
   bool utf16 = false;
+  bool clipboardPaste = false;
 };
 QString utf(gchar *value) {
   QString result = QString::fromUtf8(value ? value : "");
   g_free(value);
   return result;
+}
+QSharedPointer<AtspiAccessible> textObject(AtspiAccessible *object, bool chromium) {
+  auto owned = [](AtspiAccessible *value) {
+    return QSharedPointer<AtspiAccessible>(value, [](AtspiAccessible *p) {
+      if (p)
+        g_object_unref(p);
+    });
+  };
+  if (chromium) {
+    auto text = atspi_accessible_get_text_iface(object);
+    if (!text)
+      return {};
+    const int count = atspi_text_get_character_count(text, nullptr);
+    if (count < 0 || count > 250000)
+      return {};
+    const auto value = utf(atspi_text_get_text(text, 0, count, nullptr));
+    // Chromium stellt den Absatz im Textfeld als eingebettetes Objekt dar.
+    // Nur ein eindeutig lesbarer Absatz erlaubt überprüfbare Textpositionen.
+    if (value.contains(QChar(0xfffc))) {
+      if (atspi_accessible_get_child_count(object, nullptr) != 1)
+        return {};
+      auto child = owned(atspi_accessible_get_child_at_index(object, 0, nullptr));
+      if (!child || atspi_accessible_get_role(child.data(), nullptr) !=
+                        ATSPI_ROLE_PARAGRAPH)
+        return {};
+      return child;
+    }
+  }
+  return owned(static_cast<AtspiAccessible *>(g_object_ref(object)));
+}
+QString readText(AtspiText *text, int count, bool chromium, GError **error) {
+  auto value = utf(atspi_text_get_text(text, 0, count, error));
+  if (chromium && value == QString(QChar(0xfffc)) + "\n") {
+    auto object = ATSPI_ACCESSIBLE(text);
+    auto attributes = atspi_accessible_get_attributes(object, nullptr);
+    const auto classes = attributes
+                             ? QString::fromUtf8(static_cast<const char *>(
+                                   g_hash_table_lookup(attributes, "class")))
+                             : QString();
+    if (attributes)
+      g_hash_table_unref(attributes);
+    if (classes.split(' ').contains("placeholder") &&
+        atspi_accessible_get_child_count(object, nullptr) == 2) {
+      auto before = atspi_accessible_get_child_at_index(object, 0, nullptr);
+      auto pseudo =
+          before ? atspi_accessible_get_attributes(before, nullptr) : nullptr;
+      const auto tag = pseudo ? static_cast<const char *>(
+                                    g_hash_table_lookup(pseudo, "tag"))
+                              : nullptr;
+      // ::before ist sichtbarer Platzhalter, kein Inhalt des Editors.
+      if (tag && QByteArray(tag) == "::before")
+        value.clear();
+      if (pseudo)
+        g_hash_table_unref(pseudo);
+      if (before)
+        g_object_unref(before);
+    }
+  }
+  if (chromium && value == "\n" &&
+      atspi_text_get_caret_offset(text, nullptr) == 0 &&
+      atspi_text_get_n_selections(text, nullptr) == 0)
+    value.clear();
+  return value;
 }
 QString identity(AtspiAccessible *object) {
   auto base = ATSPI_OBJECT(object);
@@ -42,9 +111,67 @@ QString application(AtspiAccessible *object) {
   name.replace(QRegularExpression("[^a-z0-9-]"), "-");
   return name.isEmpty() ? QString() : "linux." + name;
 }
+bool pasteToProcess(unsigned pid) {
+  Display *display = XOpenDisplay(nullptr);
+  if (!display)
+    return false;
+  auto close = qScopeGuard([&] { XCloseDisplay(display); });
+  Window window;
+  int revert;
+  XGetInputFocus(display, &window, &revert);
+  const auto pidAtom = XInternAtom(display, "_NET_WM_PID", True);
+  bool matchingWindow = false;
+  for (int depth = 0; window != None && window != PointerRoot && depth < 32;
+       depth++) {
+    Atom actual;
+    int format;
+    unsigned long count, remaining;
+    unsigned char *value = nullptr;
+    if (pidAtom != None &&
+        XGetWindowProperty(display, window, pidAtom, 0, 1, False, XA_CARDINAL,
+                           &actual, &format, &count, &remaining, &value) == Success &&
+        value) {
+      matchingWindow = actual == XA_CARDINAL && format == 32 && count == 1 &&
+                       *reinterpret_cast<unsigned long *>(value) == pid;
+      XFree(value);
+      if (matchingWindow)
+        break;
+    }
+    Window root, parent, *children = nullptr;
+    unsigned childCount;
+    if (!XQueryTree(display, window, &root, &parent, &children, &childCount))
+      break;
+    if (children)
+      XFree(children);
+    window = parent;
+  }
+  if (!matchingWindow)
+    return false;
+  // Gehaltene Modifikatortasten gehören dem Benutzer und werden nicht gelöst.
+  char keys[32];
+  XQueryKeymap(display, keys);
+  for (auto symbol : {XK_Control_L, XK_Control_R, XK_Shift_L, XK_Shift_R,
+                      XK_Alt_L, XK_Alt_R, XK_Super_L, XK_Super_R}) {
+    const auto key = XKeysymToKeycode(display, symbol);
+    if (key && (keys[key / 8] & (1 << (key % 8))))
+      return false;
+  }
+  const auto control = XKeysymToKeycode(display, XK_Control_L);
+  const auto paste = XKeysymToKeycode(display, XK_v);
+  int event, error, major, minor;
+  if (!control || !paste ||
+      !XTestQueryExtension(display, &event, &error, &major, &minor))
+    return false;
+  XTestFakeKeyEvent(display, control, True, CurrentTime);
+  XTestFakeKeyEvent(display, paste, True, CurrentTime);
+  XTestFakeKeyEvent(display, paste, False, CurrentTime);
+  XTestFakeKeyEvent(display, control, False, CurrentTime);
+  XFlush(display);
+  return true;
+}
 bool activeWindow(AtspiAccessible *object) {
   auto current = static_cast<AtspiAccessible *>(g_object_ref(object));
-  for (int depth = 0; current && depth < 12; depth++) {
+  for (int depth = 0; current && depth < 128; depth++) {
     atspi_accessible_clear_cache(current);
     const auto role = atspi_accessible_get_role(current, nullptr);
     auto parent = atspi_accessible_get_parent(current, nullptr);
@@ -89,6 +216,24 @@ AtspiAccessible *focused(AtspiAccessible *root, int &budget,
   if (!root || --budget < 0 || clock.elapsed() > 900)
     return nullptr;
   atspi_accessible_clear_cache(root);
+  // Chromium aktiviert seinen Textbaum erst bei einer echten ATK-Abfrage.
+  const auto role = atspi_accessible_get_role(root, nullptr);
+  if ((role == ATSPI_ROLE_FRAME || role == ATSPI_ROLE_WINDOW ||
+       role == ATSPI_ROLE_DIALOG) && !has(root, ATSPI_STATE_ACTIVE)) {
+    auto parent = atspi_accessible_get_parent(root, nullptr);
+    const bool topLevel =
+        parent && atspi_accessible_get_role(parent, nullptr) ==
+                      ATSPI_ROLE_APPLICATION;
+    if (parent)
+      g_object_unref(parent);
+    if (topLevel)
+      return nullptr;
+  }
+  if (role == ATSPI_ROLE_FRAME || role == ATSPI_ROLE_APPLICATION) {
+    auto attributes = atspi_accessible_get_attributes(root, nullptr);
+    if (attributes)
+      g_hash_table_unref(attributes);
+  }
   if (qEnvironmentVariableIsSet("STILLEPOST_ACCESSIBILITY_TRACE"))
     qInfo() << "accessible state" << atspi_accessible_get_role(root, nullptr)
             << has(root, ATSPI_STATE_FOCUSED) << has(root, ATSPI_STATE_ACTIVE)
@@ -150,12 +295,17 @@ public:
                   self->lastFocused = static_cast<AtspiAccessible *>(
                       g_object_ref(source.data()));
                   const auto app = application(source.data());
-                  if (!app.isEmpty() && app != "linux.stillepost" &&
+                  const bool active = activeWindow(source.data());
+                  if (qEnvironmentVariableIsSet("STILLEPOST_INSERTION_TRACE") &&
+                      !self->snapshots.isEmpty())
+                    qInfo() << "Insertion focus" << app << active;
+                  if (!app.isEmpty() && active && app != "linux.stillepost" &&
                       self->onApplication)
                     self->onApplication(app);
                   for (auto it = self->snapshots.begin();
                        it != self->snapshots.end(); ++it) {
-                    if (app != "linux.stillepost" && app != it->application)
+                    if (!app.isEmpty() && active && app != "linux.stillepost" &&
+                        app != it->application)
                       it->invalidated = true;
                   }
                 },
@@ -208,21 +358,35 @@ public:
       result["reason"] = "Geschütztes Eingabefeld — kein Zugriff.";
       return result;
     }
-    auto text = atspi_accessible_get_text_iface(object);
     auto editable = atspi_accessible_get_editable_text_iface(object);
+    auto applicationRoot = atspi_accessible_get_application(object, nullptr);
+    const auto toolkit =
+        applicationRoot
+            ? utf(atspi_accessible_get_toolkit_name(applicationRoot, nullptr))
+            : QString();
+    if (applicationRoot)
+      g_object_unref(applicationRoot);
+    const bool qt = toolkit.startsWith("Qt", Qt::CaseInsensitive);
+    const bool clipboardPaste =
+        !editable && toolkit.startsWith("Chromium", Qt::CaseInsensitive) &&
+        has(object, ATSPI_STATE_EDITABLE) && !remote;
+    auto content = textObject(object, clipboardPaste);
+    auto text = content ? atspi_accessible_get_text_iface(content.data()) : nullptr;
     if (!text) {
       g_object_unref(object);
       result["reason"] = "Das Eingabeziel unterstützt keinen Textzugriff.";
       return result;
     }
-    const int count = atspi_text_get_character_count(text, nullptr);
+    int count = atspi_text_get_character_count(text, nullptr);
     if (count < 0 || count > 250000) {
       g_object_unref(object);
       result["reason"] = "Eingabeziel ist für die sichere Zielprüfung zu groß.";
       return result;
     }
     GError *error = nullptr;
-    const auto contents = utf(atspi_text_get_text(text, 0, count, &error));
+    const auto contents = readText(text, count, clipboardPaste, &error);
+    if (clipboardPaste && contents.isEmpty())
+      count = 0;
     if (error) {
       g_error_free(error);
       g_object_unref(object);
@@ -232,23 +396,17 @@ public:
     const auto points = contents.toUcs4();
     // Qt zählt AT-SPI-Positionen und InsertText-Längen in UTF-16-Einheiten.
     // Andere Adapter erwarten für InsertText die dokumentierte UTF-8-Bytelänge.
-    auto applicationRoot = atspi_accessible_get_application(object, nullptr);
-    const auto toolkit =
-        applicationRoot
-            ? utf(atspi_accessible_get_toolkit_name(applicationRoot, nullptr))
-            : QString();
-    if (applicationRoot)
-      g_object_unref(applicationRoot);
-    const bool qt = toolkit.startsWith("Qt", Qt::CaseInsensitive);
     const bool utf16 =
         qt || (points.size() != count && contents.size() == count);
-    if (contents.toUtf8().size() > 1048576 ||
+    if ((clipboardPaste && contents.contains(QChar(0xfffc))) ||
+        contents.toUtf8().size() > 1048576 ||
         (utf16 ? contents.size() != count : points.size() != count)) {
       g_object_unref(object);
       result["reason"] = "Ungültiger Textzugriff.";
       return result;
     }
-    const int caret = atspi_text_get_caret_offset(text, nullptr);
+    const int caret = clipboardPaste && contents.isEmpty()
+                          ? 0 : atspi_text_get_caret_offset(text, nullptr);
     int begin = caret, end = caret;
     const int selections = atspi_text_get_n_selections(text, nullptr);
     if (selections < 0 || selections > 1) {
@@ -296,14 +454,16 @@ public:
     }
     snapshotOrder.enqueue(token);
     snapshots[token] = {object, identity(object), app,   contents, caret, begin,
-                        end,    remote,           false, utf16};
+                        end,    remote,           false, utf16, clipboardPaste};
     result["token"] = token;
-    result["editable"] = editable && has(object, ATSPI_STATE_EDITABLE) &&
+    result["editable"] = (editable || clipboardPaste) &&
+                         has(object, ATSPI_STATE_EDITABLE) &&
                          !has(object, ATSPI_STATE_READ_ONLY) && !remote;
     result["remote"] = remote;
     return result;
   }
-  InsertionOutcome insert(QString token, QString replacement, bool restore) {
+  InsertionOutcome insert(QString token, QString replacement, bool restore,
+                          bool clipboardReady) {
     auto found = snapshots.find(token);
     if (found == snapshots.end())
       return {false, "Das ursprüngliche Eingabeziel ist nicht mehr verfügbar."};
@@ -330,18 +490,20 @@ public:
         !has(snapshot.object, ATSPI_STATE_EDITABLE) ||
         has(snapshot.object, ATSPI_STATE_READ_ONLY))
       return {false, "Eingabeziel ist geschützt oder nicht bearbeitbar."};
-    auto text = atspi_accessible_get_text_iface(snapshot.object);
+    auto content = textObject(snapshot.object, snapshot.clipboardPaste);
+    auto text = content ? atspi_accessible_get_text_iface(content.data()) : nullptr;
     auto editable = atspi_accessible_get_editable_text_iface(snapshot.object);
-    if (!text || !editable)
+    if (!text || (!editable && !snapshot.clipboardPaste))
       return {false,
               "Sicheres Einfügen wird vom Eingabeziel nicht unterstützt."};
     const int count = atspi_text_get_character_count(text, nullptr);
     if (count < 0 || count > 250000)
       return {false, "Eingabeziel ist für die sichere Zielprüfung zu groß."};
-    const auto fresh = utf(atspi_text_get_text(text, 0, count, nullptr));
+    const auto fresh = readText(text, count, snapshot.clipboardPaste, nullptr);
     if (fresh.toUtf8().size() > 1048576)
       return {false, "Eingabeziel ist für die sichere Zielprüfung zu groß."};
-    const auto caret = atspi_text_get_caret_offset(text, nullptr);
+    const auto caret = snapshot.clipboardPaste && fresh.isEmpty()
+                           ? 0 : atspi_text_get_caret_offset(text, nullptr);
     int begin = caret, end = caret;
     const int selections = atspi_text_get_n_selections(text, nullptr);
     if (selections < 0 || selections > 1)
@@ -386,11 +548,17 @@ public:
     if (afterInsertion.toUtf8().size() > 1048576 || insertedCount > 250000)
       return {false, "Ergebnis ist für das sichere Einfügen zu groß."};
     auto readCurrent = [&]() -> std::optional<QString> {
-      const int size = atspi_text_get_character_count(text, nullptr);
+      auto currentContent = textObject(snapshot.object, snapshot.clipboardPaste);
+      auto currentText = currentContent
+                             ? atspi_accessible_get_text_iface(currentContent.data())
+                             : nullptr;
+      if (!currentText)
+        return std::nullopt;
+      const int size = atspi_text_get_character_count(currentText, nullptr);
       if (size < 0 || size > 500000)
         return std::nullopt;
       GError *error = nullptr;
-      auto value = utf(atspi_text_get_text(text, 0, size, &error));
+      auto value = readText(currentText, size, snapshot.clipboardPaste, &error);
       if (error) {
         g_error_free(error);
         return std::nullopt;
@@ -408,6 +576,28 @@ public:
       return same && !has(snapshot.object, ATSPI_STATE_READ_ONLY) &&
              has(snapshot.object, ATSPI_STATE_EDITABLE);
     };
+    if (!editable) {
+      if (replacement.contains('\n') || replacement.contains('\r'))
+        return {false, "Mehrzeiliges Ergebnis bitte selbst einfügen."};
+      if (!clipboardReady)
+        return {false, {}, false, true};
+      if (!sameTarget() ||
+          !pasteToProcess(atspi_accessible_get_process_id(snapshot.object, nullptr)))
+        return {false, "Das Eingabeziel unterstützt kein sicheres automatisches "
+                       "Einfügen."};
+      // Chromium verarbeitet Paste asynchron; niemals blind zweimal senden.
+      for (int attempt = 0; attempt < 25; attempt++) {
+        QThread::msleep(20);
+        atspi_accessible_clear_cache(snapshot.object);
+        const auto actual = readCurrent();
+        if (actual && *actual == finalText)
+          return {true, {}, true};
+        if (!sameTarget() || !actual || *actual != fresh)
+          return {false, "Bitte die Übernahme im Eingabefeld prüfen.",
+                  !actual || *actual != fresh};
+      }
+      return {false, "Das Eingabeziel hat den kopierten Text nicht übernommen."};
+    }
     auto remove = [&](int start, int finish) {
       GError *error = nullptr;
       bool ok =
@@ -490,12 +680,17 @@ void AccessibleTarget::capture(QString request, bool selection) {
       },
       Qt::QueuedConnection);
 }
-void AccessibleTarget::insert(QString token, QString text, bool restoreFocus) {
+void AccessibleTarget::insert(QString token, QString text, bool restoreFocus,
+                               bool clipboardReady) {
   auto worker = static_cast<TargetAgent *>(agent);
   QMetaObject::invokeMethod(
       worker,
-      [this, worker, token, text, restoreFocus] {
-        auto result = worker->insert(token, text, restoreFocus);
+      [this, worker, token, text, restoreFocus, clipboardReady] {
+        auto result = worker->insert(token, text, restoreFocus, clipboardReady);
+        if (result.needsClipboard) {
+          emit clipboardRequested(token, text, restoreFocus);
+          return;
+        }
         emit inserted(token, result.success, result.reason, result.modified);
       },
       Qt::QueuedConnection);

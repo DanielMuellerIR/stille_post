@@ -4,6 +4,7 @@
 #include <csignal>
 #include <fcntl.h>
 #include <unistd.h>
+#include <X11/Xlib.h>
 namespace {
 int shutdownSignal = -1;
 void requestShutdown(int) {
@@ -61,6 +62,7 @@ protected:
   }
 };
 int main(int argc, char **argv) {
+  XInitThreads();
   if (qEnvironmentVariable("QT_QPA_PLATFORM").startsWith("wayland") ||
       (qEnvironmentVariable("QT_QPA_PLATFORM").isEmpty() &&
        qEnvironmentVariable("XDG_SESSION_TYPE") == "wayland"))

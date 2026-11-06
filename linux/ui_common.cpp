@@ -1,6 +1,22 @@
 #include "ui_common.h"
 #include <QWindow>
 #include <QtDBus>
+#include <QtGui/private/qguiapplication_p.h>
+#include <QtWaylandClient/private/qwaylanddisplay_p.h>
+#include <QtWaylandClient/private/qwaylandintegration_p.h>
+namespace {
+bool hasDataControl() {
+  const auto integration = dynamic_cast<QtWaylandClient::QWaylandIntegration *>(
+      QGuiApplicationPrivate::platformIntegration());
+  if (!integration)
+    return false;
+  // Die Shell wird erst beim Anzeigen eines Fensters geladen. Diktate aus dem
+  // Hintergrund brauchen die schon beim App-Start erfasste Wayland-Registry.
+  const auto display = integration->display();
+  return display->hasRegistryGlobal(u"zwlr_data_control_manager_v1") ||
+         display->hasRegistryGlobal(u"ext_data_control_manager_v1");
+}
+} // namespace
 static QJsonObject strings;
 static QJsonObject literalStrings;
 void loadTranslations() {
@@ -40,9 +56,9 @@ void loadTranslations() {
 bool copyText(const QString &text) {
   if (qEnvironmentVariableIsSet("STILLEPOST_CLIPBOARD_TRACE"))
     qInfo() << "Clipboard attempt" << QGuiApplication::platformName()
-            << qApp->property("stillepostDataControl").toBool() << text.size();
+            << hasDataControl() << text.size();
   if (QGuiApplication::platformName() == "wayland" &&
-      qApp->property("stillepostDataControl").toBool()) {
+      hasDataControl()) {
     QProcess provider;
     provider.setProgram(QCoreApplication::applicationDirPath() + "/wl-copy");
     provider.setArguments({"--type", "text/plain;charset=utf-8"});

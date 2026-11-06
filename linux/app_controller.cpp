@@ -186,6 +186,12 @@ AppController::AppController(bool testMode, QObject *parent)
           });
   connect(&target, &AccessibleTarget::captured, this,
           [this](QJsonObject snapshot) {
+            if (qEnvironmentVariableIsSet("STILLEPOST_INSERTION_TRACE"))
+              qInfo() << "Insertion target"
+                      << !snapshot["token"].toString().isEmpty()
+                      << snapshot["editable"].toBool()
+                      << snapshot["application"].toString()
+                      << snapshot["reason"].toString();
             if (snapshot["request"] == "recall") {
               recallToken = snapshot["token"].toString();
               send({{"command", "recall"}});
@@ -214,8 +220,22 @@ AppController::AppController(bool testMode, QObject *parent)
             send({{"command", pendingHold ? "holdStart" : "start"},
                   {"application", snapshot["application"]}});
           });
+  connect(&target, &AccessibleTarget::clipboardRequested, this,
+          [this](QString token, QString text, bool restore) {
+            if (copyText(text)) {
+              target.insert(token, text, restore, true);
+            } else {
+              pendingInsertions.remove(token);
+              pendingNotes.remove(token);
+              target.clear(token);
+              copyOrPreview(text, trKey("linux.clipboard.failed"),
+                            trKey("linux.clipboard.failed"));
+            }
+          });
   connect(&target, &AccessibleTarget::inserted, this,
           [this](QString token, bool ok, QString reason, bool modified) {
+            if (qEnvironmentVariableIsSet("STILLEPOST_INSERTION_TRACE"))
+              qInfo() << "Insertion result" << ok << modified << reason;
             const auto text = pendingInsertions.take(token);
             const auto note = pendingNotes.take(token);
             target.clear(token);

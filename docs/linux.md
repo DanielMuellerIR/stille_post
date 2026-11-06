@@ -58,6 +58,20 @@ manuellen Einfügen kopiert oder bei fehlender Clipboard-Berechtigung sichtbar
 in einer Vorschau erhalten. Geschützte Felder werden nicht ausgelesen. Bei
 erfolgreichem direktem Einfügen bleibt die Zwischenablage unverändert.
 
+Seit 0.9.50 können Chromium-/Electron-Felder unter X11 oder XWayland auch ohne
+direkte Textschreib-Schnittstelle automatisch übernehmen: Stille Post kopiert
+das Ergebnis, prüft das ursprüngliche Feld erneut und sendet einmal Strg+V.
+Danach muss der gelesene Text exakt dem erwarteten Ergebnis entsprechen.
+Dabei bleibt das Diktat in der Zwischenablage. Unter KDE kann dafür einmal die
+Freigabe zur Eingabesteuerung erscheinen; sie muss für Stille Post bestätigt
+werden. Da der Freigabedialog den Fokus übernimmt, muss das erste Diktat
+nach der Freigabe gegebenenfalls noch einmal eingefügt werden. Ein Fokuswechsel
+oder eine verweigerte Freigabe führt zum manuellen Einfügen. Native Wayland-Ziele ohne Textschreib-Schnittstelle bleiben beim
+manuellen Einfügen.
+Der Clipboard-Weg ist auf Ergebnisse ohne Absatzumbrüche in eindeutig lesbaren
+einzelnen Absätzen begrenzt. Bei mehreren Absätzen oder eingebetteten Elementen bleibt
+das Ergebnis zum manuellen Einfügen kopiert.
+
 Die optionale schreibgeschützte Ergebnisvorschau bietet Verwerfen, Kopieren und
 Einfügen. Mehrere offene Ergebnisse bleiben in Zustellreihenfolge erhalten;
 „Letzter Text“ übernimmt nur ausdrücklich bestätigte Vorschauen. Der Verlauf

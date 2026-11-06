@@ -163,5 +163,9 @@
   "Tastenkürzel ist ungültig oder wird bereits von einer anderen Anwendung verwendet.": "The shortcut is invalid or already used by another application.",
   "Text steht in der Vorschau zum Kopieren bereit.": "Text is ready to copy in the preview.",
   "Ergebnis — Kopieren": "Result — Copy",
-  "Mausposition nicht verfügbar. Die Anzeige erscheint unten mittig.": "Mouse position is unavailable. The overlay appears at the bottom centre."
+  "Mausposition nicht verfügbar. Die Anzeige erscheint unten mittig.": "Mouse position is unavailable. The overlay appears at the bottom centre.",
+  "Das Eingabeziel unterstützt kein sicheres automatisches Einfügen.": "The input target does not support verified automatic pasting.",
+  "Bitte die Übernahme im Eingabefeld prüfen.": "Please check the text in the input field.",
+  "Das Eingabeziel hat den kopierten Text nicht übernommen.": "The input target did not accept the copied text.",
+  "Mehrzeiliges Ergebnis bitte selbst einfügen.": "Please paste the multiline result manually."
 }

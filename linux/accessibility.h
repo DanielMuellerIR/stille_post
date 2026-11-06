@@ -6,10 +6,12 @@ public:
   explicit AccessibleTarget(QObject *parent = nullptr);
   ~AccessibleTarget() override;
   void capture(QString request, bool selection = false);
-  void insert(QString token, QString text, bool restoreFocus = false);
+  void insert(QString token, QString text, bool restoreFocus = false,
+              bool clipboardReady = false);
   void clear(QString token);
 signals:
   void captured(QJsonObject);
+  void clipboardRequested(QString token, QString text, bool restoreFocus);
   void inserted(QString token, bool success, QString reason, bool modified);
   void availability(bool ready);
   void applicationChanged(QString application);

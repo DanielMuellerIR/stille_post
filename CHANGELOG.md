@@ -10,6 +10,41 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.53] — 2026-11-06
+
+### Korrigiert
+
+- Linux: Automatisches Einfügen aus der Hintergrund-App erkennt die verfügbare
+  Wayland-Zwischenablage direkt, bevor das erste Fenster angezeigt wurde.
+  Dadurch erscheint bei unterstütztem Data Control keine unnötige Textvorschau.
+
+## [0.9.52] — 2026-11-06
+
+### Korrigiert
+
+- Linux: Nur bestätigte Fokusereignisse aus aktiven fremden Fenstern sperren
+  das ursprüngliche Eingabeziel dauerhaft. Hintergrundereignisse und nicht
+  zuordenbare Quellen lösen keinen falschen Anwendungswechsel mehr aus.
+
+## [0.9.51] — 2026-11-06
+
+### Korrigiert
+
+- Linux: Der generierte Platzhalter leerer ProseMirror-Felder wird nicht als
+  tatsächlicher Feldinhalt behandelt. Damit kann auch das leere ChatGPT-Feld
+  für automatisches Einfügen erfasst werden.
+
+## [0.9.50] — 2026-11-06
+
+### Korrigiert
+
+- Linux: Tief verschachtelte Eingabefelder in Chromium-/Electron-Apps werden
+  erkannt. Fehlt deren direkte Textschreib-Schnittstelle, kann Stille Post über
+  die Zwischenablage automatisch einfügen. Fokus, Zielprozess, unveränderter
+  Text und Auswahl werden vorher geprüft, der eingefügte Text danach.
+- Die Zielsuche überspringt inaktive Fenster, damit große Hintergrundfenster
+  das Zeitbudget für das fokussierte Feld nicht verbrauchen.
+
 ## [0.9.49] — 2026-11-06
 
 ### Korrigiert
