@@ -84,6 +84,27 @@ Datei mit dem Versions-Bump fortgeschrieben.
   Fall müssen App-Prozess und Fenster unverändert sein. Ein zuvor erkanntes
   Textfeld bleibt weiterhin an seine ursprüngliche Identität gebunden.
 
+## [0.9.44] — 2026-10-19
+
+Entwicklungskandidat: Die menschliche iPhone-Abnahme des Offline-Diktats steht noch aus.
+
+### Neu
+
+- Die iPhone-App bietet die ausdrückliche Auswahl zwischen Mac-Verarbeitung und
+  lokaler Erkennung mit fester deutscher oder englischer Sprache. Nach dem
+  Aufnahmestopp startet die Erkennung erst auf Wunsch; kein automatischer Versand.
+- Lokale Verarbeitung prüft das Modell, verarbeitet begrenzte Audiosegmente und
+  gibt es anschließend frei. Abbruch, Hintergrundwechsel, Speicherdruck und ein
+  ernster thermischer Zustand erhalten die Aufnahme und verhindern einen zweiten
+  Start bis zum tatsächlichen Ende der Modellarbeit.
+- Lokaler Text lässt sich kopieren und optional ausschließlich als Text am
+  gekoppelten Mac bereinigen. Das lokale Original bleibt bis zum nächsten Diktat
+  verfügbar; Fehler ändern es nicht.
+
+### Korrigiert
+
+- Eine leere Mac-Adresse meldet fehlende Eingabe statt unverschlüsseltem HTTP.
+
 ## [0.9.43] — 2026-10-18
 
 Lokale iPhone-Modellverwaltung; die Diktatansicht verwendet weiterhin den Mac.

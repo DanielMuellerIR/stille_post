@@ -6,10 +6,10 @@ public protocol LocalModelLoading: Sendable {
 }
 
 public enum LocalModelPhase: String, Sendable {
-    case checking, missing, partial, downloading, validating, available, loading, loaded, stopping, failed
+    case checking, missing, partial, downloading, validating, available, loading, loaded, recognizing, stopping, failed
 }
 
-public enum LocalModelInterruption: String, Sendable { case paused, background, memory, closed }
+public enum LocalModelInterruption: String, Sendable { case paused, background, memory, thermal, closed }
 
 public struct LocalModelState: Equatable, Sendable {
     public internal(set) var phase: LocalModelPhase = .checking
@@ -18,7 +18,7 @@ public struct LocalModelState: Equatable, Sendable {
     public internal(set) var installed = false
     public internal(set) var failure: LocalModelFailure?
     public internal(set) var notice: LocalModelInterruption?
-    public var busy: Bool { [.checking, .downloading, .validating, .loading, .stopping].contains(phase) }
+    public var busy: Bool { [.checking, .downloading, .validating, .loading, .recognizing, .stopping].contains(phase) }
     public init(totalBytes: Int64) { self.totalBytes = totalBytes }
     public init(failure: LocalModelFailure) { totalBytes = 0; phase = .failed; self.failure = failure }
 }
@@ -30,6 +30,7 @@ public struct LocalModelState: Equatable, Sendable {
     private let adapter: any LocalModelLoading
     private let downloader: any LocalModelDownloading
     private var task: Task<Void, Never>?
+    private var recognition: Task<String, Error>?
     private var generation = UUID()
     private enum Action { case inspect, download, load, release, remove }
 
@@ -46,6 +47,9 @@ public struct LocalModelState: Equatable, Sendable {
     public func remove() { begin(.remove) }
 
     public func interrupt(_ reason: LocalModelInterruption) {
+        if let recognition {
+            state.notice = reason; state.phase = .stopping; recognition.cancel(); return
+        }
         guard task != nil || state.phase == .loaded else { return }
         state.notice = reason
         if let task {
@@ -54,7 +58,7 @@ public struct LocalModelState: Equatable, Sendable {
     }
 
     private func begin(_ action: Action, preservingNotice: Bool = false) {
-        guard task == nil else { return }
+        guard task == nil, recognition == nil else { return }
         generation = UUID(); let current = generation
         var next = state
         next.failure = nil
@@ -107,6 +111,49 @@ public struct LocalModelState: Equatable, Sendable {
             }
         }
         state = next
+    }
+
+    public func transcribe(samples: [Float], language: DictationLanguage,
+                           progress: @escaping @Sendable (Double) -> Void) async throws -> String {
+        guard task == nil, recognition == nil else { throw LocalModelFailure.busy }
+        guard let recognizer = adapter as? any LocalSpeechRecognizing else { throw LocalModelFailure.recognition }
+        let segments = try OfflineSpeech.segments(samples)
+        guard !segments.isEmpty else { throw ClientFailure.noSpeech }
+        let alreadyLoaded = state.phase == .loaded
+        state.failure = nil; state.notice = nil; state.phase = .validating
+        let work = Task { [self] in
+            do {
+                let folder = try await store.validateInstalled()
+                try Task.checkCancellation()
+                if !alreadyLoaded {
+                    state.phase = .loading
+                    try await recognizer.load(folder: folder)
+                }
+                try Task.checkCancellation()
+                state.phase = .recognizing
+                var parts: [String] = []
+                for (index, segment) in segments.enumerated() {
+                    try Task.checkCancellation()
+                    parts.append(try await recognizer.recognize(samples: segment, language: language.rawValue))
+                    try Task.checkCancellation()
+                    progress(Double(index + 1) / Double(segments.count))
+                }
+                let text = OfflineSpeech.join(parts)
+                guard !text.isEmpty else { throw ClientFailure.noSpeech }
+                await recognizer.unload()
+                await updateInventory()
+                try Task.checkCancellation()
+                return text
+            } catch {
+                await recognizer.unload()
+                await updateInventory()
+                if let failure = error as? LocalModelFailure { state.failure = failure; state.phase = .failed }
+                throw error
+            }
+        }
+        recognition = work
+        defer { recognition = nil }
+        return try await withTaskCancellationHandler(operation: { try await work.value }, onCancel: { work.cancel() })
     }
 
     private func updateInventory() async {

@@ -3,7 +3,7 @@ import Foundation
 import StillePostClientCore
 import WhisperKit
 
-actor LocalWhisperAdapter: LocalModelLoading {
+actor LocalWhisperAdapter: LocalSpeechRecognizing {
     private var engine: WhisperKit?
     private var busy = false
     private var idleWaiters: [CheckedContinuation<Void, Never>] = []

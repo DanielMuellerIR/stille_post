@@ -8,13 +8,18 @@ import Foundation
 }
 
 public struct MobileState: Equatable, Sendable {
-    public enum Phase: String, Sendable { case idle, permission, recording, ready, sending, result, failed }
+    public enum Phase: String, Sendable { case idle, permission, recording, ready, sending, transcribing, stopping, cleaning, result, failed }
     public var phase: Phase = .idle
     public var recording: Recording?
     public var elapsed: TimeInterval = 0
     public var uploadProgress: Double = 0
+    public var transcriptionProgress: Double = 0
     public var reply: DictationReply?
     public var failure: ClientFailure?
+    public var modelFailure: LocalModelFailure?
+    public var mode: DictationMode = .mac
+    public var language: DictationLanguage = .de
+    public var localText: String?
     public var recovered = false
     public init() {}
 }
@@ -25,11 +30,15 @@ public struct MobileState: Equatable, Sendable {
     private let capture: any AudioCapture
     private let files: any RecordingFiles
     private let bridge: any BridgeAccess
+    private let offline: (any OfflineDictating)?
     private var operation: Task<Void, Never>?
     private var generation = UUID()
+    private var interruptionFailure: ClientFailure?
 
-    public init(capture: any AudioCapture, files: any RecordingFiles, bridge: any BridgeAccess) {
+    public init(capture: any AudioCapture, files: any RecordingFiles, bridge: any BridgeAccess,
+                offline: (any OfflineDictating)? = nil, mode: DictationMode = .mac, language: DictationLanguage = .de) {
         self.capture = capture; self.files = files; self.bridge = bridge
+        self.offline = offline; state.mode = mode; state.language = language
         capture.onProgress = { [weak self] elapsed in
             guard self?.state.phase == .recording else { return }
             self?.state.elapsed = elapsed
@@ -42,10 +51,20 @@ public struct MobileState: Equatable, Sendable {
         } catch { state.phase = .failed; state.failure = .storageFailed }
     }
 
+    public func configure(mode: DictationMode, language: DictationLanguage) {
+        guard operation == nil, state.phase != .recording else { return }
+        state.mode = mode; state.language = language
+    }
+
+    private func reset() {
+        let mode = state.mode, language = state.language
+        state = MobileState(); state.mode = mode; state.language = language
+    }
+
     public func record() {
         guard operation == nil, state.recording == nil, state.phase != .recording else { return }
         generation = UUID(); let current = generation
-        state = MobileState(); state.phase = .permission
+        reset(); state.phase = .permission
         operation = Task { [weak self] in
             guard let self else { return }
             do {
@@ -81,7 +100,7 @@ public struct MobileState: Equatable, Sendable {
     }
 
     public func send(credentials: BridgeCredentials) {
-        guard operation == nil, let recording = state.recording, state.phase != .recording, state.reply == nil else { return }
+        guard state.mode == .mac, operation == nil, let recording = state.recording, state.phase != .recording, state.reply == nil else { return }
         generation = UUID(); let current = generation
         state.phase = .sending; state.failure = nil; state.uploadProgress = 0; state.recovered = false
         operation = Task { [weak self] in
@@ -106,22 +125,82 @@ public struct MobileState: Equatable, Sendable {
         }
     }
 
+    public func transcribe() {
+        guard state.mode == .offline, operation == nil, let recording = state.recording,
+              state.phase != .recording, state.reply == nil else { return }
+        generation = UUID(); let current = generation, language = state.language
+        interruptionFailure = nil
+        state.phase = .transcribing; state.failure = nil; state.modelFailure = nil; state.transcriptionProgress = 0
+        operation = Task { [weak self] in
+            guard let self else { return }
+            defer { if generation == current { operation = nil } }
+            do {
+                guard let offline else { throw LocalModelFailure.missing }
+                let text = try await offline.transcribe(recording, language: language) { [weak self] progress in
+                    Task { @MainActor in
+                        guard let self, self.generation == current, self.state.phase == .transcribing else { return }
+                        self.state.transcriptionProgress = min(max(progress, 0), 1)
+                    }
+                }
+                try Task.checkCancellation()
+                guard generation == current else { return }
+                guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ClientFailure.noSpeech }
+                state.reply = DictationReply(text: text, origin: "local"); state.localText = text
+                try files.discard()
+                state.recording = nil; state.phase = .result; state.recovered = false
+            } catch is CancellationError {
+                state.phase = .ready; state.failure = interruptionFailure
+            } catch {
+                state.phase = .failed
+                if let failure = error as? LocalModelFailure { state.modelFailure = failure }
+                else { state.failure = error as? ClientFailure ?? .recordingFailed }
+            }
+        }
+    }
+
+    public func cleanText(credentials: BridgeCredentials) {
+        guard operation == nil, let text = state.localText, state.reply != nil, state.recording == nil else { return }
+        generation = UUID(); let current = generation
+        state.phase = .cleaning; state.failure = nil
+        operation = Task { [weak self] in
+            guard let self else { return }
+            defer { if generation == current { operation = nil } }
+            do {
+                let reply = try await bridge.cleanup(text, credentials: credentials)
+                try Task.checkCancellation()
+                guard generation == current else { return }
+                state.reply = reply; state.phase = .result
+            } catch is CancellationError { }
+            catch {
+                guard generation == current else { return }
+                state.phase = .result; state.failure = error as? ClientFailure ?? .unavailable
+            }
+        }
+    }
+
     public func cancel() {
         let phase = state.phase
+        if phase == .transcribing || phase == .stopping {
+            operation?.cancel(); state.phase = .stopping; return
+        }
         generation = UUID(); operation?.cancel(); operation = nil
+        if phase == .cleaning { state.phase = .result; state.failure = nil; return }
         if phase == .sending { state.phase = .ready; state.failure = nil; return }
         if phase == .recording || phase == .permission { _ = capture.stop(); state.phase = .ready; discard() }
     }
 
-    public func interrupt() {
-        if state.phase == .recording { finishCapture(duration: capture.stop(), failure: .interrupted) }
+    public func interrupt(failure: ClientFailure = .interrupted) {
+        if state.phase == .transcribing || state.phase == .stopping {
+            interruptionFailure = failure; cancel(); return
+        }
+        if state.phase == .recording { finishCapture(duration: capture.stop(), failure: failure) }
         else if state.phase == .permission { cancel() }
-        else if state.phase == .sending { cancel(); state.failure = .interrupted }
+        else if state.phase == .sending || state.phase == .cleaning { cancel(); state.failure = failure }
     }
 
     public func discard() {
         guard operation == nil, state.phase != .recording else { return }
-        do { try files.discard(); state = MobileState() }
+        do { try files.discard(); reset() }
         catch { state.phase = .failed; state.failure = .storageFailed }
     }
 }

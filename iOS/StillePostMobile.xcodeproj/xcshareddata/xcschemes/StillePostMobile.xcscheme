@@ -74,6 +74,16 @@
             value = "$(STILLEPOST_RUN_MODEL_DOWNLOAD_TEST)"
             isEnabled = "YES">
          </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "STILLEPOST_RUN_OFFLINE_MODEL_TEST"
+            value = "$(STILLEPOST_RUN_OFFLINE_MODEL_TEST)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+         <EnvironmentVariable
+            key = "STILLEPOST_RUN_OFFLINE_UI_TEST"
+            value = "$(STILLEPOST_RUN_OFFLINE_UI_TEST)"
+            isEnabled = "YES">
+         </EnvironmentVariable>
       </EnvironmentVariables>
    </TestAction>
    <LaunchAction

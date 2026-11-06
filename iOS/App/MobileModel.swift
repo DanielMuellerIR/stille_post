@@ -21,12 +21,16 @@ import UniformTypeIdentifiers
     private var actionGeneration = UUID()
     private let configurationKey = "bridge.configuration"
 
-    var busy: Bool { pendingAction || [.permission, .recording, .sending].contains(state.phase) }
-    var canSend: Bool { !busy && state.recording != nil && state.reply == nil && hasToken && (try? configuration.endpoint()) != nil }
+    var busy: Bool { pendingAction || [.permission, .recording, .sending, .transcribing, .stopping, .cleaning].contains(state.phase) }
+    var canSend: Bool { state.mode == .mac && !busy && state.recording != nil && state.reply == nil && hasToken && (try? configuration.endpoint()) != nil }
+    var canTranscribe: Bool { state.mode == .offline && !busy && state.recording != nil && state.reply == nil }
+    var canCleanText: Bool { !busy && state.localText != nil && state.recording == nil && hasToken && (try? configuration.endpoint()) != nil }
 
-    init(capture: any AudioCapture, files: any RecordingFiles, bridge: any BridgeAccess = BridgeClient()) {
+    init(capture: any AudioCapture, files: any RecordingFiles, bridge: any BridgeAccess = BridgeClient(), offline: (any OfflineDictating)? = nil) {
         self.bridge = bridge
-        session = DictationSession(capture: capture, files: files, bridge: bridge)
+        let mode = UserDefaults.standard.string(forKey: "dictation.mode").flatMap(DictationMode.init(rawValue:)) ?? .mac
+        let language = UserDefaults.standard.string(forKey: "dictation.language").flatMap(DictationLanguage.init(rawValue:)) ?? .de
+        session = DictationSession(capture: capture, files: files, bridge: bridge, offline: offline, mode: mode, language: language)
         state = session.state
         configuration = UserDefaults.standard.data(forKey: configurationKey)
             .flatMap { try? JSONDecoder().decode(BridgeConfiguration.self, from: $0) } ?? BridgeConfiguration()
@@ -94,14 +98,21 @@ import UniformTypeIdentifiers
     }
 
     func record() { connectionTask?.cancel(); connection = .unchecked; setupFailure = nil; session.record() }
+    func select(mode: DictationMode, language: DictationLanguage) {
+        guard !busy else { return }
+        session.configure(mode: mode, language: language)
+        UserDefaults.standard.set(mode.rawValue, forKey: "dictation.mode")
+        UserDefaults.standard.set(language.rawValue, forKey: "dictation.language")
+    }
+    func transcribe() { guard canTranscribe else { return }; setupFailure = nil; session.transcribe() }
     func stop() { session.stop() }
     func cancel() { session.cancel() }
     func discard() { session.discard() }
-    func interrupt() {
+    func interrupt(failure: ClientFailure = .interrupted) {
         connectionTask?.cancel(); actionTask?.cancel(); pendingAction = false
         actionGeneration = UUID()
         if connection == .checking { connection = .unchecked }
-        session.interrupt()
+        session.interrupt(failure: failure)
     }
 
     func send() {
@@ -118,6 +129,25 @@ import UniformTypeIdentifiers
                 pendingAction = false
                 guard state.recording == recording else { return }
                 session.send(credentials: credentials)
+            } catch is CancellationError { if actionGeneration == current { pendingAction = false } }
+            catch {
+                guard actionGeneration == current else { return }
+                pendingAction = false; setupFailure = error as? ClientFailure ?? .storageFailed
+            }
+        }
+    }
+
+    func cleanText() {
+        guard canCleanText else { return }
+        pendingAction = true; setupFailure = nil
+        actionGeneration = UUID(); let current = actionGeneration, config = configuration
+        actionTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let credentials = try await credentials(config)
+                try Task.checkCancellation()
+                guard actionGeneration == current else { return }
+                pendingAction = false; session.cleanText(credentials: credentials)
             } catch is CancellationError { if actionGeneration == current { pendingAction = false } }
             catch {
                 guard actionGeneration == current else { return }

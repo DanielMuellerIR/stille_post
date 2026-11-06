@@ -1,8 +1,9 @@
 # Lokales Modell auf dem iPhone
 
 Stand: 2026-10-18. Version 0.9.43 ergänzt die Modellverwaltung.
-Die Diktatansicht verwendet weiterhin den gekoppelten Mac. Ein vollständiger
-Offline-Diktatablauf ist der nächste getrennte Funktionsschritt.
+Entwicklungskandidat 0.9.44 verbindet diese Verwaltung mit dem getrennt
+beschriebenen [Offline-Diktatablauf](ios-offline-dictation.md). Dessen menschliche
+Geräteabnahme ist noch offen.
 
 ## Bedienung
 
@@ -114,4 +115,4 @@ wurden nicht verändert oder entfernt; ihr Inhalt wurde nicht gelesen.
 Simulatorprüfungen auf iOS 17.5 belegen Download und Oberfläche, keine
 Leistungsfreigabe für ältere Hardware. Die Produktuntergrenze bleibt iOS 17;
 ein physisches Gerät mit iOS 17 und menschliche Mikrofonaufnahmen sind noch
-nicht geprüft. Die Diktatansicht verwendet weiterhin die Mac-Brücke.
+nicht geprüft. Der Mac-Weg bleibt ausdrücklich auswählbar.

@@ -4,6 +4,19 @@ import XCTest
 @testable import StillePostClientCore
 
 final class TransportTests: XCTestCase {
+    func testTextCleanupSendsOnlyUTF8OverPinnedTLS() async throws {
+        let body = Data(#"{"text":"Keine 13 Kopien.","origin":"cleaned"}"#.utf8)
+        let server = try HTTPFixture(response: Data("HTTP/1.1 200 OK\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8) + body)
+        defer { server.stop() }
+        let text = "Keine dreizehn Kopien für morgen."
+        let credentials = BridgeCredentials(configuration: BridgeConfiguration(address: server.address, fingerprint: server.identity.fingerprint), token: "fixture-token")
+        _ = try await BridgeClient().cleanup(text, credentials: credentials)
+        let request = server.received()
+        XCTAssertTrue(request.starts(with: Data("POST /v1/cleanup HTTP/1.1".utf8)))
+        let boundary = try XCTUnwrap(request.range(of: Data("\r\n\r\n".utf8)))
+        XCTAssertEqual(request.suffix(from: boundary.upperBound), Data(text.utf8))
+    }
+
     func testRealUploadWithContentLengthAndBoundedReply() async throws {
         let body = Data(#"{"text":"Network test."}"#.utf8)
         let server = try HTTPFixture(response: Data("HTTP/1.1 200 OK\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8) + body)

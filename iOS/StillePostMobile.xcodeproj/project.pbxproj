@@ -16,6 +16,7 @@
 		47AF1D7F1F08BBEA6250D97C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9622957C6036238FBBE5B896 /* Assets.xcassets */; };
 		47F6797FA98E4E6003558188 /* ConnectionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6CAD3EDFB7433B901B59502 /* ConnectionView.swift */; };
 		4945EE60FF70E4EB582A66B4 /* StillePostClientCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4A529D3144E9EB3133CD5B8A /* StillePostClientCore */; };
+		5337E522C4D12EB7332802A2 /* LocalPCMDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E9138DCE52088E9193AF539 /* LocalPCMDecoder.swift */; };
 		68984823C60FB0B705FE78C0 /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AC322A0862AFA1EE62F3DCE /* AudioRecorder.swift */; };
 		6ABF6C628FC2CFD36292F077 /* PairingScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76CB6CABA9CE7941898B20C3 /* PairingScanner.swift */; };
 		736717626C995B9D3F4CD852 /* MobileModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6A10B3737D73B271C0FA896 /* MobileModel.swift */; };
@@ -26,6 +27,7 @@
 		AEBD21F2A4058A8104F7B928 /* LocalModelUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D23E5144EF64F9CCEF5970E /* LocalModelUITests.swift */; };
 		D1CE1CE207F849315012A1D9 /* LocalModelController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFB411E00403BAF58E976BD3 /* LocalModelController.swift */; };
 		D7ECB363B510F12DDC7681F3 /* StillePostMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42C76D231F7B233EC15D2B17 /* StillePostMobileApp.swift */; };
+		E85F70EF586EFE9E4417F5E6 /* OfflineUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C99C8BB752AF2ADA35219643 /* OfflineUITests.swift */; };
 		EA058326EBA9B3F409E0A394 /* SimulatorAudioCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43B42341349C186782F25A8A /* SimulatorAudioCapture.swift */; };
 		F0080B8289DAA379912EDE09 /* LocalModelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 615DCBF16CAE80652A536937 /* LocalModelView.swift */; };
 /* End PBXBuildFile section */
@@ -58,11 +60,13 @@
 		75F3A6BC982AAF119B09082B /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
 		76CB6CABA9CE7941898B20C3 /* PairingScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PairingScanner.swift; sourceTree = "<group>"; };
 		7BB26DE619B93836665B19C9 /* StillePostMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = StillePostMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7E9138DCE52088E9193AF539 /* LocalPCMDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPCMDecoder.swift; sourceTree = "<group>"; };
 		8742557D3F9733B4C11755F0 /* StillePostMobileUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = StillePostMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		9622957C6036238FBBE5B896 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A6A10B3737D73B271C0FA896 /* MobileModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MobileModel.swift; sourceTree = "<group>"; };
 		A8AC392F56C15FA13C257591 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		B6CAD3EDFB7433B901B59502 /* ConnectionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionView.swift; sourceTree = "<group>"; };
+		C99C8BB752AF2ADA35219643 /* OfflineUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineUITests.swift; sourceTree = "<group>"; };
 		CA3BF9FC86E35513D5CDB018 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		CFB411E00403BAF58E976BD3 /* LocalModelController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalModelController.swift; sourceTree = "<group>"; };
 		F6EF84BAED1FEDC5A322F88A /* StillePostMobile.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = StillePostMobile.entitlements; sourceTree = "<group>"; };
@@ -86,6 +90,7 @@
 			children = (
 				4D23E5144EF64F9CCEF5970E /* LocalModelUITests.swift */,
 				0127830708A30EAE69B3A169 /* MobileUITests.swift */,
+				C99C8BB752AF2ADA35219643 /* OfflineUITests.swift */,
 			);
 			path = UITests;
 			sourceTree = "<group>";
@@ -120,6 +125,7 @@
 				CFB411E00403BAF58E976BD3 /* LocalModelController.swift */,
 				0311498A3D80ED6C066BEB82 /* LocalModelLicenses.txt */,
 				615DCBF16CAE80652A536937 /* LocalModelView.swift */,
+				7E9138DCE52088E9193AF539 /* LocalPCMDecoder.swift */,
 				3E770822D4C470C0C0249B8A /* LocalWhisperAdapter.swift */,
 				A6A10B3737D73B271C0FA896 /* MobileModel.swift */,
 				24F69C404FE43D366CE10B20 /* OpenDictationIntent.swift */,
@@ -249,6 +255,7 @@
 			files = (
 				AEBD21F2A4058A8104F7B928 /* LocalModelUITests.swift in Sources */,
 				336D6673DB48814C58428AB0 /* MobileUITests.swift in Sources */,
+				E85F70EF586EFE9E4417F5E6 /* OfflineUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -262,6 +269,7 @@
 				1A6860387349C4142936FBE6 /* DictationView.swift in Sources */,
 				D1CE1CE207F849315012A1D9 /* LocalModelController.swift in Sources */,
 				F0080B8289DAA379912EDE09 /* LocalModelView.swift in Sources */,
+				5337E522C4D12EB7332802A2 /* LocalPCMDecoder.swift in Sources */,
 				885735F92288C7C92474985C /* LocalWhisperAdapter.swift in Sources */,
 				736717626C995B9D3F4CD852 /* MobileModel.swift in Sources */,
 				7F89FEB727EA9F08426E9B3F /* OpenDictationIntent.swift in Sources */,
@@ -406,7 +414,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.9.43;
+				MARKETING_VERSION = 0.9.44;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -472,7 +480,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
-				MARKETING_VERSION = 0.9.43;
+				MARKETING_VERSION = 0.9.44;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;

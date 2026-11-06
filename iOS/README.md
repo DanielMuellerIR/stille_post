@@ -1,7 +1,7 @@
 # Stille Post auf dem iPhone
 
-Native SwiftUI-App ab iOS 17. Die App verbindet sich ausschließlich
-verschlüsselt mit der Mac-Brücke und übernimmt deren Identität direkt per QR-Code.
+Native SwiftUI-App ab iOS 17. Für die Mac-Verarbeitung verbindet sich die App
+ausschließlich verschlüsselt mit der Mac-Brücke und übernimmt deren Identität direkt per QR-Code.
 Reale QR-/HTTPS-Kopplung, verschlüsseltes AAC-Diktat und Versandabbruch mit
 Wiederaufnahme nach App-Neustart wurden am iPhone geprüft. Die App bleibt ein
 Entwicklungsclient; weitere Geräte-/Plattformabnahmen stehen im Backlog. HTTP
@@ -13,8 +13,13 @@ Pause/Fortsetzen, Laden, Freigeben und Entfernen. Die ausgewählte 649-MB-Varian
 hat die lokale Geräteprobe bestanden. Laden, Freigeben, Hintergrundwechsel,
 Neustart ohne automatisches Laden, Integritätsfehler und Entfernen wurden in der
 nativen Produktansicht am iPhone manuell abgenommen. Die Diktatansicht verwendet
-weiterhin den gekoppelten Mac. Der Erhalt einer eingerichteten Kopplung während
+bei diesem Stand den gekoppelten Mac. Der Erhalt einer eingerichteten Kopplung während
 der Modellaktionen bleibt ein zusätzlicher Gerätefall.
+
+Entwicklungskandidat 0.9.44 ergänzt die ausdrücklich gewählte
+[lokale Offline-Erkennung](../docs/ios-offline-dictation.md) und optionale
+Textbereinigung am Mac ohne Audioübertragung. Modus und Sprache bleiben beim
+Neustart erhalten. Die menschliche Offline-Geräteabnahme steht noch aus.
 
 ## Benutzung und sichere Kopplung
 

@@ -4,6 +4,10 @@ Der lokale Modellkandidat und seine getrennte Verwaltung sind in
 [Lokales Modell auf dem iPhone](ios-local-model.md) beschrieben. Die folgende
 Anleitung gilt für die verschlüsselte Verarbeitung auf dem Mac.
 
+Entwicklungskandidat 0.9.44 ergänzt einen ausdrücklich gewählten
+[Offline-Weg](ios-offline-dictation.md); eine spätere optionale Bereinigung
+verwendet ausschließlich dessen vollständigen Text.
+
 Stand: 2026-10-18. Ab 0.9.42 verwendet die Brücke ausschließlich HTTPS. Die
 native iPhone-App koppelt sich direkt am Mac per QR-Code. Eine Aufnahme endet
 nach ausdrücklichem Stoppen; gesendet wird erst mit „An meinen Mac senden“.

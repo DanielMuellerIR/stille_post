@@ -12,7 +12,7 @@ struct DictationView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    developmentNotice
+                    processingChoice
                     VStack(spacing: 14) {
                         Image(systemName: model.state.phase == .recording ? "waveform" : "mic.fill")
                             .font(.system(size: 42, weight: .medium)).foregroundStyle(model.state.phase == .recording ? Color.red : Color.accentColor)
@@ -29,14 +29,29 @@ struct DictationView: View {
                             Text(model.state.uploadProgress >= 1 ? "upload.processing" : "upload.sending")
                                 .font(.subheadline).foregroundStyle(.secondary)
                         }
+                        if [.transcribing, .stopping, .cleaning].contains(model.state.phase) {
+                            if model.state.phase == .transcribing {
+                                Text(LocalizedStringKey("model.phase." + localModels.state.phase.rawValue))
+                                    .font(.subheadline).foregroundStyle(.secondary)
+                                if localModels.state.phase == .recognizing {
+                                    ProgressView(value: model.state.transcriptionProgress).accessibilityLabel(Text("offline.progress"))
+                                } else { ProgressView() }
+                            } else { ProgressView() }
+                        }
                     }.frame(maxWidth: .infinity).padding(.vertical, 8)
 
                     if let failure = model.state.failure { failureView(failure) }
                     if let failure = model.setupFailure { failureView(failure) }
+                    if let failure = model.state.modelFailure {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Label(LocalizedStringKey(failure.messageKey), systemImage: "exclamationmark.triangle").foregroundStyle(.red)
+                            Text("recording.retained").font(.footnote).foregroundStyle(.secondary)
+                        }.accessibilityIdentifier("dictation.error")
+                    }
                     if model.state.recovered { Text("recording.recovered").font(.subheadline).foregroundStyle(.secondary) }
                     if let reply = model.state.reply {
                         VStack(alignment: .leading, spacing: 12) {
-                            Label(LocalizedStringKey(reply.origin == "raw" ? "result.raw" : "result.title"), systemImage: "text.alignleft").font(.headline)
+                            Label(LocalizedStringKey(reply.origin == "local" ? "result.local" : reply.origin == "raw" ? "result.raw" : "result.title"), systemImage: "text.alignleft").font(.headline)
                             Text(reply.text.isEmpty ? String(localized: "result.empty") : reply.text)
                                 .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
                                 .accessibilityIdentifier("dictation.result")
@@ -45,15 +60,31 @@ struct DictationView: View {
                                     .frame(maxWidth: .infinity, minHeight: 36)
                             }.buttonStyle(.borderedProminent).disabled(reply.text.isEmpty).accessibilityIdentifier("dictation.copy")
                             Text("result.pasteHint").font(.footnote).foregroundStyle(.secondary)
+                            if model.state.localText != nil {
+                                if let original = model.state.localText, original != reply.text {
+                                    DisclosureGroup("result.localOriginal") { Text(original).textSelection(.enabled) }
+                                }
+                                Button("result.cleanOnMac", action: model.cleanText)
+                                    .frame(minHeight: 44).disabled(!model.canCleanText).accessibilityIdentifier("dictation.cleanText")
+                                Text("result.textOnly").font(.footnote).foregroundStyle(.secondary)
+                                if !model.hasToken {
+                                    Button("connection.configure") { showConnection = true }.frame(minHeight: 44).disabled(model.busy)
+                                }
+                            }
                         }.padding(20).background(.background, in: RoundedRectangle(cornerRadius: 18))
                     }
 
                     actions
                     VStack(alignment: .leading, spacing: 8) {
-                        Label(LocalizedStringKey(model.hasToken ? "connection.saved" : "connection.required"), systemImage: model.hasToken ? "desktopcomputer" : "link")
-                            .font(.subheadline.weight(.medium))
+                        if model.state.mode == .mac {
+                            Label(LocalizedStringKey(model.hasToken ? "connection.saved" : "connection.required"), systemImage: model.hasToken ? "desktopcomputer" : "link")
+                                .font(.subheadline.weight(.medium))
+                        } else {
+                            Label(LocalizedStringKey(localModels.state.installed ? "offline.modelReady" : "offline.modelRequired"), systemImage: "cpu")
+                                .font(.subheadline.weight(.medium))
+                        }
                         Text("recording.limits").font(.footnote).foregroundStyle(.secondary)
-                        Text("privacy.explanation").font(.footnote).foregroundStyle(.secondary)
+                        Text(model.state.mode == .offline ? "privacy.offline" : "privacy.explanation").font(.footnote).foregroundStyle(.secondary)
                         Button { showModels = true } label: {
                             Label("model.manage", systemImage: "cpu").frame(minHeight: 44)
                         }.disabled(model.busy).accessibilityIdentifier("model.open")
@@ -75,8 +106,23 @@ struct DictationView: View {
         }
     }
 
-    private var developmentNotice: some View {
-        Label("connection.encrypted", systemImage: "lock.shield").font(.footnote).foregroundStyle(.secondary)
+    private var processingChoice: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Picker("dictation.mode", selection: Binding(get: { model.state.mode }, set: { model.select(mode: $0, language: model.state.language) })) {
+                Text("dictation.mode.mac").tag(DictationMode.mac)
+                Text("dictation.mode.offline").tag(DictationMode.offline)
+            }.pickerStyle(.menu).frame(minHeight: 44).accessibilityIdentifier("dictation.mode").disabled(model.busy)
+            if model.state.mode == .offline {
+                Picker("dictation.language", selection: Binding(get: { model.state.language }, set: { model.select(mode: model.state.mode, language: $0) })) {
+                    Text("Deutsch").tag(DictationLanguage.de)
+                    Text("English").tag(DictationLanguage.en)
+                }.pickerStyle(.menu).frame(minHeight: 44).accessibilityIdentifier("dictation.language").disabled(model.busy)
+            }
+            Label(LocalizedStringKey(model.state.mode == .offline ? "offline.localOnly" : "connection.encrypted"),
+                  systemImage: model.state.mode == .offline ? "iphone" : "lock.shield")
+                .font(.footnote).foregroundStyle(.secondary)
+        }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
+            .background(.background, in: RoundedRectangle(cornerRadius: 18))
     }
 
     @ViewBuilder private var actions: some View {
@@ -90,11 +136,22 @@ struct DictationView: View {
         case .sending:
             Button("upload.cancel", action: model.cancel).buttonStyle(.bordered).frame(maxWidth: .infinity, minHeight: 44)
                 .accessibilityIdentifier("dictation.cancelUpload")
+        case .transcribing, .stopping:
+            Button("offline.cancel", action: model.cancel).buttonStyle(.bordered).frame(maxWidth: .infinity, minHeight: 44)
+                .disabled(model.state.phase == .stopping).accessibilityIdentifier("dictation.cancelLocal")
+            Text("offline.loadHint").font(.footnote).foregroundStyle(.secondary)
+        case .cleaning:
+            Button("upload.cancel", action: model.cancel).buttonStyle(.bordered).frame(maxWidth: .infinity, minHeight: 44)
         default:
             if model.state.recording != nil {
                 if model.state.reply == nil {
-                    primary("recording.send", symbol: "arrow.up.circle.fill", action: model.send).disabled(!model.canSend)
-                    if !model.hasToken || !model.configuration.allowInsecureDevelopment {
+                    if model.state.mode == .offline {
+                        primary("offline.transcribe", symbol: "iphone", action: model.transcribe)
+                            .disabled(!model.canTranscribe || localModels.state.busy)
+                    } else {
+                        primary("recording.send", symbol: "arrow.up.circle.fill", action: model.send).disabled(!model.canSend)
+                    }
+                    if model.state.mode == .mac && !model.hasToken {
                         Button("connection.configure") { showConnection = true }.frame(maxWidth: .infinity, minHeight: 44)
                     }
                 }

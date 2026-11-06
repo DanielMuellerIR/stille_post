@@ -3,7 +3,7 @@ import StillePostClientCore
 
 @main struct StillePostMobileApp: App {
     @StateObject private var model: MobileModel
-    @StateObject private var localModels = LocalModelController()
+    @StateObject private var localModels: LocalModelController
 
     init() {
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -16,14 +16,16 @@ import StillePostClientCore
         #else
         capture = AudioRecorder()
         #endif
-        _model = StateObject(wrappedValue: MobileModel(capture: capture, files: PendingRecordingFiles(directory: directory)))
+        let localModels = LocalModelController()
+        _localModels = StateObject(wrappedValue: localModels)
+        _model = StateObject(wrappedValue: MobileModel(capture: capture, files: PendingRecordingFiles(directory: directory), offline: localModels))
     }
 
     var body: some Scene {
         WindowGroup {
             DictationView(model: model, localModels: localModels)
                 .tint(.indigo)
-                .task { await model.load() }
+                .task { localModels.refresh(); await model.load() }
                 // Vor dem Hintergrundwechsel stoppen: Die Audio-Session kann sonst
                 // weiterlaufen, bevor SwiftUI den neuen Szenenzustand meldet.
                 .onReceive(NotificationCenter.default.publisher(for: UIScene.willDeactivateNotification)) { _ in
@@ -34,7 +36,14 @@ import StillePostClientCore
                     localModels.interrupt(.background)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.didReceiveMemoryWarningNotification)) { _ in
+                    if model.state.phase == .transcribing { model.interrupt(failure: .memoryPressure) }
                     localModels.interrupt(.memory)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification)) { _ in
+                    if ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue {
+                        if model.state.mode == .offline { model.interrupt(failure: .tooHot) }
+                        localModels.interrupt(.thermal)
+                    }
                 }
         }
     }

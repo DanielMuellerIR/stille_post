@@ -5,7 +5,7 @@ public enum ClientFailure: String, Error, Equatable, Sendable {
     case pairingRequired, invalidPairing, identityChanged, invalidCertificate, cameraUnavailable
     case invalidAddress, insecureDisabled, missingToken, microphoneDenied, recordingFailed
     case recordingExists, noAudio, recordingTooLarge, unavailable, unauthorized, busy
-    case serverFailed, invalidResponse, responseTooLarge, redirected, storageFailed, interrupted
+    case serverFailed, invalidResponse, responseTooLarge, redirected, storageFailed, interrupted, noSpeech, tooHot, memoryPressure, textTooLarge
 
     public var messageKey: String { "error.\(rawValue)" }
 }
@@ -22,6 +22,7 @@ public struct BridgeConfiguration: Codable, Equatable, Sendable {
     }
 
     public func endpoint() throws -> URL {
+        guard !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ClientFailure.invalidAddress }
         guard let parts = URLComponents(string: address.trimmingCharacters(in: .whitespacesAndNewlines)) else { throw ClientFailure.invalidAddress }
         guard parts.scheme?.lowercased() == "https" else { throw ClientFailure.insecureDisabled }
         guard let host = parts.host,

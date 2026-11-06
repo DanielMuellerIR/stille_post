@@ -57,6 +57,30 @@ import XCTest
         let unloads = await adapter.unloads; XCTAssertEqual(unloads, 1)
     }
 
+    func testOfflineSegmentsShareOneLoadAndAlwaysRelease() async throws {
+        let adapter = ControlledModelAdapter(), session = try await session(adapter: adapter)
+        let work = Task { try await session.transcribe(samples: Array(repeating: 0.04, count: 61 * 16_000), language: .en, progress: { _ in }) }
+        try await wait { await adapter.loading }; await adapter.finishLoading()
+        let text = try await work.value
+        XCTAssertEqual(text, "part1 part2 part3.")
+        let loads = await adapter.loads, unloads = await adapter.unloads, languages = await adapter.languages
+        XCTAssertEqual(loads, 1); XCTAssertEqual(unloads, 1); XCTAssertEqual(languages, ["en", "en", "en"])
+        XCTAssertEqual(session.state.phase, .available)
+    }
+
+    func testOfflineCancellationWaitsForNativeLoadAndPreservesModelFiles() async throws {
+        let adapter = ControlledModelAdapter(), session = try await session(adapter: adapter)
+        let work = Task { try await session.transcribe(samples: Array(repeating: 0.04, count: 16_000), language: .de, progress: { _ in }) }
+        try await wait { await adapter.loading }
+        session.interrupt(.memory); session.remove(); session.load()
+        XCTAssertEqual(session.state.phase, .stopping)
+        await adapter.finishLoading()
+        do { _ = try await work.value; XCTFail("Abbruch erwartet") } catch is CancellationError { }
+        let loads = await adapter.loads, unloads = await adapter.unloads, languages = await adapter.languages
+        XCTAssertEqual(loads, 1); XCTAssertEqual(unloads, 1); XCTAssertTrue(languages.isEmpty)
+        XCTAssertTrue(session.state.installed); XCTAssertEqual(session.state.phase, .available)
+    }
+
     private func wait(_ condition: () async -> Bool) async throws {
         for _ in 0..<400 {
             if await condition() { return }
@@ -67,11 +91,12 @@ import XCTest
     }
 }
 
-private actor ControlledModelAdapter: LocalModelLoading {
+private actor ControlledModelAdapter: LocalSpeechRecognizing {
     private var continuation: CheckedContinuation<Void, Never>?
     private(set) var loading = false
     private(set) var loads = 0
     private(set) var unloads = 0
+    private(set) var languages: [String] = []
     func load(folder: URL) async throws {
         loads += 1; loading = true
         // Ein nativer CoreML-Aufruf kann Cancellation ignorieren. Der Test gibt
@@ -81,6 +106,9 @@ private actor ControlledModelAdapter: LocalModelLoading {
     }
     func finishLoading() { continuation?.resume(); continuation = nil }
     func unload() async { unloads += 1 }
+    func recognize(samples: [Float], language: String) async throws -> String {
+        languages.append(language); return "part\(languages.count)"
+    }
 }
 
 private struct SessionModelDownloader: LocalModelDownloading {

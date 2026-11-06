@@ -15,11 +15,17 @@ public protocol BridgeAccess: Sendable {
     func health(_ credentials: BridgeCredentials) async throws -> BridgeHealth
     func dictate(_ recording: Recording, credentials: BridgeCredentials,
                  progress: @escaping @Sendable (Double) -> Void) async throws -> DictationReply
+    func cleanup(_ text: String, credentials: BridgeCredentials) async throws -> DictationReply
+}
+
+public extension BridgeAccess {
+    func cleanup(_ text: String, credentials: BridgeCredentials) async throws -> DictationReply { throw ClientFailure.unavailable }
 }
 
 public struct BridgeClient: BridgeAccess {
     public static let maxAudioBytes = 5_000_000
     public static let maxResponseBytes = 1_048_576
+    public static let maxTextBytes = 65_536
     public static let maxRecordingSeconds: TimeInterval = 180
     private let transport: any BridgeTransport
 
@@ -44,6 +50,18 @@ public struct BridgeClient: BridgeAccess {
         request.setValue("audio/mp4", forHTTPHeaderField: "Content-Type")
         request.setValue(String(bytes.intValue), forHTTPHeaderField: "Content-Length")
         return try await decode { try await transport.perform(request, file: recording.url, fingerprint: credentials.configuration.fingerprint, progress: progress) }
+    }
+
+    public func cleanup(_ text: String, credentials: BridgeCredentials) async throws -> DictationReply {
+        let data = Data(text.utf8)
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw ClientFailure.noSpeech }
+        guard data.count <= Self.maxTextBytes else { throw ClientFailure.textTooLarge }
+        var request = try request(credentials, route: "cleanup", method: "POST", timeout: 180)
+        request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.setValue(String(data.count), forHTTPHeaderField: "Content-Length")
+        request.httpBody = data
+        return try await decode { try await transport.perform(request, file: nil,
+            fingerprint: credentials.configuration.fingerprint, progress: { _ in }) }
     }
 
     private func request(_ credentials: BridgeCredentials, route: String, method: String,

@@ -2,6 +2,14 @@ import XCTest
 @testable import StillePostClientCore
 
 final class ClientTests: XCTestCase {
+    func testEmptyAddressReportsMissingInputInsteadOfInsecureHTTP() {
+        for address in ["", " \n"] {
+            XCTAssertThrowsError(try BridgeConfiguration(address: address).endpoint()) {
+                XCTAssertEqual($0 as? ClientFailure, .invalidAddress)
+            }
+        }
+    }
+
     func testLocalEndpointsAndClosedDefault() throws {
         let pin = String(repeating: "a", count: 64)
         for address in ["https://mac.local:8188", "https://MAC.local.:8188/", "https://10.2.3.4:8188", "https://192.168.1.9", "https://172.16.0.1", "https://[fd00::1]", "https://127.0.0.1", "https://[::1]"] {

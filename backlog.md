@@ -43,9 +43,13 @@ Der vollständige geplante Produktumfang steht in [docs/erweiterungsplan.md](doc
   Siehe [Lokales Modell](docs/ios-local-model.md).
 - [ ] Modellaktionen mit eingerichteter Mac-Kopplung und einer zuvor vorhandenen
   ausstehenden Aufnahme am iPhone auf Datenerhalt prüfen; die Modellabnahme
-  begann mit leerem Aufnahmeordner und bereits ungekoppelter Verbindung.
-- [ ] Anschließend den ausdrücklich gewählten Offline-Diktatablauf auf dem
-  iPhone integrieren und mit menschlicher Sprache prüfen.
+  begann mit leerem Aufnahmeordner und bereits ungekoppelter Verbindung. Der
+  native Simulatorfall mit künstlicher Kopplung/Aufnahme besteht.
+- [ ] Offline-Diktat: Kandidat 0.9.44 implementiert; menschliche Flugmodus-,
+  DE/EN-, Langtext- und Unterbrechungsabnahme am iPhone noch offen.
+  Siehe [Offline-Diktat](docs/ios-offline-dictation.md).
+- [ ] Offline-Kompatibilität auf älterem physischem iOS prüfen: iOS-17.5-Simulator
+  mit BNNS/Espresso-Heap-Abbruch bei Modellaufbereitung; iOS-26.5-Simulator besteht.
 
 Die verfügbaren Ausgangsprüfungen und die dabei korrigierte DNS-Blockade sind in
 [docs/ausgangspruefung-2026-10-16.md](docs/ausgangspruefung-2026-10-16.md) dokumentiert.

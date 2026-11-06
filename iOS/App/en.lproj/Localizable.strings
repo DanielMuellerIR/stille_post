@@ -16,7 +16,7 @@
 "recording.send" = "Send to my Mac";
 "recording.discard" = "Discard recording";
 "recording.discardConfirm" = "Permanently discard this recording?";
-"recording.retained" = "The recording stays on this iPhone. You can send it again or explicitly discard it.";
+"recording.retained" = "The recording stays on this iPhone. You can explicitly process it again or discard it.";
 "recording.recovered" = "A previous recording was recovered. Nothing is sent automatically.";
 "recording.limits" = "Up to 3 minutes and 5 MB per recording.";
 "privacy.explanation" = "Audio stays on your iPhone until you tap Send to my Mac. Success deletes the recording; errors retain it.";
@@ -52,9 +52,9 @@
 "permissions.openSettings" = "Open iPhone settings";
 "common.done" = "Done";
 "shortcut.title" = "Open dictation";
-"shortcut.description" = "Opens Stille Post. You explicitly start recording in the app.";
+"shortcut.description" = "Opens Stille Post with the selected processing mode. Start recording explicitly in the app.";
 "shortcut.hint" = "Choose Stille Post's Open dictation action in Shortcuts. Assign that shortcut to the Action Button. It opens the app; recording starts only when you tap Record.";
-"error.invalidAddress" = "Enter a valid local Mac address with http:// and an optional port.";
+"error.invalidAddress" = "Enter a valid local Mac address with https:// and an optional port.";
 "error.insecureDisabled" = "Unencrypted HTTP is no longer supported. Pair the HTTPS bridge by scanning the QR code directly at the Mac.";
 "error.missingToken" = "Save a valid bridge token from your Mac settings.";
 "error.microphoneDenied" = "Microphone access is missing. Allow it for Stille Post in iPhone settings.";
@@ -99,7 +99,7 @@
 "model.downloadSize" = "Download Size";
 "model.description" = "A multilingual recognition model for this iPhone. Downloading and loading start only when you choose.";
 "model.storageHint" = "Wi-Fi download only. An additional 2 GiB of free storage is reserved for device-specific preparation.";
-"model.currentUse" = "The dictation screen continues to use your paired Mac. Here you can download, load, and release the local model.";
+"model.currentUse" = "Choose On this iPhone on the dictation screen for local transcription. Processing loads the model if needed and releases it afterwards.";
 "model.status" = "Model Status";
 "model.phase.checking" = "Checking model storage…";
 "model.phase.missing" = "Model Not Downloaded";
@@ -140,3 +140,31 @@
 "model.error.recognition" = "Local recognition failed.";
 
 "model.awakeHint" = "During this operation, the screen stays on for at most ten minutes. You can cancel or lock the iPhone manually at any time.";
+
+"phase.transcribing" = "Your iPhone is transcribing";
+"phase.stopping" = "Stopping local processing";
+"phase.cleaning" = "Your Mac is cleaning up the text";
+"dictation.mode" = "Processing";
+"dictation.mode.mac" = "On my Mac";
+"dictation.mode.offline" = "On this iPhone";
+"dictation.language" = "Language";
+"offline.localOnly" = "Local transcription · no network";
+"offline.modelReady" = "Local model available";
+"offline.modelRequired" = "Download the local model first";
+"offline.progress" = "Transcription progress";
+"offline.transcribe" = "Transcribe on this iPhone";
+"offline.cancel" = "Cancel local processing";
+"offline.loadHint" = "The model loads if needed. First preparation may take several minutes. Cancelling retains the recording; active model work must finish first.";
+"privacy.offline" = "Recording and transcription stay on this iPhone. Nothing is sent automatically. Success removes the recording; errors and processing cancellation retain it.";
+"result.local" = "Local text · no LLM cleanup";
+"result.localOriginal" = "Original local text";
+"result.cleanOnMac" = "Clean up text on my Mac";
+"result.textOnly" = "This optional action sends only the complete text to your paired Mac. Its cleanup settings apply; no audio is transferred.";
+"model.phase.recognizing" = "Transcribing locally …";
+"error.noSpeech" = "No speech detected.";
+
+"error.tooHot" = "This iPhone is too warm for local transcription. Let it cool down and explicitly try again; the recording is retained.";
+"error.memoryPressure" = "Local processing stopped because iOS reported memory pressure.";
+"model.notice.thermal" = "Model work was interrupted because of the thermal state, and release was requested.";
+
+"error.textTooLarge" = "The text is too long for one cleanup request. Copy it locally and explicitly clean up shorter sections.";

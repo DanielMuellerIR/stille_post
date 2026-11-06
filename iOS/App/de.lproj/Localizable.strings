@@ -16,7 +16,7 @@
 "recording.send" = "An meinen Mac senden";
 "recording.discard" = "Aufnahme verwerfen";
 "recording.discardConfirm" = "Diese Aufnahme endgültig verwerfen?";
-"recording.retained" = "Die Aufnahme bleibt auf diesem iPhone. Du kannst sie erneut senden oder ausdrücklich verwerfen.";
+"recording.retained" = "Die Aufnahme bleibt auf diesem iPhone. Du kannst sie ausdrücklich erneut verarbeiten oder verwerfen.";
 "recording.recovered" = "Eine vorherige Aufnahme wurde wiedergefunden. Es wird nichts automatisch gesendet.";
 "recording.limits" = "Bis zu 3 Minuten und 5 MB je Aufnahme.";
 "privacy.explanation" = "Audio bleibt zunächst auf deinem iPhone. Erst „An meinen Mac senden“ überträgt es. Nach Erfolg wird die Aufnahme gelöscht; bei Fehlern bleibt sie erhalten.";
@@ -52,9 +52,9 @@
 "permissions.openSettings" = "iPhone-Einstellungen öffnen";
 "common.done" = "Fertig";
 "shortcut.title" = "Diktat öffnen";
-"shortcut.description" = "Öffnet Stille Post. Die Aufnahme startest du ausdrücklich in der App.";
+"shortcut.description" = "Öffnet Stille Post mit dem gewählten Verarbeitungsweg. Die Aufnahme startest du ausdrücklich in der App.";
 "shortcut.hint" = "Wähle in Kurzbefehle „Diktat öffnen“ von Stille Post. Diesen Kurzbefehl kannst du der Aktionstaste zuweisen. Er öffnet die App; die Aufnahme startet erst beim Antippen.";
-"error.invalidAddress" = "Gib eine gültige lokale Mac-Adresse mit http:// und optionalem Port ein.";
+"error.invalidAddress" = "Gib eine gültige lokale Mac-Adresse mit https:// und optionalem Port ein.";
 "error.insecureDisabled" = "Unverschlüsseltes HTTP wird nicht mehr unterstützt. Kopple die HTTPS-Brücke per QR-Code direkt am Mac.";
 "error.missingToken" = "Speichere ein gültiges Brücken-Token aus den Mac-Einstellungen.";
 "error.microphoneDenied" = "Der Mikrofonzugriff fehlt. Erlaube ihn für Stille Post in den iPhone-Einstellungen.";
@@ -99,7 +99,7 @@
 "model.downloadSize" = "Downloadgröße";
 "model.description" = "Mehrsprachiges Modell für die Erkennung auf diesem iPhone. Download und Laden starten ausschließlich auf deinen Wunsch.";
 "model.storageHint" = "Download nur über WLAN. Zusätzlich bleibt 2 GiB freier Speicher für die gerätespezifische Aufbereitung reserviert.";
-"model.currentUse" = "Die Diktatansicht verwendet weiterhin deinen gekoppelten Mac. Hier kannst du das lokale Modell bereits herunterladen, laden und freigeben.";
+"model.currentUse" = "Wähle in der Diktatansicht „Auf diesem iPhone“ für lokale Erkennung. Beim Verarbeiten wird das Modell bei Bedarf geladen und danach freigegeben.";
 "model.status" = "Modellstatus";
 "model.phase.checking" = "Modellablage wird geprüft …";
 "model.phase.missing" = "Modell fehlt";
@@ -140,3 +140,31 @@
 "model.error.recognition" = "Die lokale Erkennung ist fehlgeschlagen.";
 
 "model.awakeHint" = "Während dieses Vorgangs bleibt der Bildschirm höchstens zehn Minuten an. Du kannst jederzeit abbrechen oder das iPhone manuell sperren.";
+
+"phase.transcribing" = "Dein iPhone erkennt das Diktat";
+"phase.stopping" = "Lokale Verarbeitung wird beendet";
+"phase.cleaning" = "Dein Mac bereinigt den Text";
+"dictation.mode" = "Verarbeitung";
+"dictation.mode.mac" = "Auf meinem Mac";
+"dictation.mode.offline" = "Auf diesem iPhone";
+"dictation.language" = "Sprache";
+"offline.localOnly" = "Lokale Erkennung · ohne Netzwerk";
+"offline.modelReady" = "Lokales Modell vorhanden";
+"offline.modelRequired" = "Lokales Modell zuerst herunterladen";
+"offline.progress" = "Erkennungsfortschritt";
+"offline.transcribe" = "Auf diesem iPhone erkennen";
+"offline.cancel" = "Lokale Verarbeitung abbrechen";
+"offline.loadHint" = "Das Modell wird bei Bedarf geladen. Die erste Aufbereitung kann mehrere Minuten dauern. Beim Abbruch bleibt die Aufnahme erhalten; laufende Modellarbeit muss zuerst enden.";
+"privacy.offline" = "Aufnahme und Erkennung bleiben auf diesem iPhone. Es wird nichts automatisch übertragen. Erfolg entfernt die Aufnahme; Fehler und Verarbeitungsabbruch erhalten sie.";
+"result.local" = "Lokaler Text · ohne LLM-Bereinigung";
+"result.localOriginal" = "Lokaler Originaltext";
+"result.cleanOnMac" = "Nur Text am Mac bereinigen";
+"result.textOnly" = "Diese optionale Aktion sendet ausschließlich den vollständigen Text an deinen gekoppelten Mac. Dessen Bereinigungseinstellungen gelten; Audio wird nicht übertragen.";
+"model.phase.recognizing" = "Sprache wird lokal erkannt …";
+"error.noSpeech" = "Keine Sprache erkannt.";
+
+"error.tooHot" = "Das iPhone ist zu warm für lokale Erkennung. Lass es abkühlen und starte ausdrücklich erneut; die Aufnahme bleibt erhalten.";
+"error.memoryPressure" = "Die lokale Verarbeitung wurde wegen Speicherdruck beendet.";
+"model.notice.thermal" = "Wegen des thermischen Zustands wurde die Modellarbeit unterbrochen und die Freigabe angefordert.";
+
+"error.textTooLarge" = "Der Text ist für einen Bereinigungsaufruf zu lang. Kopiere ihn lokal und bereinige kürzere Abschnitte ausdrücklich.";

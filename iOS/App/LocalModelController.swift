@@ -3,12 +3,13 @@ import Foundation
 import StillePostClientCore
 import UIKit
 
-@MainActor final class LocalModelController: ObservableObject {
+@MainActor final class LocalModelController: ObservableObject, OfflineDictating {
     @Published private(set) var state: LocalModelState
     private let session: LocalModelSession?
     private var previousIdleTimer: Bool?
     private var awakeTask: Task<Void, Never>?
     private var awakeDeadline: ContinuousClock.Instant?
+    private let decoder = LocalPCMDecoder()
 
     init() {
         do {
@@ -39,9 +40,18 @@ import UIKit
     func remove() { session?.remove() }
     func interrupt(_ reason: LocalModelInterruption) { session?.interrupt(reason) }
 
+    func transcribe(_ recording: Recording, language: DictationLanguage,
+                    progress: @escaping @Sendable (Double) -> Void) async throws -> String {
+        guard let session else { throw LocalModelFailure.invalidCatalog }
+        guard ProcessInfo.processInfo.thermalState.rawValue < ProcessInfo.ThermalState.serious.rawValue else { throw ClientFailure.tooHot }
+        let samples = try await decoder.decode(recording)
+        try Task.checkCancellation()
+        return try await session.transcribe(samples: samples, language: language, progress: progress)
+    }
+
     private func receive(_ state: LocalModelState) {
         self.state = state
-        guard [.downloading, .validating, .loading].contains(state.phase) else {
+        guard [.downloading, .validating, .loading, .recognizing].contains(state.phase) else {
             restoreIdleTimer(); awakeDeadline = nil; return
         }
         guard UIApplication.shared.applicationState == .active else { restoreIdleTimer(); return }
