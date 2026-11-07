@@ -100,8 +100,8 @@ public enum AudioDecoder {
         private let process = Process()
         private let output = Pipe()
         private let maximum: Int
+        private var decoder = LinuxFloatSamples()
         private(set) var sampleCount = 0
-        let estimatedSampleCount = 0
         let estimatedDuration: TimeInterval? = nil
         init(url: URL, maxSampleCount: Int) throws {
             maximum = maxSampleCount
@@ -126,29 +126,44 @@ public enum AudioDecoder {
             try? output.fileHandleForReading.close()
         }
         func read() throws -> [Float]? {
-            try Task.checkCancellation()
-            guard let bytes = try output.fileHandleForReading.read(upToCount: 65536), !bytes.isEmpty
-            else {
-                process.waitUntilExit()
-                guard process.terminationStatus == 0, sampleCount > 0 else {
-                    throw LinuxFailure.decode
+            var values: [Float] = []
+            while values.isEmpty {
+                try Task.checkCancellation()
+                guard let bytes = try output.fileHandleForReading.read(upToCount: 65536), !bytes.isEmpty else {
+                    process.waitUntilExit()
+                    try decoder.finish()
+                    guard process.terminationStatus == 0, sampleCount > 0 else { throw LinuxFailure.decode }
+                    return nil
                 }
-                return nil
+                values = decoder.append(bytes)
             }
-            guard bytes.count % 4 == 0 else { throw LinuxFailure.decode }
-            let values: [Float] = bytes.withUnsafeBytes { raw in
-                stride(from: 0, to: raw.count, by: 4).map {
-                    Float(
-                        bitPattern: UInt32(
-                            littleEndian: raw.loadUnaligned(fromByteOffset: $0, as: UInt32.self)))
-                }
-            }
+
             sampleCount += values.count
             guard sampleCount <= maximum, values.allSatisfy({ $0.isFinite }) else {
                 throw DecodeError.tooLong(seconds: maximum / 16000)
             }
             return values
         }
+    }
+}
+
+/// Eine Pipe darf auch mitten in einem Float enden; nur EOF beendet den Frame.
+struct LinuxFloatSamples {
+    private var pending = Data()
+    mutating func append(_ bytes: Data) -> [Float] {
+        pending.append(bytes)
+        let completeBytes = pending.count - pending.count % 4
+        guard completeBytes > 0 else { return [] }
+        let values: [Float] = pending.withUnsafeBytes { raw in
+            stride(from: 0, to: completeBytes, by: 4).map {
+                Float(bitPattern: UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: $0, as: UInt32.self)))
+            }
+        }
+        pending = Data(pending.dropFirst(completeBytes))
+        return values
+    }
+    func finish() throws {
+        guard pending.isEmpty else { throw LinuxFailure.decode }
     }
 }
 

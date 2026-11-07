@@ -15,7 +15,7 @@ final class LinuxLineStream: NSObject, URLSessionDataDelegate, @unchecked Sendab
     private var ended = false
     private var cancellationRequested = false
 
-    static func open(_ request: URLRequest, localOnly: Bool) async throws -> (AsyncThrowingStream<String, Error>, URLResponse) {
+    static func open(_ request: URLRequest) async throws -> (AsyncThrowingStream<String, Error>, URLResponse) {
         let delegate = LinuxLineStream()
         let lines = AsyncThrowingStream<String, Error> { delegate.continuation = $0 }
         delegate.continuation?.onTermination = { @Sendable _ in delegate.cancel() }

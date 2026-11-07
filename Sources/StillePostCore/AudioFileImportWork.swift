@@ -114,7 +114,16 @@ final class AudioFileImportWork {
         guard info.isRegularFile == true, let size = info.fileSize, size >= 64 else { throw AudioImportFailure.notAFile }
         guard size <= limits.maximumBytes else { throw AudioImportFailure.tooLarge(limits.maximumBytes) }
         let reader = try AudioDecoder.FileReader(url: workingURL, maxSampleCount: limits.maximumSeconds * 16000)
-        guard let seconds = reader.estimatedDuration, seconds > 0 else { throw AudioDecoder.DecodeError.empty }
+        let seconds: TimeInterval
+        if let estimate = reader.estimatedDuration {
+            seconds = estimate
+        } else {
+            // Decoder ohne Metadaten (Linux/FFmpeg) müssen die erhaltene WAV
+            // vollständig prüfen, bevor der Verlauf sie wieder als vollständig nutzt.
+            while try reader.read() != nil {}
+            seconds = Double(reader.sampleCount) / 16000
+        }
+        guard seconds > 0 else { throw AudioDecoder.DecodeError.empty }
         guard seconds <= Double(limits.maximumSeconds) else { throw AudioDecoder.DecodeError.tooLong(seconds: limits.maximumSeconds) }
         lock.withLock { duration = seconds; complete = true }
     }

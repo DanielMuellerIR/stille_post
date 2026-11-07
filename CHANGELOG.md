@@ -10,6 +10,17 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.54] — 2026-11-07
+
+### Korrigiert
+
+- Linux: Importierte Audiodateien können aus dem Verlauf erneut verarbeitet werden,
+  auch wenn FFmpeg keine geschätzte Dauer liefert.
+- Linux: Lange oder verzögert eingelesene Texte aus einer Pipe bleiben bis zum
+  Größenlimit vollständig erhalten; getrennte UTF-8-Zeichen werden korrekt gelesen.
+- Linux: Audioblöcke dürfen an beliebigen Bytegrenzen eintreffen, ohne dass gültige
+  Aufnahmen als beschädigt abgewiesen werden.
+
 ## [0.9.53] — 2026-11-06
 
 ### Korrigiert

@@ -66,7 +66,7 @@ final class URLSessionCleanupTransport: CleanupTransport {
         -> (AsyncThrowingStream<String, Error>, URLResponse) {
         try check(request)
 #if os(Linux)
-        return try await LinuxLineStream.open(request, localOnly: localOnly)
+        return try await LinuxLineStream.open(request)
 #else
         let selectedSession = freshConnection ? Self.makeStreamSession(localOnly: localOnly) : streamSession
         let bytes: URLSession.AsyncBytes
