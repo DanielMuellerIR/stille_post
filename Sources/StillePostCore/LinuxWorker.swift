@@ -827,18 +827,12 @@ public final class LinuxWorker {
             } catch { if !Task.isCancelled { failure(error) } }
         }
     }
-    static func readStandardInput(from input: FileHandle = .standardInput, maximumBytes: Int = 1024 * 1024) throws -> String {
-        var bytes = Data()
-        while let chunk = try input.read(upToCount: min(65536, maximumBytes - bytes.count + 1)), !chunk.isEmpty {
-            try Task.checkCancellation()
-            bytes.append(chunk)
-            guard bytes.count <= maximumBytes else { throw LinuxFailure.protocolFailure }
-        }
-        guard let raw = String(data: bytes, encoding: .utf8) else { throw LinuxFailure.protocolFailure }
-        return raw
-    }
     public static func cleanStandardInput() async throws {
-        let raw = try readStandardInput()
+        // codereview-ok: Foundation liest bis zur angefragten Länge oder EOF, auch bei verzögerten Pipe-Blöcken; 100001 Bytes real geprüft (Swift 6.2.1, 2026-11-07).
+        let input = try FileHandle.standardInput.read(upToCount: 1024 * 1024 + 1) ?? Data()
+        guard input.count <= 1024 * 1024, let raw = String(data: input, encoding: .utf8) else {
+            throw LinuxFailure.protocolFailure
+        }
         let config = try ConfigFile().loadSnapshot()
         let result = await CleanupService(config: config.cleanup).clean(raw)
         let output: [String: Any] = [

@@ -16,10 +16,6 @@ Datei mit dem Versions-Bump fortgeschrieben.
 
 - Linux: Importierte Audiodateien können aus dem Verlauf erneut verarbeitet werden,
   auch wenn FFmpeg keine geschätzte Dauer liefert.
-- Linux: Lange oder verzögert eingelesene Texte aus einer Pipe bleiben bis zum
-  Größenlimit vollständig erhalten; getrennte UTF-8-Zeichen werden korrekt gelesen.
-- Linux: Audioblöcke dürfen an beliebigen Bytegrenzen eintreffen, ohne dass gültige
-  Aufnahmen als beschädigt abgewiesen werden.
 
 ## [0.9.53] — 2026-11-06
 
