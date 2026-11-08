@@ -406,3 +406,12 @@ liegen, weil sie mehr als einen chirurgischen Eingriff brauchen.
 
 Erledigte Release-, README-, Lizenz-, GitHub- und Settings-Arbeit gehört in
 Changelog/Release Notes, nicht zurück in diesen Backlog.
+
+## Fehlender CI-Beleg für 0.9.46
+
+- [ ] Der Testlauf zum Releasecommit `dd9169c7e6d795b51c6f85ca5b4931950460178b`
+  wurde am 2026-11-03 abgebrochen (GitHub Actions 41662733025, Testjob
+  `cancelled`, Gesamtergebnis `failure`). Der erfolgreiche Appcast-Lauf
+  41663135535 ersetzt keinen Testlauf. Bei einer erneuten Abnahme dieses
+  Quellstands die Tests wiederholen; die vorhandenen nativen Paketprüfungen
+  und das veröffentlichte Release bleiben davon getrennte Belege.

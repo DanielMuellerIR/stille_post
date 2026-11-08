@@ -49,3 +49,17 @@ Probleme; Hinweise und unbestätigte Befunde bleiben ausdrücklich sichtbar.
 
 Die Health-Semantik folgt dem [Whisper-Server](https://github.com/ggml-org/whisper.cpp/blob/master/examples/server/server.cpp):
 `status=ok` bei HTTP 200, `status=loading model` bei HTTP 503.
+
+## Automatisches Einfügen ohne AX-Feldmeldung
+
+Manche Apps melden über die macOS-Bedienungshilfen ihr fokussiertes Fenster,
+aber kein fokussiertes Eingabefeld. Für diesen Fall bindet die Einfügeprüfung
+Prozess und Fenster. Ein Wechsel zwischen Feldern desselben Fensters ist ohne
+AX-Feldmeldung nicht erkennbar. Wird ein Textfeld gemeldet, bleibt zusätzlich
+dessen ursprüngliche Identität erforderlich. Die Regressionen liegen bei
+`PasteServiceTests`.
+
+Das aktive Aufnahmeoverlay wird bei Änderungen der Bildschirmanordnung neu
+platziert und bleibt auch bei ausgeblendeter Menüleisten-App sichtbar, ohne
+den Fokus der Ziel-App zu übernehmen. Die Korrekturen stehen im Changelog
+unter 0.9.45 und 0.9.46.
