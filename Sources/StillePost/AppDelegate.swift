@@ -30,8 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var engine: DictationEngine!
     private var retiredEngineShutdowns: [Task<Void, Never>] = []
     private var terminationPending = false
-    private var statusItemController: StatusItemController!
-    private var statusItem: NSStatusItem! { statusItemController?.item }
+    private var statusItem: NSStatusItem!
     private var hotkey: HotkeyManager!
     private var lastResultHotkey: HotkeyManager?
     private var isCapturingHotkey = false
@@ -330,7 +329,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // Zugang bieten. Der normale Start (auch beim Anmelden) bleibt im Hintergrund.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         guard !terminationPending, historyWindow != nil else { return false }
-        statusItemController?.recreate()
+        statusItem?.isVisible = true
         showHistory()
         return false
     }
@@ -340,7 +339,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         selectionCleanupActions?.close()
         guard let engine else { return .terminateNow }
         terminationPending = true
-        statusItemController?.invalidate()
         testDictationWindow?.prepareForTermination()
         audioImportWindow?.prepareForTermination()
         hotkey = nil
@@ -747,11 +745,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     // MARK: - Menüleiste
 
     private func setupStatusItem() {
-        statusItemController = StatusItemController { [weak self] item in
-            guard let self else { return }
-            self.updateStatusIcon(for: self.engine?.state ?? .idle, item: item)
-            item.menu = self.buildMenu()
-        }
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        // Eine feste Kennung ordnet den gespeicherten Zustand auch nach einem
+        // Neuaufbau eindeutig diesem Symbol zu, statt AppKits „Item-0“ zu verwenden.
+        statusItem.autosaveName = "StillePost"
+        updateStatusIcon(for: .idle)
+        statusItem.menu = buildMenu()
     }
 
     /// Baut das Menüleisten-Menü (nach Einstellungs-Änderungen erneut aufgerufen,
@@ -849,8 +848,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         return menu
     }
 
-    private func updateStatusIcon(for state: DictationState, item: NSStatusItem? = nil) {
-        guard let button = (item ?? statusItem)?.button else { return }
+    private func updateStatusIcon(for state: DictationState) {
+        guard let button = statusItem.button else { return }
         let (symbol, description): (String, String)
         switch state {
         // Ruhesymbol bewusst nicht das nackte "mic": Das Kontrollzentrum zeigt bei
