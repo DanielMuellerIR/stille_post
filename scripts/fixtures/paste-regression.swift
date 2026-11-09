@@ -19,11 +19,13 @@ struct PasteRegression {
         var onRole: (() -> Void)?
         var sent = 0
         var trusted = true
+        var valueSettable = true
         var access = PasteService.Access()
         access.pasteboard = board
         access.frontmost = { application }
         access.trusted = { trusted }
         access.sendPaste = { sent += 1 }
+        access.isSettable = { name, _, _ in name == kAXValueAttribute && valueSettable }
         access.read = { name, _, _ in
             switch name {
             case kAXFocusedWindowAttribute: return focusedWindow
@@ -72,6 +74,19 @@ struct PasteRegression {
         role = kAXButtonRole
         target = PasteService.captureTarget(access: access)
         attempt(.clipboardOnlyTargetUnavailable, "Erkannter Button ist kein Textfeld")
+        role = "AXWebArea"
+        target = PasteService.captureTarget(access: access)
+        attempt(.pasted, "Editierbarer Mail-HTML-Nachrichtentext")
+        focusedField = fieldB
+        attempt(.clipboardOnlyTargetChanged, "HTML-Editor wechselt das Fokusfeld")
+        focusedField = fieldA
+        focusedWindow = otherWindow
+        attempt(.clipboardOnlyTargetChanged, "HTML-Editor wechselt das Fenster")
+        focusedWindow = window
+        valueSettable = false
+        attempt(.clipboardOnlyTargetUnavailable, "HTML-Editor verliert Schreibzugriff")
+        target = PasteService.captureTarget(access: access)
+        attempt(.clipboardOnlyTargetUnavailable, "Nicht editierbarer HTML-Inhalt")
         role = kAXTextAreaRole
         target = PasteService.captureTarget(access: access)
         trusted = false

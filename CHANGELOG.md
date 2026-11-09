@@ -10,6 +10,14 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.56] — 2026-11-09
+
+### Korrigiert
+
+- macOS: Automatisches Einfügen erkennt den HTML-Nachrichtentext von Apple Mail
+  als editierbares Ziel. Die Prüfung auf unveränderte App, Fenster und Textfeld
+  bleibt bestehen; nicht editierbare Webinhalte werden weiterhin abgewiesen.
+
 ## [0.9.55] — 2026-11-09
 
 ### Korrigiert

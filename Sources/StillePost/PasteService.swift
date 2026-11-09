@@ -18,6 +18,7 @@ enum PasteService {
         var trusted: () -> Bool = { AXIsProcessTrusted() }
         var frontmost: () -> NSRunningApplication? = { NSWorkspace.shared.frontmostApplication }
         var read: (String, AXUIElement, TimeInterval) -> CFTypeRef? = attribute
+        var isSettable: (String, AXUIElement, TimeInterval) -> Bool = attributeIsSettable
         var sendPaste: () -> Void = postCmdV
     }
 
@@ -46,8 +47,11 @@ enum PasteService {
         if let candidate = field {
             let role = access.read(kAXRoleAttribute, candidate, deadline) as? String
             let supportedRoles = [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole]
+            // Mail meldet den Nachrichtentext als WebArea statt als TextArea.
+            // Nur ein schreibbarer HTML-Editor zählt als Feld, keine Webseite.
+            let editableWebArea = role == "AXWebArea" && access.isSettable(kAXValueAttribute, candidate, deadline)
             let fieldWindow = element(kAXWindowAttribute, of: candidate, deadline: deadline, access: access)
-            if !supportedRoles.contains(role ?? "") || compare(window, fieldWindow) != .same {
+            if !(supportedRoles.contains(role ?? "") || editableWebArea) || compare(window, fieldWindow) != .same {
                 field = nil
             }
         }
@@ -192,6 +196,14 @@ enum PasteService {
         var value: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, name as CFString, &value) == .success else { return nil }
         return value
+    }
+
+    private static func attributeIsSettable(_ name: String, of element: AXUIElement, deadline: TimeInterval) -> Bool {
+        let remaining = deadline - ProcessInfo.processInfo.systemUptime
+        guard remaining > 0 else { return false }
+        AXUIElementSetMessagingTimeout(element, Float(remaining))
+        var settable = DarwinBoolean(false)
+        return AXUIElementIsAttributeSettable(element, name as CFString, &settable) == .success && settable.boolValue
     }
 
     private static func element(_ name: String, of parent: AXUIElement, deadline: TimeInterval, access: Access) -> AXUIElement? {
