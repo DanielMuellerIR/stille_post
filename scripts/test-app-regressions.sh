@@ -16,6 +16,9 @@ swiftc -parse-as-library -I "$MODULE_DIR" \
     Sources/StillePost/PasteService.swift scripts/fixtures/paste-regression.swift \
     "${OBJECTS[@]}" -o "$TEST_DIR/paste-regression"
 "$TEST_DIR/paste-regression"
+swiftc -parse-as-library Sources/StillePost/StatusItemController.swift \
+    scripts/fixtures/status-item-regression.swift -o "$TEST_DIR/status-item-regression"
+"$TEST_DIR/status-item-regression"
 ditto "$BIN_DIR/StillePost_StillePostCore.bundle" "$TEST_DIR/StillePost_StillePostCore.bundle"
 swiftc -parse-as-library -I "$MODULE_DIR" \
     Sources/StillePost/HistoryEditor.swift Sources/StillePost/HistoryWindow.swift \

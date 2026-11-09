@@ -10,6 +10,15 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.57] — 2026-11-09
+
+### Korrigiert
+
+- macOS: Nach einem Wechsel der Bildschirmfläche wird die Menüleisten-Anbindung
+  einmal neu aufgebaut, sobald die Bildschirmmeldungen abgeklungen sind. Erneutes
+  Öffnen der App erneuert sie ebenfalls. Menü und aktueller Aufnahmezustand bleiben
+  dabei erhalten; die von AppKit vergebene Symbolkennung wird nicht mehr umbenannt.
+
 ## [0.9.56] — 2026-11-09
 
 ### Korrigiert
