@@ -78,6 +78,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let menu = NSMenu()
         let applicationItem = NSMenuItem()
         let applicationMenu = NSMenu()
+        let historyItem = NSMenuItem(title: L10n.text("menu.history"),
+            action: #selector(showHistory), keyEquivalent: "h")
+        historyItem.keyEquivalentModifierMask = [.command, .option]
+        historyItem.target = self
+        applicationMenu.addItem(historyItem)
+        let settingsItem = NSMenuItem(title: L10n.text("menu.settings"),
+            action: #selector(showSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        applicationMenu.addItem(settingsItem)
+        applicationMenu.addItem(.separator())
         applicationMenu.addItem(NSMenuItem(title: L10n.text("menu.quit"),
             action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         applicationItem.submenu = applicationMenu
@@ -313,6 +323,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 }
             }
         }
+    }
+
+    // Finder/Spotlight müssen auch bei ausgeblendetem Menüleistensymbol einen
+    // Zugang bieten. Der normale Start (auch beim Anmelden) bleibt im Hintergrund.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !terminationPending, historyWindow != nil else { return false }
+        statusItem?.isVisible = true
+        showHistory()
+        return false
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
@@ -727,6 +746,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        // Eine feste Kennung ordnet den gespeicherten Zustand auch nach einem
+        // Neuaufbau eindeutig diesem Symbol zu, statt AppKits „Item-0“ zu verwenden.
+        statusItem.autosaveName = "StillePost"
         updateStatusIcon(for: .idle)
         statusItem.menu = buildMenu()
     }

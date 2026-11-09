@@ -25,6 +25,10 @@ stammt aus künstlichen Sprachdateien, menschliche Mikrofonabnahme steht noch au
 | ![Menüleisten-Menü](assets/menu.png) | ![Verlauf-Fenster](assets/history.png) |
 | *Menüleiste: Start/Stopp, Verlauf, Einstellungen, Beenden* | *Verlauf: jedes Diktat (roh + bereinigt), Kopieren per Klick* |
 
+Ist das Menüleistensymbol ausgeblendet, die laufende App über Finder oder Spotlight
+erneut öffnen. Dadurch öffnet sich der Verlauf und das Symbol wird wieder eingeblendet.
+Bei aktivem App-Fenster ist der Verlauf auch im App-Menü mit ⌘⌥H erreichbar.
+
 Der [Verlauf](docs/verlauf-verwalten.md) lässt sich lokal nach Rohtext und Ergebnis durchsuchen, nach Zeitraum und Fehlerstatus filtern und eintragsweise löschen. ⌘F fokussiert die Suche, ⌘R lädt Änderungen der CLI nach. Ein Löschfehler erhält einen textfreien, erneut löschbaren Audioverweis.
 
 Textaufbewahrung und ein vorübergehender Modus ohne Textverlauf sind unter **Einstellungen → Verlauf** konfigurierbar. Fehleraufnahmen haben eine getrennte ausdrückliche Regel; vorhandene Einträge behalten ihre bisherige Regel. [Details zur Aufbewahrung](docs/aufbewahrung.md).

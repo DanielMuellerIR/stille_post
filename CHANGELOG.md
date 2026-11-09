@@ -10,6 +10,16 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.55] — 2026-11-09
+
+### Korrigiert
+
+- macOS: Erneutes Öffnen der laufenden App über Finder oder Spotlight öffnet den
+  Verlauf und stellt das Menüleistensymbol wieder her. Verlauf und Einstellungen
+  sind außerdem im App-Menü erreichbar, solange ein App-Fenster aktiv ist.
+- Das Menüleistensymbol speichert Position und Sichtbarkeit unter einer eigenen,
+  stabilen Kennung.
+
 ## [0.9.54] — 2026-11-07
 
 ### Korrigiert

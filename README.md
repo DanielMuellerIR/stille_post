@@ -25,6 +25,10 @@ speech files; human microphone validation is still pending.
 | ![Menu bar menu](assets/en/menu.png) | ![History window](assets/en/history.png) |
 | *Menu bar: start/stop, history, settings, quit* | *History: every dictation (raw + cleaned), copy with one click* |
 
+If the menu bar icon is hidden, open the running app again from Finder or Spotlight.
+This opens history and restores the icon. With an app window active, history is also
+available from the app menu with ⌘⌥H.
+
 History supports local search across raw and cleaned text, date and status filters, and confirmed deletion of individual entries. ⌘F focuses search; ⌘R reloads changes made by the CLI. If audio deletion fails, a text-free reference remains available for another deletion attempt. [History details](docs/verlauf-verwalten.md).
 
 Text retention and a temporary mode without text history are available under **Settings → History**. Error recordings have a separate explicit policy; existing entries retain their previous policy. [Retention details](docs/aufbewahrung.md).
