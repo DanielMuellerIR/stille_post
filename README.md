@@ -2,7 +2,7 @@
 
 **🌐 Sprache / Language:** [English](README.md) · [Deutsch](README.de.md)
 
-Local dictation app for macOS: Global hotkey, speech-to-text with Whisper, and text
+Local dictation app for macOS and Linux: Global hotkey, speech-to-text with Whisper, and text
 cleanup with a local language model. The finished text lands right at your cursor.
 Recordings never leave your machine.
 

@@ -2,7 +2,7 @@
 
 **🌐 Sprache / Language:** [English](README.md) · [Deutsch](README.de.md)
 
-Lokale Diktier-App für macOS: Globaler Hotkey, Spracherkennung mit Whisper und
+Lokale Diktier-App für macOS und Linux: Globaler Hotkey, Spracherkennung mit Whisper und
 Textbereinigung mit einem lokalen Sprachmodell. Der fertige Text landet direkt an
 der Cursor-Position. Aufnahmen verlassen den Rechner nicht.
 
