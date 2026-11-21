@@ -4,18 +4,17 @@ import Glibc
 
 /// Privates, begrenztes JSONL-Protokoll zwischen GUI und unverändertem Diktierkern.
 /// Audio wird in kleinen Float32-Blöcken über dieselbe vererbte Pipe übertragen.
+@MainActor
 public final class LinuxWorker {
-    private static let maximumMessageBytes = 4 * 1024 * 1024
+    nonisolated private static let maximumMessageBytes = 4 * 1024 * 1024
+    public nonisolated static var version: String { LinuxInstallation.version }
     private var config: Config
-    private var engine: DictationEngine
-    private let lock = NSLock()
-    private var outputClosed = false
+    private let engine: DictationEngine
+    private let output = LinuxWorkerOutput()
     private let ollama = LinuxOllamaService()
     private let bridge = LinuxBridgeService()
     private var bridgeReady = false
     private var pendingPreviews: [UUID: TransientResultStore.Result] = [:]
-    private var pendingMessages = 0
-    private let flow = NSCondition()
     private var meter: DispatchSourceTimer?
     private var maintenanceTask: Task<Void, Never>?
     private var nextMaintenance: TimeInterval = 0
@@ -61,6 +60,7 @@ public final class LinuxWorker {
             self?.importSession?.receiveState(state)
             self?.send([
                 "event": "state", "state": value,
+                "duration": self?.engine.recordingDuration ?? 0,
                 "sessionKind": self.map { $0.testSession?.owns($0.engine) == true ? "test" : $0.importSession?.owns($0.engine) == true ? "import" : "dictation" } ?? "dictation",
                 "profile": self?.engine.sessionConfiguration.profileLabel ?? "",
                 "storesText": self?.engine.sessionConfiguration.history.storeText ?? false,
@@ -151,6 +151,12 @@ public final class LinuxWorker {
         timer.schedule(deadline: .now(), repeating: .milliseconds(100))
         timer.setEventHandler { [weak self] in
             guard let self, self.shutdownTask == nil else { return }
+            // POLLERR meldet die geschlossene Ausgabepipe auch ohne Pegelmeldungen.
+            var pipe = pollfd(fd: STDOUT_FILENO, events: 0, revents: 0)
+            if Glibc.poll(&pipe, 1, 0) > 0 {
+                self.requestShutdown()
+                return
+            }
             self.testSession?.pulse()
             if let started = self.holdStarted, self.holdActive,
                 ProcessInfo.processInfo.systemUptime - started >= DictationHotkeyState.maximumHoldDuration {
@@ -160,10 +166,12 @@ public final class LinuxWorker {
                 self.nextMaintenance = ProcessInfo.processInfo.systemUptime + 60
                 self.maintainHistory()
             }
-            self.send([
-                "event": "meter", "levelDb": self.engine.currentLevelDb,
-                "duration": self.engine.recordingDuration,
-            ])
+            if self.engine.state == .recording {
+                self.send([
+                    "event": "meter", "levelDb": self.engine.currentLevelDb,
+                    "duration": self.engine.recordingDuration,
+                ])
+            }
         }
         timer.resume()
         meter = timer
@@ -183,20 +191,13 @@ public final class LinuxWorker {
                     while let index = pending.firstIndex(of: 10) {
                         let line = Data(pending.prefix(upTo: index))
                         pending.removeSubrange(...index)
-                        guard line.count <= Self.maximumMessageBytes,
-                            let message = try JSONSerialization.jsonObject(with: line)
-                                as? [String: Any]
-                        else { throw LinuxFailure.protocolFailure }
-                        flow.lock()
-                        while pendingMessages >= 8 { flow.wait() }
-                        pendingMessages += 1
-                        flow.unlock()
-                        DispatchQueue.main.async { [self] in
-                            handle(message)
-                            flow.lock()
-                            pendingMessages -= 1
-                            flow.signal()
-                            flow.unlock()
+                        guard line.count <= Self.maximumMessageBytes else {
+                            throw LinuxFailure.protocolFailure
+                        }
+                        // Der Leser hält genau einen Auftrag am MainActor ausstehend.
+                        // Weitere Audioblöcke warten in der begrenzten Elternprozess-Pipe.
+                        try DispatchQueue.main.sync {
+                            try handle(JSONDecoder().decode(LinuxWorkerRequest.self, from: line))
                         }
                     }
                 }
@@ -208,39 +209,47 @@ public final class LinuxWorker {
             }
             DispatchQueue.main.async { [self] in requestShutdown() }
         }
-        dispatchMain()
     }
-    private func send(_ message: [String: Any]) {
-        guard
-            let data = try? JSONSerialization.data(withJSONObject: message, options: [.sortedKeys]),
-            data.count < Self.maximumMessageBytes
+    private nonisolated func send(_ message: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: message, options: [.sortedKeys])
         else { return }
-        lock.lock()
-        defer { lock.unlock() }
-        guard !outputClosed else { return }
-        do { try FileHandle.standardOutput.write(contentsOf: data + Data([10])) }
-        catch {
-            outputClosed = true
+        sendFrame(data)
+    }
+
+    private func sendEvent<Event: Encodable>(_ event: Event) {
+        do { sendFrame(try JSONEncoder().encode(event)) }
+        catch { failure(error) }
+    }
+
+    private nonisolated func sendFrame(_ data: Data) {
+        guard data.count < Self.maximumMessageBytes else { return }
+        if !output.write(data) {
             DispatchQueue.main.async { [weak self] in self?.requestShutdown() }
         }
     }
-    private func handle(_ message: [String: Any]) {
-        guard shutdownTask == nil, let command = message["command"] as? String else { return }
+
+    private func handle(_ message: LinuxWorkerRequest) {
+        guard shutdownTask == nil else { return }
+        if let operation = message.operation {
+            perform(operation, request: message)
+            return
+        }
+        guard let command = message.command else { return }
         switch command {
-        case "application":
-            guard let id = message["id"] as? String, id.utf8.count <= 128, id.hasPrefix("linux."),
+        case .application:
+            guard let id = message.id, id.utf8.count <= 128, id.hasPrefix("linux."),
                 id != activeApplication
             else { return }
             activeApplication = id
             sendConfiguration()
-        case "start":
+        case .start:
             guard operation == nil else {
                 send(["event": "error", "message": L10n.text("selection.error.busy")])
                 return
             }
             prepareRegular(message)
             engine.start()
-        case "holdStart":
+        case .holdStart:
             guard operation == nil else {
                 send(["event": "error", "message": L10n.text("selection.error.busy")])
                 return
@@ -250,46 +259,43 @@ public final class LinuxWorker {
             holdActive = true
             holdStarted = ProcessInfo.processInfo.systemUptime
             engine.start(onlyWhile: { [weak self] in self?.holdActive == true })
-        case "holdEnd": handleHold(.released)
-        case "holdInterrupted": handleHold(.interrupted)
-        case "recall":
+        case .holdEnd: handleHold(.released)
+        case .holdInterrupted: handleHold(.interrupted)
+        case .recall:
             if let value = lastResult.last {
                 send(["event": "recall", "text": value.text, "rawFallback": value.rawFallback, "note": value.note ?? "", "origin": value.origin.rawValue])
             } else {
                 send(["event": "notice", "message": L10n.text("result.none")])
             }
-        case "completePreview":
-            guard let id = (message["candidate"] as? String).flatMap(UUID.init),
+        case .completePreview:
+            guard let id = message.candidate.flatMap(UUID.init),
                 let value = pendingPreviews.removeValue(forKey: id) else { return }
-            if message["accepted"] as? Bool == true { remember(value) }
+            if message.accepted == true { remember(value) }
             send(["event":"previewCompleted", "candidate":id.uuidString])
-        case "profile":
+        case .profile:
             guard !engine.hasInFlightRequests else { return }
             do {
                 config = try ConfigFile().selectProfile(
-                    (message["id"] as? String).flatMap(UUID.init))
+                    message.id.flatMap(UUID.init))
                 engine.configure(requestConfiguration)
                 bridge.updateConfiguration(requestConfiguration)
                 sendConfiguration()
             } catch { failure(error) }
-        case "privateHistory":
+        case .privateHistory:
             guard config.resolvedForRequest().history.storeText else { return }
-            temporaryPrivateHistory = message["enabled"] as? Bool ?? !temporaryPrivateHistory
+            temporaryPrivateHistory = message.enabled ?? !temporaryPrivateHistory
             engine.suppressTranscriptPreview()
             engine.configure(requestConfiguration)
             bridge.updateConfiguration(requestConfiguration)
             sendHistoryPolicy()
-        case "startTest":
+        case .startTest:
             guard operation == nil, !engine.hasInFlightRequests, pendingPreviews.isEmpty else {
                 send(["event": "testStatus", "state": "failed", "active": false,
                       "message": L10n.text("test_dictation.failed"), "error": L10n.text("selection.error.busy")])
                 return
             }
             do {
-                let reviewed: Config
-                if let value = message["reviewed"] {
-                    reviewed = try JSONDecoder().decode(Config.self, from: JSONSerialization.data(withJSONObject: value))
-                } else { reviewed = requestConfiguration }
+                let reviewed = try message.reviewed?.get() ?? requestConfiguration
                 _ = importSession?.releaseForRegularStart()
                 importSession = nil
                 testSession = TestDictationSession(engine: engine)
@@ -297,22 +303,22 @@ public final class LinuxWorker {
                 testSession?.start(
                     configuration: reviewed, currentConfiguration: requestConfiguration,
                     nextRequestConfiguration: requestConfiguration,
-                    inputAvailable: message["inputAvailable"] as? Bool ?? true, allowed: true)
+                    inputAvailable: message.inputAvailable ?? true, allowed: true)
             } catch { failure(error) }
-        case "stopTest": testSession?.stop()
-        case "cancelTest": testSession?.cancel()
-        case "closeTest":
+        case .stopTest: testSession?.stop()
+        case .cancelTest: testSession?.cancel()
+        case .closeTest:
             _ = testSession?.close()
             testSession = nil
-        case "testReport":
+        case .testReport:
             send([
                 "event": "testReport",
                 "text": testSession?.exportReport(
-                    version: message["version"] as? String ?? "unknown")
+                    version: message.version ?? "unknown")
                     ?? "",
             ])
-        case "stop": engine.stop()
-        case "toggle":
+        case .stop: engine.stop()
+        case .toggle:
             guard operation == nil else {
                 send(["event": "error", "message": L10n.text("selection.error.busy")])
                 return
@@ -322,12 +328,12 @@ public final class LinuxWorker {
             default: break
             }
             engine.toggle()
-        case "pause": engine.pause()
-        case "resume": engine.resume()
-        case "cancel": engine.cancel()
-        case "captureError": AudioRecorder.active?.onFailure?(LinuxFailure.capture)
-        case "samples":
-            guard let encoded = message["data"] as? String, let data = Data(base64Encoded: encoded),
+        case .pause: engine.pause()
+        case .resume: engine.resume()
+        case .cancel: engine.cancel()
+        case .captureError: AudioRecorder.active?.onFailure?(LinuxFailure.capture)
+        case .samples:
+            guard let encoded = message.data, let data = Data(base64Encoded: encoded),
                 data.count <= 65536, data.count % 4 == 0
             else {
                 AudioRecorder.active?.onFailure?(LinuxFailure.protocolFailure)
@@ -345,24 +351,22 @@ public final class LinuxWorker {
                 return
             }
             AudioRecorder.active?.onSamples?(values)
-        case "reviewImport", "reviewTest":
-            if command == "reviewTest" { testSession?.reset() }
+        case .reviewImport, .reviewTest:
+            if command == .reviewTest { testSession?.reset() }
             else { importSession?.reset() }
-            do {
-                let resolved = requestConfiguration.resolvedForRequest()
-                send([
-                    "event": command == "reviewImport" ? "importReview" : "testReview",
-                    "configuration": try JSONSerialization.jsonObject(with: JSONEncoder().encode(requestConfiguration)),
-                    "profile": resolved.profileLabel, "language": resolved.whisper.language,
-                    "reason": resolved.requestProfileSelection?.label ?? "",
-                    "history": try JSONSerialization.jsonObject(with: JSONEncoder().encode(resolved.history)),
-                    "localOnly": resolved.cleanup.localOnly, "cleanupEnabled": resolved.cleanup.enabled,
-                ])
-            } catch { failure(error) }
-        case "cancelImport": importSession?.cancel()
-        case "closeImport": importSession?.close()
-        case "import":
-            guard operation == nil, let path = message["path"] as? String, path.hasPrefix("/"),
+            let configuration = requestConfiguration
+            let resolved = configuration.resolvedForRequest()
+            sendEvent(LinuxWorkerEvent.Review(
+                event: command == .reviewImport ? "importReview" : "testReview",
+                configuration: configuration, profile: resolved.profileLabel,
+                language: resolved.whisper.language,
+                reason: resolved.requestProfileSelection?.label ?? "",
+                history: resolved.history, localOnly: resolved.cleanup.localOnly,
+                cleanupEnabled: resolved.cleanup.enabled))
+        case .cancelImport: importSession?.cancel()
+        case .closeImport: importSession?.close()
+        case .importAudio:
+            guard operation == nil, let path = message.path, path.hasPrefix("/"),
                 !engine.hasInFlightRequests, pendingPreviews.isEmpty
             else {
                 send(["event": "importStatus", "active": false, "finished": true,
@@ -370,12 +374,7 @@ public final class LinuxWorker {
                 return
             }
             do {
-                let reviewed: Config
-                if let value = message["reviewed"] {
-                    reviewed = try JSONDecoder().decode(Config.self, from: JSONSerialization.data(withJSONObject: value))
-                } else {
-                    reviewed = requestConfiguration
-                }
+                let reviewed = try message.reviewed?.get() ?? requestConfiguration
                 _ = testSession?.releaseForRegularStart()
                 importSession = AudioImportSession(engine: engine)
                 importSession?.onChange = { [weak self] in self?.sendImportStatus() }
@@ -384,35 +383,26 @@ public final class LinuxWorker {
                     currentConfiguration: requestConfiguration,
                     nextRequestConfiguration: requestConfiguration, allowed: true)
             } catch { failure(error) }
-        case "history":
+        case .history:
             Task { [self] in
                 do {
                     let entries = try await engine.history.listAsync()
                     var query = HistoryQuery()
-                    query.text = message["text"] as? String ?? ""
+                    query.text = message.text ?? ""
                     query.status =
-                        HistoryQuery.Status(rawValue: message["status"] as? String ?? "all") ?? .all
+                        HistoryQuery.Status(rawValue: message.status ?? "all") ?? .all
                     query.period =
-                        HistoryQuery.Period(rawValue: message["period"] as? String ?? "all") ?? .all
+                        HistoryQuery.Period(rawValue: message.period ?? "all") ?? .all
                     let filtered = query.filter(entries)
-                    let offset = max(0, message["offset"] as? Int ?? 0)
+                    let offset = max(0, message.offset ?? 0)
                     let page = Array(filtered.dropFirst(offset).prefix(100))
-                    send([
-                        "event": "history", "entries": try page.map(entryObject),
-                        "total": filtered.count,
-                        "queryId": message["queryId"] as? Int ?? 0,
-                    ])
+                    sendEvent(LinuxWorkerEvent.History(
+                        entries: page.map(LinuxWorkerHistoryEntry.init),
+                        total: filtered.count, queryId: message.queryId ?? 0))
                 } catch { failure(error) }
             }
-        case "editHistory", "retryHistory", "recleanHistory", "acceptRecleanup", "addVocabulary",
-            "deleteAllHistory", "applyRetention", "difference", "diagnostics", "checkEndpoint",
-            "installModel", "cancelOperation", "cleanupSelection", "cancelSelection",
-            "setCleanupKey",
-            "clearLastResult", "discardRecleanup", "bridgePair", "bridgeRenewIdentity",
-            "bridgeRotateToken", "installSilero":
-            handleExtended(command, message)
-        case "deleteHistory":
-            guard let value = message["id"] as? String, let id = UUID(uuidString: value) else {
+        case .deleteHistory:
+            guard let value = message.id, let id = UUID(uuidString: value) else {
                 return
             }
             Task { [self] in
@@ -423,7 +413,7 @@ public final class LinuxWorker {
                     send(["event": "error", "message": L10n.text("linux.history.delete_failed")])
                 }
             }
-        case "sileroStatus":
+        case .sileroStatus:
             Task { @MainActor [self] in
                 let reason = await SileroModel.availability()
                 send([
@@ -431,22 +421,14 @@ public final class LinuxWorker {
                     "message": reason ?? L10n.text("vad.ready"),
                 ])
             }
-        case "config":
+        case .config:
             sendConfiguration()
-        case "saveConfig":
-            guard let object = message["config"],
-                let data = try? JSONSerialization.data(withJSONObject: object)
-            else { return }
+        case .saveConfig:
+            guard let replacement = message.config else { return }
             do {
-                let replacement = try JSONDecoder().decode(Config.self, from: data)
+                let replacement = try replacement.get()
                 _ = try WhisperEndpoint(serverURL: replacement.whisper.serverURL)
-                let expected: Config
-                if let value = message["expected"] {
-                    expected = try JSONDecoder().decode(
-                        Config.self, from: JSONSerialization.data(withJSONObject: value))
-                } else {
-                    expected = config
-                }
+                let expected = try message.expectedConfig?.get() ?? config
                 try replacement.save(expected: expected)
                 config = replacement
                 engine.configure(requestConfiguration)
@@ -458,10 +440,17 @@ public final class LinuxWorker {
                     "event": "error", "message": L10n.text("linux.config.save_failed"),
                 ])
             }
-        case "quit": requestShutdown()
-        default: break
+        case .quit: requestShutdown()
+        case .cancelOperation, .cancelSelection: operation?.cancel()
+        case .discardRecleanup:
+            if let id = message.candidate.flatMap(UUID.init) {
+                recleanCandidates.removeValue(forKey: id)
+            }
+        case .clearLastResult: lastResult = TransientResultStore()
+        case .difference: sendDifference(message)
         }
     }
+
     private func handleHold(_ input: DictationHotkeyState.Input) {
         let action = holdState.handle(input, mode: .hold, state: engine.state)
         holdActive = false
@@ -476,11 +465,11 @@ public final class LinuxWorker {
         }
         if input == .interrupted { holdState = DictationHotkeyState() }
     }
-    private func prepareRegular(_ message: [String: Any]) {
+    private func prepareRegular(_ message: LinuxWorkerRequest) {
         _ = testSession?.releaseForRegularStart()
         _ = importSession?.releaseForRegularStart()
         importSession = nil
-        activeApplication = message["application"] as? String
+        activeApplication = message.application
     }
     private func failure(_ error: Error) {
         send(["event": "error", "message": DiagnosticText.shortened(error.localizedDescription)])
@@ -517,17 +506,13 @@ public final class LinuxWorker {
         await engine.shutdown().value
     }
     private func sendConfiguration() {
-        do {
-            let data = try JSONEncoder().encode(config)
-            let resolved = config.resolvedForRequest(appBundleID: activeApplication)
-            send([
-                "event": "config", "config": try JSONSerialization.jsonObject(with: data),
-                "vocabularyProfileID": resolved.vocabularyProfileID?.uuidString ?? "",
-                "vocabularyLabel": resolved.vocabularyProfileID == nil
-                    ? L10n.text("profiles.global") : resolved.profileLabel,
-            ])
-            sendHistoryPolicy()
-        } catch { failure(error) }
+        let resolved = config.resolvedForRequest(appBundleID: activeApplication)
+        sendEvent(LinuxWorkerEvent.Configuration(
+            config: config,
+            vocabularyProfileID: resolved.vocabularyProfileID?.uuidString ?? "",
+            vocabularyLabel: resolved.vocabularyProfileID == nil
+                ? L10n.text("profiles.global") : resolved.profileLabel))
+        sendHistoryPolicy()
     }
     private var requestConfiguration: Config {
         var result = config
@@ -595,92 +580,58 @@ public final class LinuxWorker {
             "canToggle": config.resolvedForRequest().history.storeText,
         ])
     }
-    private func entryObject(_ entry: HistoryStore.Entry) throws -> [String: Any] {
-        var result =
-            try JSONSerialization.jsonObject(with: JSONEncoder().encode(entry)) as! [String: Any]
-        result["canRetry"] = entry.canRetry
-        result["canEdit"] = entry.canEdit
-        result["private"] = entry.isTextPrivate
-        result["diagnostic"] = entry.diagnosticMessage ?? ""
-        return result
-    }
-    private func expectedEntry(_ message: [String: Any]) throws -> HistoryStore.Entry {
-        guard let value = message["expected"] else { throw LinuxFailure.protocolFailure }
-        return try JSONDecoder().decode(
-            HistoryStore.Entry.self, from: JSONSerialization.data(withJSONObject: value))
-    }
     private func remember(_ result: TransientResultStore.Result) {
         lastResult.accept(text: result.text, rawFallback: result.rawFallback,
                           note: result.note, origin: result.origin)
     }
     private func sendResult(_ result: DictationResult, kind: String = "result", candidate: UUID? = nil) {
-        var object: [String: Any] = [
-            "event": kind, "text": result.text,
-            "rawFallback": result.entry?.cleanupFellBack ?? false,
-            "localFallback": result.entry?.cleanupEndpoint?.contains("127.0.0.1") ?? false,
-            "preview": candidate != nil,
-            "failed": result.entry?.isFailed == true,
-            "origin": result.entry?.resultOrigin.rawValue ?? "raw",
-            "note": result.entry?.cleanupFallbackReason ?? "",
-        ]
-        if let candidate { object["candidate"] = candidate.uuidString }
-        if let entry = result.entry { object["entry"] = try? entryObject(entry) }
         let times = engine.phaseTimings
         let phases: [String: Double] = [
             "preparation": times.preparationSec ?? 0, "recording": times.recordingSec ?? 0,
             "transcription": times.transcriptionSec, "cleanup": times.cleanupSec ?? 0,
             "segments": Double(times.transcriptionCount),
         ]
-        object["timings"] = phases
-        send(object)
+        sendEvent(LinuxWorkerEvent.Result(
+            event: kind, text: result.text,
+            rawFallback: result.entry?.cleanupFellBack ?? false,
+            localFallback: result.entry?.cleanupEndpoint?.contains("127.0.0.1") ?? false,
+            preview: candidate != nil, failed: result.entry?.isFailed == true,
+            origin: result.entry?.resultOrigin.rawValue ?? "raw",
+            note: result.entry?.cleanupFallbackReason ?? "", candidate: candidate,
+            entry: result.entry.map(LinuxWorkerHistoryEntry.init), timings: phases))
     }
-    private func handleExtended(_ command: String, _ message: [String: Any]) {
-        if command == "cancelOperation" || command == "cancelSelection" {
-            operation?.cancel()
-            return
-        }
-        if command == "discardRecleanup" {
-            if let id = (message["candidate"] as? String).flatMap(UUID.init) {
-                recleanCandidates.removeValue(forKey: id)
-            }
-            return
-        }
-        if command == "clearLastResult" {
-            lastResult = TransientResultStore()
-            return
-        }
-        if command == "difference" {
-            do {
-                let result = try TextDifference.compare(
-                    message["before"] as? String ?? "", message["after"] as? String ?? "")
-                send([
-                    "event": "difference", "entryID": message["entryID"] as? String ?? "",
-                    "summarized": result.isSummarized,
-                    "segments": result.segments.map {
-                        ["kind": String(describing: $0.kind), "text": $0.text]
-                    },
-                ])
-            } catch { failure(error) }
-            return
-        }
+    private func sendDifference(_ message: LinuxWorkerRequest) {
+        do {
+            let result = try TextDifference.compare(message.before ?? "", message.after ?? "")
+            send([
+                "event": "difference", "entryID": message.entryID ?? "",
+                "summarized": result.isSummarized,
+                "segments": result.segments.map {
+                    ["kind": String(describing: $0.kind), "text": $0.text]
+                },
+            ])
+        } catch { failure(error) }
+    }
+
+    private func perform(_ command: LinuxWorkerRequest.Operation, request message: LinuxWorkerRequest) {
         guard operation == nil, !engine.hasInFlightRequests else {
             send(["event": "error", "message": L10n.text("selection.error.busy")])
             return
         }
         operation = Task { @MainActor [self] in
-            send(["event": "operation", "active": true, "kind": command])
+            send(["event": "operation", "active": true, "kind": command.rawValue])
             defer {
                 operation = nil
-                send(["event": "operation", "active": false, "kind": command])
+                send(["event": "operation", "active": false, "kind": command.rawValue])
             }
             do {
                 switch command {
-                case "installSilero":
+                case .installSilero:
                     try await SileroModel.install()
                     send(["event": "sileroInstalled"])
-                case "bridgeRenewIdentity", "bridgeRotateToken":
+                case .bridgeRenewIdentity, .bridgeRotateToken:
                     try await Task.detached {
-                        if command == "bridgeRenewIdentity" {
+                        if command == .bridgeRenewIdentity {
                             _ = try LinuxBridgeIdentity.renew()
                         } else {
                             _ = try BridgeToken.rotate()
@@ -688,28 +639,28 @@ public final class LinuxWorker {
                     }.value
                     bridge.configure(requestConfiguration, forceRestart: true)
                     send(["event": "bridgeCredentialsChanged"])
-                case "bridgePair":
+                case .bridgePair:
                     let value = try await Task.detached { [config] in
                         try LinuxBridgeService.pairing(port: config.bridge.port)
                     }.value
-                    send(["event": "bridgePairing", "pairing": value])
+                    sendEvent(LinuxWorkerEvent.BridgePairing(pairing: value))
                     bridge.configure(requestConfiguration)
-                case "editHistory":
+                case .editHistory:
                     let entry = try await engine.history.saveCorrectionAsync(
-                        message["text"] as? String ?? "", expected: expectedEntry(message))
-                    send(["event": "historySaved", "entry": try entryObject(entry)])
-                case "retryHistory":
-                    let expected = try expectedEntry(message)
+                        message.text ?? "", expected: message.historyEntry())
+                    sendEvent(LinuxWorkerEvent.HistorySaved(entry: LinuxWorkerHistoryEntry(entry: entry)))
+                case .retryHistory:
+                    let expected = try message.historyEntry()
                     guard
                         let current = try await engine.history.listAsync().first(where: {
                             $0.id == expected.id
                         }), current == expected, current.canRetry
                     else { throw HistoryStore.PersistenceError.correctionConflict }
                     let entry = try await engine.retry(entry: expected)
-                    send(["event": "historySaved", "entry": try entryObject(entry)])
-                case "recleanHistory":
+                    sendEvent(LinuxWorkerEvent.HistorySaved(entry: LinuxWorkerHistoryEntry(entry: entry)))
+                case .recleanHistory:
                     let candidate = try await HistoryRecleanup.run(
-                        expected: expectedEntry(message), history: engine.history,
+                        expected: message.historyEntry(), history: engine.history,
                         appBundleID: activeApplication)
                     let id = UUID()
                     recleanCandidates.removeAll()
@@ -718,20 +669,20 @@ public final class LinuxWorker {
                         "event": "recleanupPreview", "candidate": id.uuidString,
                         "before": candidate.expected.cleanText, "text": candidate.result.text,
                     ])
-                case "acceptRecleanup":
-                    guard let id = (message["candidate"] as? String).flatMap(UUID.init),
+                case .acceptRecleanup:
+                    guard let id = message.candidate.flatMap(UUID.init),
                         let candidate = recleanCandidates.removeValue(forKey: id)
                     else { throw LinuxFailure.protocolFailure }
                     let entry = try await engine.history.saveRecleanupAsync(
                         candidate.result, durationSec: candidate.durationSec,
                         expected: candidate.expected)
-                    send(["event": "historySaved", "entry": try entryObject(entry)])
-                case "addVocabulary":
-                    let expected = try expectedEntry(message)
-                    let term = message["term"] as? String ?? ""
-                    let variant = message["variant"] as? String
+                    sendEvent(LinuxWorkerEvent.HistorySaved(entry: LinuxWorkerHistoryEntry(entry: entry)))
+                case .addVocabulary:
+                    let expected = try message.historyEntry()
+                    let term = message.term ?? ""
+                    let variant = message.variant
                     let profile: UUID?
-                    if let reviewed = message["vocabularyProfileID"] as? String {
+                    if let reviewed = message.vocabularyProfileID {
                         if reviewed.isEmpty {
                             profile = nil
                         } else {
@@ -756,18 +707,18 @@ public final class LinuxWorker {
                     bridge.updateConfiguration(requestConfiguration)
                     sendConfiguration()
                     send(["event": "vocabularySaved"])
-                case "deleteAllHistory":
+                case .deleteAllHistory:
                     try engine.history.deleteAll()
                     send(["event": "historyChanged"])
-                case "applyRetention":
+                case .applyRetention:
                     try await engine.history.applyRetentionAsync()
                     send(["event": "historyChanged"])
-                case "diagnostics":
+                case .diagnostics:
                     var context = DiagnosticContext()
                     context.microphone = .unknown
-                    context.selectedInputAvailable = message["microphone"] as? Bool
-                    context.accessibility = message["accessibility"] as? Bool
-                    context.keyboardReadable = message["keyboard"] as? Bool
+                    context.selectedInputAvailable = message.microphone
+                    context.accessibility = message.accessibility
+                    context.keyboardReadable = message.keyboard
                     context.bridge = bridgeReady ? .running : .stopped
                     let report = try await DiagnosticsService().scan(
                         configuration: config.resolvedForRequest(appBundleID: activeApplication),
@@ -782,17 +733,15 @@ public final class LinuxWorker {
                             ]
                         },
                         "report": report.export(
-                            version: message["version"] as? String ?? "unknown"),
+                            version: message.version ?? "unknown"),
                     ])
-                case "checkEndpoint":
-                    let endpoint = try JSONDecoder().decode(
-                        Config.Cleanup.Endpoint.self,
-                        from: JSONSerialization.data(withJSONObject: message["endpoint"] ?? [:]))
+                case .checkEndpoint:
+                    let endpoint = try message.endpoint?.get() ?? Config.Cleanup.Endpoint()
                     let state = await CleanupService(config: config.cleanup).checkOllamaEndpoint(
                         endpoint)
                     send(["event": "endpointCheck", "state": String(describing: state)])
-                case "installModel":
-                    guard let name = message["model"] as? String,
+                case .installModel:
+                    guard let name = message.model,
                         let model = ModelCatalog.model(named: name)
                     else { throw LinuxFailure.protocolFailure }
                     let path = try await ModelInstaller().install(
@@ -805,30 +754,29 @@ public final class LinuxWorker {
                         ])
                     }
                     send(["event": "modelInstalled", "path": path])
-                case "cleanupSelection":
-                    let text = message["text"] as? String ?? ""
+                case .cleanupSelection:
+                    let text = message.text ?? ""
                     try TextSelectionSnapshot.validate(text)
                     let snapshot = config.resolvedForRequest(
-                        appBundleID: message["application"] as? String)
+                        appBundleID: message.application)
                     let result = await CleanupService(config: snapshot.cleanup).clean(text)
                     try Task.checkCancellation()
                     send([
                         "event": "selectionPreview", "before": text, "text": result.text,
                         "rawFallback": result.usedFallback,
                     ])
-                case "setCleanupKey":
-                    guard let key = message["key"] as? String, key.utf8.count <= 8192 else {
+                case .setCleanupKey:
+                    guard let key = message.key, key.utf8.count <= 8192 else {
                         throw LinuxFailure.protocolFailure
                     }
                     try CleanupService.storeRemoteAPIKey(key)
                     send(["event": "keyStored"])
-                default: break
                 }
             } catch { if !Task.isCancelled { failure(error) } }
         }
     }
-    public static func cleanStandardInput() async throws {
-        // codereview-ok: Foundation liest bis zur angefragten Länge oder EOF, auch bei verzögerten Pipe-Blöcken; 100001 Bytes real geprüft (Swift 6.2.1, 2026-11-07).
+    public nonisolated static func cleanStandardInput() async throws {
+        // Auch bei verzögerten Pipe-Blöcken liest Foundation bis zur angefragten Länge oder EOF.
         let input = try FileHandle.standardInput.read(upToCount: 1024 * 1024 + 1) ?? Data()
         guard input.count <= 1024 * 1024, let raw = String(data: input, encoding: .utf8) else {
             throw LinuxFailure.protocolFailure
@@ -841,6 +789,24 @@ public final class LinuxWorker {
         ]
         try FileHandle.standardOutput.write(
             contentsOf: JSONSerialization.data(withJSONObject: output))
+    }
+}
+
+private final class LinuxWorkerOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var closed = false
+
+    func write(_ data: Data) -> Bool {
+        lock.withLock {
+            guard !closed else { return true }
+            do {
+                try FileHandle.standardOutput.write(contentsOf: data + Data([10]))
+                return true
+            } catch {
+                closed = true
+                return false
+            }
+        }
     }
 }
 #endif

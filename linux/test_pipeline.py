@@ -220,6 +220,37 @@ class PipelineTests(unittest.TestCase):
         config=self.wait('config')['config']
         self.assertEqual(config['whisper']['language'],'de')
         self.send(command='history');self.assertEqual(self.wait('history')['entries'],[])
+    def test_meter_is_sent_only_while_recording(self):
+        def watch_without_meter():
+            deadline = time.monotonic() + 0.35
+            while time.monotonic() < deadline:
+                try:
+                    event = self.events.get(timeout=max(0.001, deadline - time.monotonic()))
+                except queue.Empty:
+                    break
+                self.assertNotEqual(event['event'], 'meter')
+
+        watch_without_meter()
+        self.send(command='start')
+        self.wait('state', 'recording')
+        self.assertIn('duration', self.wait('meter'))
+        self.send(command='pause')
+        self.wait('state', 'paused')
+        watch_without_meter()
+
+    def test_whisper_default_uses_the_real_worker_path(self):
+        executable = pathlib.Path(self.process.args[0])
+        alias = self.path / 'worker-alias'
+        alias.symlink_to(executable)
+        environment = dict(self.worker_environment, PATH=f'{self.path}:{os.defpath}')
+        process = subprocess.run(
+            [alias.name], input=b'{"command":"config"}\n{"command":"quit"}\n',
+            cwd=self.path, env=environment, capture_output=True, check=True, timeout=8,
+        )
+        events = [json.loads(line) for line in process.stdout.splitlines()]
+        configuration = next(event['config'] for event in events if event['event'] == 'config')
+        self.assertEqual(configuration['whisper']['binaryPath'], str(executable.with_name('whisper-server')))
+
     def test_quit_and_parent_pipe_closure_share_one_shutdown(self):
         for _ in range(10):
             process=subprocess.Popen(self.process.args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=self.worker_environment)
@@ -227,6 +258,7 @@ class PipelineTests(unittest.TestCase):
             self.assertEqual(process.returncode,0)
     def test_closed_output_pipe_still_shuts_down_worker_cleanly(self):
         process=subprocess.Popen(self.process.args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,env=self.worker_environment)
+        self.assertEqual(json.loads(process.stdout.readline())['event'], 'ready')
         process.stdout.close()
         try:
             process.wait(timeout=8)

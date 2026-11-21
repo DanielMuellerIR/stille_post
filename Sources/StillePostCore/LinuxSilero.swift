@@ -1,6 +1,7 @@
 #if os(Linux)
 import Foundation
 import FoundationNetworking
+import Glibc
 import LinuxNative
 
 public enum SileroModel {
@@ -31,14 +32,32 @@ public enum SileroModel {
             digest.map({ String(format: "%02x", $0) }).joined() == sha256
         else { throw Failure.integrity }
     }
-    static func validate(at folder: URL) throws {
+    private static func modelData(at folder: URL) throws -> Data {
         let file = folder.appendingPathComponent(name)
-        guard FileManager.default.fileExists(atPath: file.path) else { throw Failure.missing }
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
-            attributes[.type] as? FileAttributeType == .typeRegular,
-            (attributes[.size] as? NSNumber)?.intValue == bytes
+        let descriptor = file.path.withCString { open($0, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC) }
+        guard descriptor >= 0 else { throw errno == ENOENT ? Failure.missing : Failure.integrity }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        defer { try? handle.close() }
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, (info.st_mode & S_IFMT) == S_IFREG,
+            info.st_size == bytes,
+            let data = try? handle.read(upToCount: bytes + 1)
         else { throw Failure.integrity }
-        try verify(Data(contentsOf: file))
+        try verify(data)
+        return data
+    }
+
+    static func validate(at folder: URL) throws {
+        _ = try modelData(at: folder)
+    }
+
+    fileprivate static func inferenceContext(at folder: URL) throws -> OpaquePointer {
+        let data = try modelData(at: folder)
+        // Die Laufzeit erhält genau die geprüften Bytes, ohne den Pfad erneut zu öffnen.
+        guard let context = data.withUnsafeBytes({
+            sp_silero_new($0.baseAddress, $0.count)
+        }) else { throw Failure.unavailable }
+        return context
     }
     public static func availability() async -> String? {
         await Task.detached {
@@ -91,13 +110,7 @@ final class SileroSpeechDetector: SpeechActivityDetector {
     let frameSize = 4096
     private let context: OpaquePointer
     init(directory: URL) throws {
-        try SileroModel.validate(at: directory)
-        guard
-            let context = directory.appendingPathComponent(SileroModel.name).path.withCString({
-                sp_silero_new($0)
-            })
-        else { throw SileroModel.Failure.unavailable }
-        self.context = context
+        self.context = try SileroModel.inferenceContext(at: directory)
     }
     deinit { sp_silero_free(context) }
     func probability(_ samples: [Float]) throws -> Float {

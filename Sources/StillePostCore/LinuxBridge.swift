@@ -102,14 +102,19 @@ final class LinuxBridgeService: @unchecked Sendable {
     private var router: BridgeRouter?
     private var handlers: BridgeHandlers?
     private var options: Config.Bridge?
-    var onStatus: (@Sendable (Bool, String) -> Void)?
+    private let statusLock = NSLock()
+    private var statusHandler: (@Sendable (Bool, String) -> Void)?
+    var onStatus: (@Sendable (Bool, String) -> Void)? {
+        get { statusLock.withLock { statusHandler } }
+        set { statusLock.withLock { statusHandler = newValue } }
+    }
     init(
         identityProvider: @escaping @Sendable () throws -> LinuxBridgeIdentity = {
             try LinuxBridgeIdentity.loadOrCreate()
         },
         tokenProvider: @escaping @Sendable () -> String? = { BridgeToken.load() },
         handlersProvider: @escaping @Sendable (Config) -> BridgeHandlers = {
-            BridgeHandlers.live(config: $0, version: LinuxBridgeService.version)
+            BridgeHandlers.live(config: $0, version: LinuxInstallation.version)
         }
     ) {
         self.identityProvider = identityProvider
@@ -229,7 +234,10 @@ final class LinuxBridgeService: @unchecked Sendable {
                     getnameinfo($0, size, &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST)
                 }
             }
-            guard sessions.count < 8, named == 0, BridgePeer.isLocalNetwork(String(cString: host)),
+            let peer = String(
+                decoding: host.prefix(while: { $0 != 0 }).map(UInt8.init(bitPattern:)),
+                as: UTF8.self)
+            guard sessions.count < 8, named == 0, BridgePeer.isLocalNetwork(peer),
                 fcntl(fd, F_SETFL, O_NONBLOCK) == 0,
                 let tls = sp_tls_connection_new(context, fd)
             else {
@@ -313,11 +321,12 @@ final class LinuxBridgeService: @unchecked Sendable {
             session.data.removeAll(keepingCapacity: false)
             session.phase = 2
             session.deadline = ProcessInfo.processInfo.systemUptime + 1800
-            session.task = Task { [weak self, weak session] in
+            let id = session.id
+            session.task = Task { [weak self] in
                 let response = await router.respond(to: request)
-                guard let self, let session else { return }
-                self.queue.async { [weak self, weak session] in
-                    guard let self, let session, self.sessions[session.id] != nil else { return }
+                guard let self else { return }
+                self.queue.async { [weak self] in
+                    guard let self, let session = self.sessions[id] else { return }
                     self.respond(response, session)
                 }
             }
@@ -341,21 +350,24 @@ final class LinuxBridgeService: @unchecked Sendable {
         sp_tls_connection_free(session.tls)
         _ = Glibc.close(session.fd)
     }
-    static var version: String {
-        let path = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent()
-            .deletingLastPathComponent().appendingPathComponent("VERSION")
-        return
-            (try? String(contentsOf: path, encoding: .utf8).trimmingCharacters(
-                in: .whitespacesAndNewlines)) ?? "development"
-    }
-    static func pairing(port: Int) throws -> [String: Any] {
+    static func pairing(port: Int) throws -> LinuxBridgePairing {
         let token = try BridgeToken.createIfMissing()
         let identity = try LinuxBridgeIdentity.loadOrCreate()
         guard let pin = identity.fingerprint else { throw LinuxFailure.secret }
         var bytes = [CChar](repeating: 0, count: 256)
         guard gethostname(&bytes, bytes.count - 1) == 0 else { throw LinuxFailure.protocolFailure }
-        let name = String(cString: bytes).split(separator: ".").first.map(String.init) ?? "linux"
-        return ["v": 1, "url": "https://\(name).local:\(port)", "pin": pin, "token": token]
+        let hostname = String(
+            decoding: bytes.prefix(while: { $0 != 0 }).map(UInt8.init(bitPattern:)),
+            as: UTF8.self)
+        let name = hostname.split(separator: ".").first.map(String.init) ?? "linux"
+        return LinuxBridgePairing(url: "https://\(name).local:\(port)", pin: pin, token: token)
     }
+}
+
+struct LinuxBridgePairing: Encodable, Sendable {
+    let v = 1
+    let url: String
+    let pin: String
+    let token: String
 }
 #endif

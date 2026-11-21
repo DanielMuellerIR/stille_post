@@ -61,7 +61,7 @@ public struct Config: Codable, Equatable, Sendable {
         public var autostart: Bool = true
         /// Pfad zum whisper-server-Binary (Homebrew-Standardpfad).
 #if os(Linux)
-        public var binaryPath: String = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL.deletingLastPathComponent().appendingPathComponent("whisper-server").path
+        public var binaryPath: String = LinuxInstallation.executableDirectory.appendingPathComponent("whisper-server").path
 #else
         public var binaryPath: String = "/opt/homebrew/bin/whisper-server"
 #endif

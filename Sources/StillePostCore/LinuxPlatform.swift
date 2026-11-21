@@ -3,6 +3,21 @@ import Foundation
 import FoundationNetworking
 import Glibc
 
+enum LinuxInstallation {
+    static let executableDirectory: URL = {
+        // /proc liefert auch bei PATH-Aufruf und Symlinks den echten Binärpfad.
+        let executable = (try? FileManager.default.destinationOfSymbolicLink(
+            atPath: "/proc/self/exe")) ?? "/proc/self/exe"
+        return URL(fileURLWithPath: executable).deletingLastPathComponent()
+    }()
+
+    static var version: String {
+        let file = executableDirectory.deletingLastPathComponent().appendingPathComponent("VERSION")
+        return (try? String(contentsOf: file, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "development"
+    }
+}
+
 /// Die Linux-App spricht Dienste immer direkt an. libcurl darf geerbte
 /// Proxyvariablen insbesondere beim Audiotransport nicht berücksichtigen.
 enum LinuxNetworkBootstrap {
@@ -34,12 +49,13 @@ enum LinuxChildProcess {
 }
 
 /// PCM kommt ausschließlich über die private Elternprozess-Pipe vom Qt-Adapter.
+@MainActor
 public final class AudioRecorder {
     public enum RecorderError: Error { case recordingInterrupted }
-    public static var capture: ((Bool, String) -> Void)?
+    public static var capture: (@MainActor (Bool, String) -> Void)?
     public static weak var active: AudioRecorder?
-    public var onSamples: (([Float]) -> Void)?
-    public var onFailure: ((Error) -> Void)?
+    public var onSamples: (@Sendable ([Float]) -> Void)?
+    public var onFailure: (@Sendable (Error) -> Void)?
     private let config: Config.Audio
     public init(config: Config.Audio = Config.Audio()) { self.config = config }
     public static func requestMicrophoneAccess() async -> Bool { true }
@@ -104,8 +120,7 @@ public enum AudioDecoder {
         let estimatedDuration: TimeInterval? = nil
         init(url: URL, maxSampleCount: Int) throws {
             maximum = maxSampleCount
-            let bundled = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
-                .deletingLastPathComponent().appendingPathComponent("ffmpeg").path
+            let bundled = LinuxInstallation.executableDirectory.appendingPathComponent("ffmpeg").path
             process.executableURL = URL(
                 fileURLWithPath: FileManager.default.isExecutableFile(atPath: bundled)
                     ? bundled : "/usr/bin/ffmpeg")
@@ -134,7 +149,8 @@ public enum AudioDecoder {
                 }
                 return nil
             }
-            // codereview-ok: Foundation füllt bis zur angefragten Länge oder EOF; nur ein unvollständiges Sample am EOF verletzt die 4-Byte-Grenze (Swift 6.2.1 geprüft, 2026-11-07).
+            // Foundation füllt die angeforderte Länge bis zum EOF. Ein unvollständiges
+            // Sample am Ende ist ein Dekodierfehler.
             guard bytes.count % 4 == 0 else { throw LinuxFailure.decode }
             let values: [Float] = bytes.withUnsafeBytes { raw in
                 stride(from: 0, to: raw.count, by: 4).map {
@@ -175,8 +191,7 @@ enum LinuxSecretStore {
         let out = Pipe()
         let pipe = Pipe()
         let errors = Pipe()
-        let bundled = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
-            .deletingLastPathComponent().appendingPathComponent("secret-tool").path
+        let bundled = LinuxInstallation.executableDirectory.appendingPathComponent("secret-tool").path
         process.executableURL = URL(
             fileURLWithPath: FileManager.default.isExecutableFile(atPath: bundled)
                 ? bundled : "/usr/bin/secret-tool")
@@ -208,7 +223,7 @@ enum LinuxSecretStore {
 }
 /// Nur den eigenen, leeren Loopback-Dienst starten; vorhandene Dienste bleiben
 /// unangetastet. Modelle lädt erst die bestehende Cleanup-Kette bei Bedarf.
-final class LinuxOllamaService {
+final class LinuxOllamaService: @unchecked Sendable {
     private let lock = NSLock()
     private var process: Process?
     private var stopped = false
@@ -240,9 +255,7 @@ final class LinuxOllamaService {
         lock.lock()
         defer { lock.unlock() }
         guard !stopped, process?.isRunning != true else { return }
-        let directory = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
-            .deletingLastPathComponent()
-        let binary = directory.appendingPathComponent("ollama")
+        let binary = LinuxInstallation.executableDirectory.appendingPathComponent("ollama")
         guard FileManager.default.isExecutableFile(atPath: binary.path) else { return }
         let process = Process()
         process.executableURL = binary
@@ -271,7 +284,7 @@ final class LinuxOllamaService {
         }
         LinuxChildProcess.stop(child)
     }
-    deinit { LinuxChildProcess.stop(process) }
+    deinit { stop() }
 }
 
 public enum BridgeToken {

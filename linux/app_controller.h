@@ -21,6 +21,14 @@ private slots:
   void screenStateChanged(bool active);
 
 private:
+  void observeSession();
+  void buildOverlay();
+  void configureTray();
+  void connectSettingsAndHotkeys();
+  void connectAudio();
+  void connectAccessibility();
+  void observeScreens();
+  void startWorker();
   void interruptHold();
   bool eventFilter(QObject *, QEvent *) override;
   void shutdownWorker();
@@ -33,6 +41,7 @@ private:
   void start(bool hold = false);
   void stop();
   void changeState(QString, QString profile = {});
+  void showDuration(double duration);
   void notice(QString, bool error = false);
   void rebuildMenu();
   void result(QJsonObject);

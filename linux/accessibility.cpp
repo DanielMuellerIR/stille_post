@@ -1,6 +1,7 @@
 #include "accessibility.h"
 #include <QtCore>
 #include <atspi/atspi.h>
+#include <memory>
 #include <optional>
 #include <unistd.h>
 #include <X11/Xlib.h>
@@ -28,6 +29,9 @@ QString utf(gchar *value) {
   g_free(value);
   return result;
 }
+template <typename T> auto ownInterface(T *value) {
+  return std::unique_ptr<T, decltype(&g_object_unref)>(value, g_object_unref);
+}
 QSharedPointer<AtspiAccessible> textObject(AtspiAccessible *object, bool chromium) {
   auto owned = [](AtspiAccessible *value) {
     return QSharedPointer<AtspiAccessible>(value, [](AtspiAccessible *p) {
@@ -36,13 +40,13 @@ QSharedPointer<AtspiAccessible> textObject(AtspiAccessible *object, bool chromiu
     });
   };
   if (chromium) {
-    auto text = atspi_accessible_get_text_iface(object);
+    auto text = ownInterface(atspi_accessible_get_text_iface(object));
     if (!text)
       return {};
-    const int count = atspi_text_get_character_count(text, nullptr);
+    const int count = atspi_text_get_character_count(text.get(), nullptr);
     if (count < 0 || count > 250000)
       return {};
-    const auto value = utf(atspi_text_get_text(text, 0, count, nullptr));
+    const auto value = utf(atspi_text_get_text(text.get(), 0, count, nullptr));
     // Chromium stellt den Absatz im Textfeld als eingebettetes Objekt dar.
     // Nur ein eindeutig lesbarer Absatz erlaubt überprüfbare Textpositionen.
     if (value.contains(QChar(0xfffc))) {
@@ -92,7 +96,12 @@ QString readText(AtspiText *text, int count, bool chromium, GError **error) {
   return value;
 }
 QString identity(AtspiAccessible *object) {
-  auto base = ATSPI_OBJECT(object);
+  if (!object)
+    return {};
+  const auto base = ATSPI_OBJECT(object);
+  if (!base->app || !base->app->bus_name || !*base->app->bus_name ||
+      !base->path || !*base->path)
+    return {};
   return QString::fromUtf8(base->app->bus_name) + QString::fromUtf8(base->path);
 }
 bool has(AtspiAccessible *object, AtspiStateType flag) {
@@ -346,6 +355,12 @@ public:
       result["reason"] = "Eingabeziel stellt kein fokussiertes Feld bereit.";
       return result;
     }
+    const auto objectIdentity = identity(object);
+    if (objectIdentity.isEmpty()) {
+      g_object_unref(object);
+      result["reason"] = "Das ursprüngliche Eingabeziel ist nicht mehr verfügbar.";
+      return result;
+    }
     auto app = application(object);
     result["application"] = app;
     bool remote = false;
@@ -358,7 +373,7 @@ public:
       result["reason"] = "Geschütztes Eingabefeld — kein Zugriff.";
       return result;
     }
-    auto editable = atspi_accessible_get_editable_text_iface(object);
+    auto editable = ownInterface(atspi_accessible_get_editable_text_iface(object));
     auto applicationRoot = atspi_accessible_get_application(object, nullptr);
     const auto toolkit =
         applicationRoot
@@ -371,20 +386,21 @@ public:
         !editable && toolkit.startsWith("Chromium", Qt::CaseInsensitive) &&
         has(object, ATSPI_STATE_EDITABLE) && !remote;
     auto content = textObject(object, clipboardPaste);
-    auto text = content ? atspi_accessible_get_text_iface(content.data()) : nullptr;
+    auto text = ownInterface(
+        content ? atspi_accessible_get_text_iface(content.data()) : nullptr);
     if (!text) {
       g_object_unref(object);
       result["reason"] = "Das Eingabeziel unterstützt keinen Textzugriff.";
       return result;
     }
-    int count = atspi_text_get_character_count(text, nullptr);
+    int count = atspi_text_get_character_count(text.get(), nullptr);
     if (count < 0 || count > 250000) {
       g_object_unref(object);
       result["reason"] = "Eingabeziel ist für die sichere Zielprüfung zu groß.";
       return result;
     }
     GError *error = nullptr;
-    const auto contents = readText(text, count, clipboardPaste, &error);
+    const auto contents = readText(text.get(), count, clipboardPaste, &error);
     if (clipboardPaste && contents.isEmpty())
       count = 0;
     if (error) {
@@ -406,16 +422,16 @@ public:
       return result;
     }
     const int caret = clipboardPaste && contents.isEmpty()
-                          ? 0 : atspi_text_get_caret_offset(text, nullptr);
+                          ? 0 : atspi_text_get_caret_offset(text.get(), nullptr);
     int begin = caret, end = caret;
-    const int selections = atspi_text_get_n_selections(text, nullptr);
+    const int selections = atspi_text_get_n_selections(text.get(), nullptr);
     if (selections < 0 || selections > 1) {
       g_object_unref(object);
       result["reason"] = "Mehrfachauswahl wird nicht unterstützt.";
       return result;
     }
     if (selections == 1) {
-      auto range = atspi_text_get_selection(text, 0, nullptr);
+      auto range = atspi_text_get_selection(text.get(), 0, nullptr);
       if (range) {
         begin = range->start_offset;
         end = range->end_offset;
@@ -453,8 +469,8 @@ public:
         g_object_unref(oldest.object);
     }
     snapshotOrder.enqueue(token);
-    snapshots[token] = {object, identity(object), app,   contents, caret, begin,
-                        end,    remote,           false, utf16, clipboardPaste};
+    snapshots[token] = {object, objectIdentity, app, contents, caret, begin,
+                        end,    remote,         false, utf16, clipboardPaste};
     result["token"] = token;
     result["editable"] = (editable || clipboardPaste) &&
                          has(object, ATSPI_STATE_EDITABLE) &&
@@ -468,7 +484,8 @@ public:
     if (found == snapshots.end())
       return {false, "Das ursprüngliche Eingabeziel ist nicht mehr verfügbar."};
     auto &snapshot = *found;
-    if (snapshot.invalidated || snapshot.remote)
+    if (snapshot.invalidated || snapshot.remote ||
+        identity(snapshot.object) != snapshot.path)
       return {false, "Eingabeziel gewechselt oder Remote-Viewer aktiv. Text "
                      "bleibt kopiert."};
     auto currentObject = current();
@@ -476,11 +493,13 @@ public:
     if (currentObject)
       g_object_unref(currentObject);
     if (!same && restore) {
-      auto component = atspi_accessible_get_component_iface(snapshot.object);
+      auto component =
+          ownInterface(atspi_accessible_get_component_iface(snapshot.object));
       if (component)
-        atspi_component_grab_focus(component, nullptr);
+        atspi_component_grab_focus(component.get(), nullptr);
       atspi_accessible_clear_cache(snapshot.object);
-      same = has(snapshot.object, ATSPI_STATE_FOCUSED) &&
+      same = identity(snapshot.object) == snapshot.path &&
+             has(snapshot.object, ATSPI_STATE_FOCUSED) &&
              activeWindow(snapshot.object);
     }
     if (!same)
@@ -491,25 +510,32 @@ public:
         has(snapshot.object, ATSPI_STATE_READ_ONLY))
       return {false, "Eingabeziel ist geschützt oder nicht bearbeitbar."};
     auto content = textObject(snapshot.object, snapshot.clipboardPaste);
-    auto text = content ? atspi_accessible_get_text_iface(content.data()) : nullptr;
-    auto editable = atspi_accessible_get_editable_text_iface(snapshot.object);
+    auto text = ownInterface(
+        content ? atspi_accessible_get_text_iface(content.data()) : nullptr);
+    auto editable =
+        ownInterface(atspi_accessible_get_editable_text_iface(snapshot.object));
     if (!text || (!editable && !snapshot.clipboardPaste))
       return {false,
               "Sicheres Einfügen wird vom Eingabeziel nicht unterstützt."};
-    const int count = atspi_text_get_character_count(text, nullptr);
+    const int count = atspi_text_get_character_count(text.get(), nullptr);
     if (count < 0 || count > 250000)
       return {false, "Eingabeziel ist für die sichere Zielprüfung zu groß."};
-    const auto fresh = readText(text, count, snapshot.clipboardPaste, nullptr);
+    GError *readError = nullptr;
+    const auto fresh = readText(text.get(), count, snapshot.clipboardPaste, &readError);
+    if (readError) {
+      g_error_free(readError);
+      return {false, "Das Eingabeziel hat sich geändert. Text bleibt kopiert."};
+    }
     if (fresh.toUtf8().size() > 1048576)
       return {false, "Eingabeziel ist für die sichere Zielprüfung zu groß."};
     const auto caret = snapshot.clipboardPaste && fresh.isEmpty()
-                           ? 0 : atspi_text_get_caret_offset(text, nullptr);
+                           ? 0 : atspi_text_get_caret_offset(text.get(), nullptr);
     int begin = caret, end = caret;
-    const int selections = atspi_text_get_n_selections(text, nullptr);
+    const int selections = atspi_text_get_n_selections(text.get(), nullptr);
     if (selections < 0 || selections > 1)
       return {false, "Auswahl ist nicht eindeutig."};
     if (selections == 1) {
-      auto range = atspi_text_get_selection(text, 0, nullptr);
+      auto range = atspi_text_get_selection(text.get(), 0, nullptr);
       if (range) {
         begin = range->start_offset;
         end = range->end_offset;
@@ -549,16 +575,16 @@ public:
       return {false, "Ergebnis ist für das sichere Einfügen zu groß."};
     auto readCurrent = [&]() -> std::optional<QString> {
       auto currentContent = textObject(snapshot.object, snapshot.clipboardPaste);
-      auto currentText = currentContent
-                             ? atspi_accessible_get_text_iface(currentContent.data())
-                             : nullptr;
+      auto currentText = ownInterface(
+          currentContent ? atspi_accessible_get_text_iface(currentContent.data())
+                         : nullptr);
       if (!currentText)
         return std::nullopt;
-      const int size = atspi_text_get_character_count(currentText, nullptr);
+      const int size = atspi_text_get_character_count(currentText.get(), nullptr);
       if (size < 0 || size > 500000)
         return std::nullopt;
       GError *error = nullptr;
-      auto value = readText(currentText, size, snapshot.clipboardPaste, &error);
+      auto value = readText(currentText.get(), size, snapshot.clipboardPaste, &error);
       if (error) {
         g_error_free(error);
         return std::nullopt;
@@ -601,7 +627,7 @@ public:
     auto remove = [&](int start, int finish) {
       GError *error = nullptr;
       bool ok =
-          atspi_editable_text_delete_text(editable, start, finish, &error);
+          atspi_editable_text_delete_text(editable.get(), start, finish, &error);
       if (error) {
         g_error_free(error);
         return false;
@@ -611,7 +637,7 @@ public:
     if (insertedCount) {
       GError *error = nullptr;
       const bool ok = atspi_editable_text_insert_text(
-          editable, begin, encoded.constData(),
+          editable.get(), begin, encoded.constData(),
           snapshot.utf16 ? replacement.size() : encoded.size(), &error);
       if (error)
         g_error_free(error);
@@ -645,7 +671,7 @@ public:
                 !actual || *actual != fresh};
       }
     }
-    atspi_text_set_caret_offset(text, begin + insertedCount, nullptr);
+    atspi_text_set_caret_offset(text.get(), begin + insertedCount, nullptr);
     return {true, {}, true};
   }
 };

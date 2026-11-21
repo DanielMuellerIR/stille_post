@@ -5,7 +5,7 @@
 typedef struct sp_tls_context sp_tls_context;
 typedef struct sp_tls_connection sp_tls_connection;
 typedef struct sp_silero sp_silero;
-sp_silero *sp_silero_new(const char *model);
+sp_silero *sp_silero_new(const void *model, size_t size);
 void sp_silero_free(sp_silero *context);
 int sp_silero_probability(sp_silero *context, const float samples[4096],
                           float *probability);
@@ -21,7 +21,8 @@ void sp_free(void *value);
 sp_tls_context *sp_tls_context_new(const char *certificate, const char *key);
 void sp_tls_context_free(sp_tls_context *context);
 sp_tls_connection *sp_tls_connection_new(sp_tls_context *context, int fd);
-/* 1 = Erfolg, 0 = WANT_READ, -2 = WANT_WRITE, -1 = geschlossen/Fehler. */
+/* Akzeptiert 1, Lesen/Schreiben die Bytezahl. 0 = WANT_READ, -2 = WANT_WRITE,
+ * -1 = geschlossen, Fehler oder ungültiger Parameter. */
 int sp_tls_accept(sp_tls_connection *connection);
 int sp_tls_read(sp_tls_connection *connection, void *bytes, int capacity);
 int sp_tls_write(sp_tls_connection *connection, const void *bytes, int count);

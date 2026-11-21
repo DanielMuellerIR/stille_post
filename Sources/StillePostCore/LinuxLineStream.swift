@@ -9,11 +9,12 @@ final class LinuxLineStream: NSObject, URLSessionDataDelegate, @unchecked Sendab
     private var continuation: AsyncThrowingStream<String, Error>.Continuation?
     private var session: URLSession?
     private var task: URLSessionDataTask?
+    private let lock = NSLock()
+    private var cancellationRequested = false
+    // Die serielle Delegate-Queue verarbeitet Frames und den Abschluss.
     private var pending = Data()
     private var total = 0
-    private let lock = NSLock()
     private var ended = false
-    private var cancellationRequested = false
 
     static func open(_ request: URLRequest) async throws -> (AsyncThrowingStream<String, Error>, URLResponse) {
         let delegate = LinuxLineStream()
@@ -72,12 +73,19 @@ final class LinuxLineStream: NSObject, URLSessionDataDelegate, @unchecked Sendab
         finish(error)
     }
     private func finish(_ error: Error?) {
-        guard !ended else { return }; ended = true
-        lock.lock(); let waiter = responseWaiter; responseWaiter = nil; lock.unlock()
+        guard !ended else { return }
+        ended = true
+        let (waiter, session) = lock.withLock {
+            let finishing = (responseWaiter, self.session)
+            responseWaiter = nil
+            self.session = nil
+            task = nil
+            return finishing
+        }
         waiter?.resume(throwing: error ?? LinuxFailure.protocolFailure)
         continuation?.finish(throwing: error)
         continuation = nil
-        session?.invalidateAndCancel(); session = nil; task = nil
+        session?.invalidateAndCancel()
     }
     func urlSession(_ session: URLSession, task: URLSessionTask,
                     willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,

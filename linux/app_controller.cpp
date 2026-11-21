@@ -20,6 +20,17 @@ AppController::AppController(bool testMode, QObject *parent)
     : QObject(parent), isolated(testMode) {
   qApp->setQuitOnLastWindowClosed(false);
   qApp->installEventFilter(this);
+  observeSession();
+  buildOverlay();
+  configureTray();
+  connectSettingsAndHotkeys();
+  connectAudio();
+  connectAccessibility();
+  observeScreens();
+  startWorker();
+  rebuildMenu();
+}
+void AppController::observeSession() {
   auto sessionBus = QDBusConnection::sessionBus();
   sessionBus.connect("org.freedesktop.ScreenSaver", QString(),
                      "org.freedesktop.ScreenSaver", "ActiveChanged", this,
@@ -31,7 +42,8 @@ AppController::AppController(bool testMode, QObject *parent)
       "org.freedesktop.login1", "/org/freedesktop/login1",
       "org.freedesktop.login1.Manager", "PrepareForSleep", this,
       SLOT(screenStateChanged(bool)));
-
+}
+void AppController::buildOverlay() {
   overlay.setWindowTitle(trText("Stille Post"));
   overlay.setWindowFlags(Qt::Tool | Qt::FramelessWindowHint |
                          Qt::WindowStaysOnTopHint |
@@ -89,6 +101,8 @@ AppController::AppController(bool testMode, QObject *parent)
                      contextLabel, detailLabel})
     label->setTextFormat(Qt::PlainText);
   overlay.resize(390, 150);
+}
+void AppController::configureTray() {
   tray.setIcon(QIcon(executable("../icon.png")));
   tray.setToolTip("Stille Post");
   tray.setContextMenu(&menu);
@@ -98,6 +112,8 @@ AppController::AppController(bool testMode, QObject *parent)
   });
   if (!isolated)
     tray.show();
+}
+void AppController::connectSettingsAndHotkeys() {
   connect(&settings, &SettingsWindow::saveRequested, this,
           [this](QJsonObject value, QJsonObject expected) {
             send({{"command", "saveConfig"},
@@ -156,6 +172,8 @@ AppController::AppController(bool testMode, QObject *parent)
   connect(&portal, &GlobalShortcuts::released, this,
           &AppController::keyReleased);
   connect(&x11, &X11Shortcuts::released, this, &AppController::keyReleased);
+}
+void AppController::connectAudio() {
   connect(&audio, &AudioInput::samples, this, [this](QByteArray data) {
     testBytes += data.size();
     if (worker.bytesToWrite() > 1024 * 1024) {
@@ -177,6 +195,8 @@ AppController::AppController(bool testMode, QObject *parent)
     send({{"command", "captureError"}});
     notice(reason, true);
   });
+}
+void AppController::connectAccessibility() {
   connect(&target, &AccessibleTarget::availability, this,
           [this](bool ready) { accessible = ready; });
   connect(&target, &AccessibleTarget::applicationChanged, this,
@@ -251,6 +271,8 @@ AppController::AppController(bool testMode, QObject *parent)
                             reason);
             }
           });
+}
+void AppController::observeScreens() {
   connect(&placement, &DesktopPlacement::ready, this,
           [this](QPoint cursor, QRect area) {
             placementCursor = cursor;
@@ -289,6 +311,8 @@ AppController::AppController(bool testMode, QObject *parent)
             screenChanged();
           });
   connect(qApp, &QGuiApplication::screenRemoved, this, screenChanged);
+}
+void AppController::startWorker() {
   worker.setProgram(executable("stillepost-linux"));
   worker.setProcessChannelMode(QProcess::SeparateChannels);
   connect(&worker, &QProcess::readyReadStandardOutput, this,
@@ -312,7 +336,6 @@ AppController::AppController(bool testMode, QObject *parent)
   worker.start();
   connect(qApp, &QCoreApplication::aboutToQuit, this,
           &AppController::shutdownWorker);
-  rebuildMenu();
 }
 void AppController::screenStateChanged(bool active) {
   if (active) {
@@ -564,6 +587,8 @@ void AppController::receive(QJsonObject event) {
     } else
       audio.stop();
   } else if (kind == "state") {
+    if (event.contains("duration"))
+      showDuration(event["duration"].toDouble());
     sessionKind = event["sessionKind"].toString("dictation");
     QStringList context;
     if (!event["reason"].toString().isEmpty())
@@ -579,10 +604,7 @@ void AppController::receive(QJsonObject event) {
   } else if (kind == "meter") {
     if (isolated && qEnvironmentVariableIsSet("STILLEPOST_OVERLAY_PREVIEW"))
       return;
-    auto seconds = int(event["duration"].toDouble());
-    durationLabel->setText(QString("%1:%2")
-                               .arg(seconds / 60)
-                               .arg(seconds % 60, 2, 10, QChar('0')));
+    showDuration(event["duration"].toDouble());
   } else if (kind == "importProgress" || kind == "importStatus" ||
              kind == "importReview") {
     if (importWindow)
@@ -787,6 +809,12 @@ void AppController::changeState(QString value, QString profile) {
     liveText->clear();
   }
   rebuildMenu();
+}
+void AppController::showDuration(double duration) {
+  const auto seconds = int(duration);
+  durationLabel->setText(QString("%1:%2")
+                             .arg(seconds / 60)
+                             .arg(seconds % 60, 2, 10, QChar('0')));
 }
 void AppController::positionOverlay() {
   const bool nativePosition =

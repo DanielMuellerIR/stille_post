@@ -1,5 +1,6 @@
 #include "LinuxNative.h"
 #include <limits.h>
+#include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <openssl/ssl.h>
@@ -13,17 +14,20 @@ struct sp_tls_connection {
   SSL *value;
 };
 int sp_random(unsigned char *bytes, size_t count) {
-  return count <= INT_MAX && RAND_bytes(bytes, (int)count) == 1;
+  return bytes && count <= INT_MAX && RAND_bytes(bytes, (int)count) == 1;
 }
 int sp_sha256(const unsigned char *bytes, size_t count,
               unsigned char result[32]) {
   unsigned int size = 0;
-  return EVP_Digest(bytes, count, result, &size, EVP_sha256(), NULL) == 1 &&
+  return result && (bytes || count == 0) &&
+         EVP_Digest(bytes, count, result, &size, EVP_sha256(), NULL) == 1 &&
          size == 32;
 }
 void sp_free(void *value) { free(value); }
 int sp_certificate_fingerprint(const char *certificate,
                                unsigned char result[32]) {
+  if (!certificate || !result)
+    return 0;
   BIO *bio = BIO_new_mem_buf(certificate, -1);
   X509 *cert = bio ? PEM_read_bio_X509(bio, NULL, NULL, NULL) : NULL;
   unsigned int count = 0;
@@ -44,6 +48,14 @@ static char *bio_string(BIO *bio) {
     value[size] = 0;
   }
   return value;
+}
+static int add_cert_extension(X509 *cert, int type, const char *value) {
+  X509_EXTENSION *extension = X509V3_EXT_conf_nid(NULL, NULL, type, value);
+  if (!extension)
+    return 0;
+  int ok = X509_add_ext(cert, extension, -1);
+  X509_EXTENSION_free(extension);
+  return ok;
 }
 static int certificate_for_key(EVP_PKEY *key, char **certificate) {
   *certificate = NULL;
@@ -78,7 +90,10 @@ static int certificate_for_key(EVP_PKEY *key, char **certificate) {
                                   -1, -1, 0) ||
       !X509_set_issuer_name(cert, name))
     goto end;
-  if (!X509_sign(cert, key, EVP_sha256()) ||
+  if (!add_cert_extension(cert, NID_basic_constraints, "critical,CA:FALSE") ||
+      !add_cert_extension(cert, NID_key_usage, "critical,digitalSignature") ||
+      !add_cert_extension(cert, NID_ext_key_usage, "serverAuth") ||
+      !X509_sign(cert, key, EVP_sha256()) ||
       !PEM_write_bio_X509(cert_bio, cert))
     goto end;
   *certificate = bio_string(cert_bio);
@@ -93,8 +108,12 @@ end:
   return ok;
 }
 int sp_identity_create(char **certificate, char **private_key) {
-  *certificate = NULL;
-  *private_key = NULL;
+  if (certificate)
+    *certificate = NULL;
+  if (private_key)
+    *private_key = NULL;
+  if (!certificate || !private_key || certificate == private_key)
+    return 0;
   EVP_PKEY *key = EVP_EC_gen("prime256v1");
   BIO *bio = BIO_new(BIO_s_mem());
   int ok = key && bio && certificate_for_key(key, certificate) &&
@@ -115,7 +134,11 @@ int sp_identity_create(char **certificate, char **private_key) {
 }
 int sp_identity_renew(const char *certificate, const char *private_key,
                       char **renewed) {
+  if (!renewed)
+    return 0;
   *renewed = NULL;
+  if (!certificate || !private_key)
+    return 0;
   BIO *cert_bio = BIO_new_mem_buf(certificate, -1),
       *key_bio = BIO_new_mem_buf(private_key, -1);
   X509 *cert = cert_bio ? PEM_read_bio_X509(cert_bio, NULL, NULL, NULL) : NULL;
@@ -130,6 +153,8 @@ int sp_identity_renew(const char *certificate, const char *private_key,
   return ok;
 }
 sp_tls_context *sp_tls_context_new(const char *certificate, const char *key) {
+  if (!certificate || !key)
+    return NULL;
   BIO *a = BIO_new_mem_buf(certificate, -1), *b = BIO_new_mem_buf(key, -1);
   X509 *cert = a ? PEM_read_bio_X509(a, NULL, NULL, NULL) : NULL;
   EVP_PKEY *private_key =
@@ -168,6 +193,8 @@ void sp_tls_context_free(sp_tls_context *ctx) {
   }
 }
 sp_tls_connection *sp_tls_connection_new(sp_tls_context *ctx, int fd) {
+  if (!ctx || fd < 0)
+    return NULL;
   sp_tls_connection *value = calloc(1, sizeof(*value));
   if (!value)
     return NULL;
@@ -187,15 +214,27 @@ static int result(SSL *ssl, int status) {
                                          : -1;
 }
 int sp_tls_accept(sp_tls_connection *c) {
+  if (!c)
+    return -1;
+  // SSL_get_error wertet auch die Fehlerwarteschlange dieses Threads aus.
+  ERR_clear_error();
   return result(c->value, SSL_accept(c->value));
 }
 int sp_tls_read(sp_tls_connection *c, void *bytes, int capacity) {
+  if (!c || !bytes || capacity <= 0)
+    return -1;
+  ERR_clear_error();
   return result(c->value, SSL_read(c->value, bytes, capacity));
 }
 int sp_tls_write(sp_tls_connection *c, const void *bytes, int count) {
+  if (!c || !bytes || count <= 0)
+    return -1;
+  ERR_clear_error();
   return result(c->value, SSL_write(c->value, bytes, count));
 }
-int sp_tls_pending(sp_tls_connection *c) { return SSL_pending(c->value); }
+int sp_tls_pending(sp_tls_connection *c) {
+  return c ? SSL_pending(c->value) : 0;
+}
 void sp_tls_connection_free(sp_tls_connection *c) {
   if (c) {
     if (c->value && SSL_is_init_finished(c->value))

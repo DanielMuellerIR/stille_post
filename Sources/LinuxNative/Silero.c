@@ -42,7 +42,9 @@ void sp_silero_free(sp_silero *value) {
   memset(value, 0, sizeof(*value));
   free(value);
 }
-sp_silero *sp_silero_new(const char *path) {
+sp_silero *sp_silero_new(const void *model, size_t size) {
+  if (!model || size == 0)
+    return NULL;
   pthread_once(&initialize, load_runtime);
   if (!ort)
     return NULL;
@@ -60,7 +62,8 @@ sp_silero *sp_silero_new(const char *path) {
         good(ort->SetSessionLogSeverityLevel(options, ORT_LOGGING_LEVEL_FATAL));
   if (ok)
     ok =
-        good(ort->CreateSession(environment, path, options, &value->session)) &&
+        good(ort->CreateSessionFromArray(environment, model, size, options,
+                                         &value->session)) &&
         good(ort->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault,
                                       &value->memory));
   if (options)
