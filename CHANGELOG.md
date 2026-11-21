@@ -10,6 +10,28 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.57] — 2026-11-21
+
+### Korrigiert
+
+- Whisper-Rohtext behält diktierte Einschübe in runden und eckigen Klammern.
+  Bekannte Geräuschmarker werden weiterhin entfernt.
+- macOS: Erneutes Öffnen der Einstellungen erhält den Entwurf auch beim
+  Tabwechsel. Diktate aus eigenen App-Fenstern folgen dem angezeigten App-Profil.
+- Fehlgeschlagene Aufnahmen melden Schreibfehler sofort. Diagnoseaufnahmen
+  unterliegen der Aufbewahrung, und unvollständige Aufnahmen können nicht erneut
+  transkribiert werden. Die CLI stellt bei abgebrochener Schlüsseleingabe Echo wieder her.
+- iOS: Unterbrochene Modell-Downloads und Aufnahmen lassen sich zuverlässiger
+  fortsetzen oder wiederfinden. Die Bridge prüft das gekoppelte Zertifikat lokal.
+- Linux: Ein verspätetes Rollback kann keinen neueren Versionswechsel zurücknehmen.
+  Die Installation lässt sich nach einem abgebrochenen Modell-Download wiederholen.
+  Whisper-Server-Einstellungen werden nach einem angezeigten Neustart wirksam,
+  und die Audioquelle bleibt für das begonnene Diktat fest.
+- Der erste Ollama-Bereinigungsversuch streamt. Nach einem Leerlauf-Timeout
+  entscheidet die Erreichbarkeit über die geduldige Wiederholung.
+- Modellinstallationen koordinieren Zugriffe auf denselben Zielpfad und prüfen
+  die heruntergeladenen Whisper-Katalogmodelle per SHA-256.
+
 ## [0.9.56] — 2026-11-09
 
 ### Korrigiert
