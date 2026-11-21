@@ -30,15 +30,17 @@ import StillePostCore
         self.snapshot = snapshot; self.elementIdentity = elementIdentity
         observer = NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
             object: nil, queue: .main) { [weak self] notification in
+            guard let activated = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  activated.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+            let processIdentifier = activated.processIdentifier
             MainActor.assumeIsolated {
-                guard let self, let activated = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-                      activated.processIdentifier != ProcessInfo.processInfo.processIdentifier,
-                      activated.processIdentifier != self.application.processIdentifier else { return }
-                self.foreignApplicationActivated = true; self.onInvalidated?()
+                guard let self, processIdentifier != self.application.processIdentifier else { return }
+                self.foreignApplicationActivated = true
+                self.onInvalidated?()
             }
         }
     }
-    deinit { if let observer { NSWorkspace.shared.notificationCenter.removeObserver(observer) } }
+    isolated deinit { if let observer { NSWorkspace.shared.notificationCenter.removeObserver(observer) } }
 
     static func capture(serviceText: String? = nil) throws -> Capture {
         if let serviceText { try TextSelectionSnapshot.validate(serviceText) }

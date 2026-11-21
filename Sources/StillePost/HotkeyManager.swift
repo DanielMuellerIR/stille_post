@@ -5,6 +5,7 @@ import StillePostCore
 /// Registriert eine globale Tastenkombination über die Carbon-API
 /// `RegisterEventHotKey`. Vorteil gegenüber Event-Taps: funktioniert OHNE
 /// Bedienungshilfen-Berechtigung und ist über Jahrzehnte stabil.
+@MainActor
 final class HotkeyManager {
     static let captureNotification = Notification.Name("StillePost.hotkeyCaptured")
 
@@ -26,7 +27,7 @@ final class HotkeyManager {
     private var releaseTimer: Timer?
     private var interruptionObservers: [NSObjectProtocol] = []
 
-    static var canReadKeyboardState: Bool {
+    nonisolated static var canReadKeyboardState: Bool {
         AXIsProcessTrusted() || CGPreflightListenEventAccess()
     }
 
@@ -116,8 +117,10 @@ final class HotkeyManager {
         interruptionObservers = [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification,
                                   NSWorkspace.sessionDidResignActiveNotification].map { name in
             center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                guard let self, self.isDown else { return }
-                self.onInterruption()
+                MainActor.assumeIsolated {
+                    guard let self, self.isDown else { return }
+                    self.onInterruption()
+                }
             }
         }
         // Eine bei Registrierung schon gehaltene Taste ist keine neue Betätigung.
@@ -138,7 +141,9 @@ final class HotkeyManager {
 
     private func startReleaseTimer() {
         guard releaseTimer == nil else { return }
-        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in self?.checkRelease() }
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.checkRelease() }
+        }
         releaseTimer = timer
         // Auch ein geöffnetes Menü darf Freigabe und Sicherheitsfrist nicht aufhalten.
         RunLoop.main.add(timer, forMode: .common)
@@ -179,7 +184,7 @@ final class HotkeyManager {
         }
     }
 
-    deinit {
+    isolated deinit {
         releaseTimer?.invalidate()
         for observer in interruptionObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
         if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }

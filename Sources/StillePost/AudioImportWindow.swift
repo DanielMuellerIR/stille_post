@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import StillePostCore
 
+@MainActor
 final class AudioImportWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var picker: NSOpenPanel?
@@ -18,11 +19,13 @@ final class AudioImportWindowController: NSObject, NSWindowDelegate {
         observers = [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification,
                      NSWorkspace.sessionDidResignActiveNotification].map { name in
             NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                if self?.isActive == true { self?.model.cancel() }
+                MainActor.assumeIsolated {
+                    if self?.isActive == true { self?.model.cancel() }
+                }
             }
         }
     }
-    deinit { for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer) } }
+    isolated deinit { for observer in observers { NSWorkspace.shared.notificationCenter.removeObserver(observer) } }
     func owns(_ engine: DictationEngine) -> Bool { model.session?.owns(engine) == true }
     func receiveState(_ state: DictationState) { model.session?.receiveState(state) }
     func receiveStage(_ stage: AudioImportStage) { model.session?.receiveStage(stage) }
@@ -64,6 +67,7 @@ final class AudioImportWindowController: NSObject, NSWindowDelegate {
     func prepareForTermination() { picker?.cancel(nil); model.close(); window?.orderOut(nil) }
 }
 
+@MainActor
 final class AudioImportViewModel: ObservableObject {
     @Published private(set) var revision = 0
     @Published private(set) var reviewed: Config?
@@ -89,7 +93,7 @@ final class AudioImportViewModel: ObservableObject {
         engineProvider = engine; configurationProvider = configuration; self.nextConfiguration = nextConfiguration
         self.canStart = canStart; self.onBegin = onBegin; self.onClosingError = onClosingError
     }
-    deinit { timer?.invalidate(); scopedURL?.stopAccessingSecurityScopedResource() }
+    isolated deinit { timer?.invalidate(); scopedURL?.stopAccessingSecurityScopedResource() }
     var state: AudioImportSession.State { session?.state ?? .ready }
     var isActive: Bool { session?.isActive == true }
     var profile: String {
@@ -111,9 +115,11 @@ final class AudioImportViewModel: ObservableObject {
         if reviewed == nil { refresh() }
         if timer == nil {
             let value = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-                guard let self else { return }
-                let ready = self.canStart()
-                if self.allowed != ready { self.allowed = ready }
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let ready = self.canStart()
+                    if self.allowed != ready { self.allowed = ready }
+                }
             }
             timer = value; RunLoop.main.add(value, forMode: .common)
         }
@@ -148,7 +154,7 @@ final class AudioImportViewModel: ObservableObject {
             else if let value = item as? URL { url = value }
             else if let data = item as? Data { url = URL(dataRepresentation: data, relativeTo: nil) }
             else { url = nil }
-            DispatchQueue.main.async { self?.completeSelection(generation, url: url) }
+            DispatchQueue.main.async { [weak self] in self?.completeSelection(generation, url: url) }
         }
         return true
     }

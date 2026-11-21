@@ -4,6 +4,7 @@ import StillePostCore
 
 /// Ein nicht aktivierendes Panel kann Tastaturfokus erhalten, ohne die Ziel-App
 /// zu aktivieren. Nach dem Schließen prüft PasteService das ursprüngliche Ziel.
+@MainActor
 final class ResultPreviewController: NSObject, NSWindowDelegate {
     enum Action { case insert, copy, discard }
 

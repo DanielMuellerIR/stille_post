@@ -1,4 +1,5 @@
 import AppKit
+@preconcurrency import ApplicationServices
 import Carbon.HIToolbox
 import StillePostCore
 
@@ -10,16 +11,18 @@ import StillePostCore
 ///
 /// Für das synthetische ⌘V braucht die App die Bedienungshilfen-Berechtigung
 /// (Systemeinstellungen → Datenschutz & Sicherheit → Bedienungshilfen).
+@MainActor
 enum PasteService {
 
     /// Enge Systemgrenze für zeitliche Regressionen ohne fremde Fenster oder Clipboard.
+    @MainActor
     struct Access {
         var pasteboard: NSPasteboard = .general
         var trusted: () -> Bool = { AXIsProcessTrusted() }
         var frontmost: () -> NSRunningApplication? = { NSWorkspace.shared.frontmostApplication }
-        var read: (String, AXUIElement, TimeInterval) -> CFTypeRef? = attribute
-        var isSettable: (String, AXUIElement, TimeInterval) -> Bool = attributeIsSettable
-        var sendPaste: () -> Void = postCmdV
+        var read: @MainActor (String, AXUIElement, TimeInterval) -> CFTypeRef? = attribute
+        var isSettable: @MainActor (String, AXUIElement, TimeInterval) -> Bool = attributeIsSettable
+        var sendPaste: @MainActor () -> Void = postCmdV
     }
 
     struct Target {
@@ -32,8 +35,8 @@ enum PasteService {
 
     /// Liest nur Zielidentitäten, niemals den Inhalt eines fremden Textfelds.
     /// Eine hängende Ziel-App darf den Aufnahmebeginn nicht lange blockieren.
-    static func captureTarget(access: Access = Access()) -> Target? {
-        captureTarget(access: access, deadline: ProcessInfo.processInfo.systemUptime + 0.25)
+    static func captureTarget(access: Access? = nil) -> Target? {
+        captureTarget(access: access ?? Access(), deadline: ProcessInfo.processInfo.systemUptime + 0.25)
     }
 
     private static func captureTarget(access: Access, deadline: TimeInterval) -> Target? {
@@ -95,7 +98,8 @@ enum PasteService {
     /// Fügt Text im unveränderten Ziel ein. Bei fehlender Zuordnung oder einem
     /// Zielwechsel bleibt der Text zum manuellen Einfügen in der Zwischenablage.
     @discardableResult
-    static func paste(_ text: String, target: Target?, access: Access = Access()) -> Outcome {
+    static func paste(_ text: String, target: Target?, access: Access? = nil) -> Outcome {
+        let access = access ?? Access()
         let pasteboard = access.pasteboard
 
         // Alle Items und Typen tief kopieren. Bilder, Dateien und Rich Text dürfen

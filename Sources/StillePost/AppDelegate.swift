@@ -4,6 +4,7 @@ import StillePostCore
 
 /// Verdrahtet alle Bausteine: Menüleisten-Symbol, Hotkey, Overlay, Sounds,
 /// Diktier-Maschine, Verlaufsfenster.
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Sparkle verwaltet Suche, Download, Signaturprüfung, Austausch der App und
@@ -403,7 +404,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         if bridgeCredentialsObserver == nil {
             bridgeCredentialsObserver = NotificationCenter.default.addObserver(forName: .bridgeCredentialsChanged, object: nil, queue: .main) { [weak self] _ in
-                self?.startBridgeIfEnabled()
+                MainActor.assumeIsolated { self?.startBridgeIfEnabled() }
             }
         }
         startBridgeIfEnabled()
@@ -594,7 +595,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         historyMaintenanceTask?.cancel()
         historyMaintenanceTask = nil
         historyMaintenanceTimer?.invalidate()
-        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in self?.runHistoryMaintenance() }
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.runHistoryMaintenance() }
+        }
         RunLoop.main.add(timer, forMode: .common)
         historyMaintenanceTimer = timer
         runHistoryMaintenance()
@@ -633,12 +636,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         appActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
         ) { [weak self] notification in
-            guard let self, let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
                   let id = app.bundleIdentifier, id != Bundle.main.bundleIdentifier else { return }
-            self.lastExternalAppBundleID = id
-            self.statusItem.menu = self.buildMenu()
-            self.updateStatusIcon(for: self.engine.state)
-            self.refreshWarmUpTimer()
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.lastExternalAppBundleID = id
+                self.statusItem.menu = self.buildMenu()
+                self.updateStatusIcon(for: self.engine.state)
+                self.refreshWarmUpTimer()
+            }
         }
     }
 
@@ -650,7 +656,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
               let endpoint = cleanup.chain.first(where: { CleanupService.endpointAllowed($0, localOnly: cleanup.localOnly) }),
               CleanupService.pinsForever(endpoint.keepAlive) else { return }
         warmUpTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            self?.engine.keepCleanupModelWarm()
+            MainActor.assumeIsolated { self?.engine.keepCleanupModelWarm() }
         }
     }
 
@@ -1135,7 +1141,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         testDictationWindow.show()
     }
 
-    @MainActor @objc private func showDiagnostics() {
+    @objc private func showDiagnostics() {
         guard !terminationPending, !isCapturingHotkey else { return }
         diagnosticsWindow.show()
     }

@@ -12,6 +12,7 @@ import StillePostCore
 ///  - Zeigt den LIVE-Mikrofonpegel: Man sieht, dass wirklich Ton ankommt.
 ///  - Schwebt über allen Fenstern und auf allen Spaces/Vollbild-Apps.
 ///  - Ein Klick auf das Overlay stoppt die Aufnahme (zusätzlich zum Hotkey).
+@MainActor
 final class OverlayController {
 
     /// Anzeige-Zustände des Overlays.
@@ -57,14 +58,15 @@ final class OverlayController {
             forName: NSApplication.didChangeScreenParametersNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
-            guard let self, self.panel != nil else { return }
-            // Ein laufendes Overlay darf nach Abstecken oder Neuordnen der
-            // Monitore nicht auf einer nicht mehr sichtbaren Fläche bleiben.
-            self.presentPanel()
+            MainActor.assumeIsolated {
+                guard let self, self.panel != nil else { return }
+                // Nach Abstecken oder Neuordnen muss das Overlay sichtbar bleiben.
+                self.presentPanel()
+            }
         }
     }
 
-    deinit {
+    isolated deinit {
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
         levelTimer?.invalidate()
         hideTimer?.invalidate()
@@ -136,7 +138,7 @@ final class OverlayController {
 
     private func scheduleHide(after seconds: TimeInterval) {
         hideTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
-            self?.hide()
+            MainActor.assumeIsolated { self?.hide() }
         }
     }
 
@@ -208,10 +210,12 @@ final class OverlayController {
         stopLevelUpdates()
         // 20 Hz reichen für eine flüssige Pegel-Anzeige und kosten praktisch nichts.
         levelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-            guard let self, let provider = self.levelProvider else { return }
-            let (levelDb, duration) = provider()
-            self.model.levelDb = levelDb
-            self.model.duration = duration
+            MainActor.assumeIsolated {
+                guard let self, let provider = self.levelProvider else { return }
+                let (levelDb, duration) = provider()
+                self.model.levelDb = levelDb
+                self.model.duration = duration
+            }
         }
     }
 
@@ -239,6 +243,7 @@ final class OverlayHostingView<Content: View>: NSHostingView<Content> {
 // MARK: - SwiftUI-Inhalt des Overlays
 
 /// Beobachtbares Modell, das der Controller mit Live-Daten füttert.
+@MainActor
 final class OverlayModel: ObservableObject {
     enum Mode {
         case starting(hold: Bool, resuming: Bool = false)

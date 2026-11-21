@@ -6,6 +6,7 @@ import StillePostCore
 /// sie beim Speichern an die App zurück (die schreibt config.json und aktualisiert die
 /// betroffenen Bausteine). Nach dem Schließen beginnt der nächste Entwurf mit
 /// dem aktuellen Stand der Datei.
+@MainActor
 final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     /// Die Rohwerte bleiben für STILLEPOST_OPEN_SETTINGS erhalten.
@@ -91,6 +92,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
 // MARK: - Hauptansicht
 
+@MainActor
 private final class SettingsTabSelection: ObservableObject {
     @Published var tab: SettingsWindowController.Tab
 
@@ -734,10 +736,13 @@ private struct BridgeRow: View {
                 let outcome = try await Self.loadOrCreateToken(forceNew: false)
                 let token = outcome.token
                 if outcome.created { NotificationCenter.default.post(name: .bridgeCredentialsChanged, object: nil) }
-                let identity = try await Task.detached { try BridgeIdentity.loadOrCreate() }.value
-                let payload = try BridgePairing(port: port, identity: identity, token: token, host: host)
-                pairing = PairingDisplay(address: payload.url, fingerprint: identity.fingerprint,
-                                         image: try BridgePairingView.qrImage(data: payload.encoded()))
+                let pairingData = try await Task.detached {
+                    let identity = try BridgeIdentity.loadOrCreate()
+                    let payload = try BridgePairing(port: port, identity: identity, token: token, host: host)
+                    return (address: payload.url, fingerprint: payload.pin, encoded: try payload.encoded())
+                }.value
+                pairing = PairingDisplay(address: pairingData.address, fingerprint: pairingData.fingerprint,
+                                         image: try BridgePairingView.qrImage(data: pairingData.encoded))
                 status = L10n.text("settings.bridge.pair_ready")
             } catch { status = error.localizedDescription }
         }
@@ -749,7 +754,7 @@ private struct BridgeRow: View {
         Task {
             defer { busy = false }
             do {
-                _ = try await Task.detached { try BridgeIdentity.renew() }.value
+                try await Task.detached { _ = try BridgeIdentity.renew() }.value
                 NotificationCenter.default.post(name: .bridgeCredentialsChanged, object: nil)
                 status = L10n.text("settings.bridge.renewed")
             } catch { status = error.localizedDescription }

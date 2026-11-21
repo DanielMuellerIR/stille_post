@@ -4,6 +4,7 @@ import StillePostCore
 
 /// Fenster mit dem Diktat-Verlauf: ansehen, kopieren, fehlgeschlagene erneut
 /// transkribieren, lokal suchen und gezielt löschen.
+@MainActor
 final class HistoryWindowController {
 
     private var window: NSWindow?
@@ -44,6 +45,7 @@ final class HistoryWindowController {
 }
 
 /// Beobachtbares Modell fürs Verlaufsfenster.
+@MainActor
 final class HistoryViewModel: ObservableObject {
     @Published var entries: [HistoryStore.Entry] = []
     @Published var visibleEntries: [HistoryStore.Entry] = []

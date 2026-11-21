@@ -16,10 +16,6 @@ import StillePostCore
 @MainActor
 final class ModelDownloadController {
 
-    /// `nonisolated`, damit der AppDelegate den Controller als normales Feld anlegen
-    /// kann. Der Initialisierer rührt keinen isolierten Zustand an.
-    nonisolated init() {}
-
     private var window: NSWindow?
     private var progressBar: NSProgressIndicator?
     private var statusLabel: NSTextField?

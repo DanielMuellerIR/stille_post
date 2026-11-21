@@ -2,6 +2,7 @@ import AppKit
 import SwiftUI
 import StillePostCore
 
+@MainActor
 final class TestDictationWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private let model: TestDictationViewModel
@@ -20,11 +21,13 @@ final class TestDictationWindowController: NSObject, NSWindowDelegate {
         observers = [NSWorkspace.willSleepNotification, NSWorkspace.screensDidSleepNotification,
                      NSWorkspace.sessionDidResignActiveNotification].map { name in
             NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                if self?.isActive == true { self?.model.cancel() }
+                MainActor.assumeIsolated {
+                    if self?.isActive == true { self?.model.cancel() }
+                }
             }
         }
     }
-    deinit { for token in observers { NSWorkspace.shared.notificationCenter.removeObserver(token) } }
+    isolated deinit { for token in observers { NSWorkspace.shared.notificationCenter.removeObserver(token) } }
     func owns(_ engine: DictationEngine) -> Bool { model.session?.owns(engine) == true }
     func receiveState(_ state: DictationState) {
         model.session?.receiveState(state)
@@ -54,6 +57,7 @@ final class TestDictationWindowController: NSObject, NSWindowDelegate {
     func prepareForTermination() { _ = model.close(); window?.orderOut(nil) }
 }
 
+@MainActor
 final class TestDictationViewModel: ObservableObject {
     @Published var vadStatus = ""
     func refreshVadStatus() { vadStatus = engineProvider()?.vadStatus ?? "" }
@@ -82,7 +86,7 @@ final class TestDictationViewModel: ObservableObject {
         self.canStart = canStart; self.onSettings = onSettings; contextProvider = context
         self.onBegin = onBegin
     }
-    deinit { availabilityTimer?.invalidate() }
+    isolated deinit { availabilityTimer?.invalidate() }
     var state: TestDictationSession.State { session?.state ?? .ready }
     var isActive: Bool { session?.isActive == true }
     var inputAvailable: Bool { context.selectedInputAvailable == true }
@@ -100,9 +104,11 @@ final class TestDictationViewModel: ObservableObject {
         allowed = canStart()
         if availabilityTimer == nil {
             let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-                guard let self else { return }
-                let value = self.canStart()
-                if self.allowed != value { self.allowed = value }
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    let value = self.canStart()
+                    if self.allowed != value { self.allowed = value }
+                }
             }
             availabilityTimer = timer; RunLoop.main.add(timer, forMode: .common)
         }

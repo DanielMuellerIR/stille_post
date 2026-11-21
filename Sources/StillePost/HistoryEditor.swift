@@ -4,6 +4,7 @@ import StillePostCore
 
 /// Ein Editor arbeitet mit seinem Öffnungs-Snapshot. Ein Konflikt erhält den
 /// Entwurf, eine Löschung oder Textfrist entfernt dagegen auch seine RAM-Kopien.
+@MainActor
 final class HistoryEditorModel: ObservableObject, Identifiable {
     let id: UUID
     private let history: HistoryStore
@@ -102,6 +103,7 @@ final class HistoryEditorModel: ObservableObject, Identifiable {
         expireIfNeeded()
         guard !saving, vocabularyConfirmed, let expected = snapshot, expected.canEdit else { return }
         let term = vocabularyTerm, variant = vocabularyVariant
+        let profileID = vocabularyProfileID
         saving = true
         errorMessage = nil
         vocabularySaved = false
@@ -109,7 +111,7 @@ final class HistoryEditorModel: ObservableObject, Identifiable {
             defer { saving = false; saveTask = nil }
             do {
                 let saved = try await history.withEditableSnapshotAsync(expected: expected) {
-                    try ConfigFile().addVocabulary(term: term, variant: variant, profileID: self.vocabularyProfileID)
+                    try ConfigFile().addVocabulary(term: term, variant: variant, profileID: profileID)
                 }
                 onVocabularySaved(saved)
                 vocabularySaved = true
