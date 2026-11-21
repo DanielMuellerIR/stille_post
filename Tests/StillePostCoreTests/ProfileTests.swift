@@ -236,7 +236,7 @@ final class ProfileTests: XCTestCase {
         engine.stop()
         await awaitTestExpectations([english], timeout: 2)
         XCTAssertEqual(languageLog.values.last, "en")
-        XCTAssertFalse(try String(contentsOf: directory.appendingPathComponent("history.json")).contains("The number stays"))
+        XCTAssertFalse(try String(contentsOf: directory.appendingPathComponent("history.json"), encoding: .utf8).contains("The number stays"))
         await engine.shutdown().value
     }
 
@@ -346,7 +346,7 @@ final class ProfileTests: XCTestCase {
         XCTAssertEqual(languageLog.values, ["en"])
         XCTAssertEqual(transport.inputs.count, 1)
         XCTAssertEqual(server.stops, 0)
-        XCTAssertFalse(try String(contentsOf: directory.appendingPathComponent("history.json")).contains("The number stays"))
+        XCTAssertFalse(try String(contentsOf: directory.appendingPathComponent("history.json"), encoding: .utf8).contains("The number stays"))
         transport.beforeClean = nil
         let next = expectation(description: "Neue App-Regel gilt erst beim nächsten Auftrag")
         engine.onResult = { result in XCTAssertEqual(result.text, "Whisper bleibt bei 128."); next.fulfill() }

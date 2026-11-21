@@ -1,4 +1,7 @@
 import XCTest
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import StillePostCore
 
 final class VocabularyRecleanupTests: XCTestCase {
@@ -214,14 +217,14 @@ final class VocabularyRecleanupTests: XCTestCase {
         engine.processForTesting(rawText: "Whis per bleibt bei 128.")
         let vocabulary = try VocabularyRules.adding(term: "Whisper", variant: "Whis per", to: config.cleanup)
         engine.configureVocabulary(vocabulary)
-        await fulfillment(of: [first], timeout: 2)
+        await awaitTestExpectations([first], timeout: 2)
         let second = expectation(description: "Nächster Auftrag nutzt Wörterbuch")
         engine.onResult = { result in
             XCTAssertEqual(result.text, "Whisper bleibt bei 128.")
             second.fulfill()
         }
         engine.processForTesting(rawText: "Whis per bleibt bei 128.")
-        await fulfillment(of: [second], timeout: 2)
+        await awaitTestExpectations([second], timeout: 2)
         XCTAssertEqual(transport.inputs, ["Whis per bleibt bei 128.", "Whisper bleibt bei 128."])
         await engine.shutdown().value
     }
@@ -241,7 +244,7 @@ final class VocabularyRecleanupTests: XCTestCase {
         let router = BridgeRouter(handlers: handlers, maxBodyBytes: 1024, tokenProvider: { "synthetic-fixture" })
         let request = BridgeRequest(method: "POST", path: "/v1/dictate", bearerToken: "synthetic-fixture", body: Data([1]))
         let first = Task { await router.respond(to: request) }
-        await fulfillment(of: [started], timeout: 2)
+        await awaitTestExpectations([started], timeout: 2)
         vocabulary.update(try VocabularyRules.adding(term: "Whisper", variant: "Whis per", to: Config.Cleanup()))
         await gate.release()
         let firstResponse = await first.value
