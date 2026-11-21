@@ -97,7 +97,9 @@ final class LinuxBridgeService: @unchecked Sendable {
     private var socketFD: Int32 = -1
     private var context: OpaquePointer?
     private var sessions: [UUID: Session] = [:]
+    // Zählt auch Anfragen, deren Router-Task nach einem Verbindungsabbruch noch läuft.
     private var bufferedBytes = 0
+    var reservedBytes: Int { queue.sync { bufferedBytes } }
     private var maxBody = 25 * 1024 * 1024
     private var router: BridgeRouter?
     private var handlers: BridgeHandlers?
@@ -127,7 +129,7 @@ final class LinuxBridgeService: @unchecked Sendable {
         var phase = 0, data = Data(), response = Data(), written = 0, reservation = 0
         var deadline = ProcessInfo.processInfo.systemUptime + 30
         var timer: DispatchSourceTimer?
-        var task: Task<Void, Never>?
+        var task: Task<BridgeResponse, Never>?
         init(fd: Int32, tls: OpaquePointer) {
             self.fd = fd
             self.tls = tls
@@ -215,7 +217,6 @@ final class LinuxBridgeService: @unchecked Sendable {
         router = nil
         handlers = nil
         options = nil
-        bufferedBytes = 0
     }
     private func acceptConnections() {
         guard socketFD >= 0, let context else { return }
@@ -322,11 +323,19 @@ final class LinuxBridgeService: @unchecked Sendable {
             session.phase = 2
             session.deadline = ProcessInfo.processInfo.systemUptime + 1800
             let id = session.id
-            session.task = Task { [weak self] in
-                let response = await router.respond(to: request)
+            let reservation = session.reservation
+            session.reservation = 0
+            let task = Task { await router.respond(to: request) }
+            session.task = task
+            Task { [weak self] in
+                // Der Request-Body bleibt bis zum tatsächlichen Task-Ende reserviert.
+                let response = await task.value
                 guard let self else { return }
                 self.queue.async { [weak self] in
-                    guard let self, let session = self.sessions[id] else { return }
+                    guard let self else { return }
+                    self.bufferedBytes -= reservation
+                    guard let session = self.sessions[id] else { return }
+                    session.task = nil
                     self.respond(response, session)
                 }
             }

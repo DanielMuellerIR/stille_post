@@ -101,7 +101,9 @@ final class LinuxBridgeTests: XCTestCase {
         guard status == 0 else { throw LinuxFailure.protocolFailure }
         return Int(UInt16(bigEndian: address.sin_port))
     }
-    private func exchange(port: Int, certificate: URL, request: String) throws -> String {
+    private func connect(
+        port: Int, certificate: URL
+    ) throws -> (process: Process, input: Pipe, output: Pipe) {
         let process = Process()
         let input = Pipe()
         let output = Pipe()
@@ -114,6 +116,10 @@ final class LinuxBridgeTests: XCTestCase {
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
         try process.run()
+        return (process, input, output)
+    }
+    private func exchange(port: Int, certificate: URL, request: String) throws -> String {
+        let (process, input, output) = try connect(port: port, certificate: certificate)
         let timeout = DispatchWorkItem { LinuxChildProcess.stop(process) }
         DispatchQueue.global().asyncAfter(deadline: .now() + 5, execute: timeout)
         defer {
@@ -170,5 +176,93 @@ final class LinuxBridgeTests: XCTestCase {
                 "POST /v1/dictate HTTP/1.1\r\nHost: localhost\r\nAuthorization: Bearer linux-test-token\r\nContent-Length: 1048577\r\n\r\n"
         )
         XCTAssertTrue(oversized.hasPrefix("HTTP/1.1 413"))
+    }
+
+    func testDisconnectKeepsRequestBytesReservedUntilHandlerReturns() async throws {
+        _ = Glibc.signal(SIGPIPE, SIG_IGN)
+        let identity = try identity()
+        let port = try freePort()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let certificate = directory.appendingPathComponent("certificate.pem")
+        try Data(identity.certificate.utf8).write(to: certificate)
+        let entered = expectation(description: "Router verarbeitet den Request")
+        let disconnected = expectation(description: "Verbindungsabbruch storniert die Verarbeitung")
+        let gate = RequestGate()
+        defer { Task { await gate.release() } }
+        let service = LinuxBridgeService(
+            identityProvider: { identity }, tokenProvider: { "linux-test-token" },
+            handlersProvider: { _ in
+                BridgeHandlers(
+                    transcribe: { _ in
+                        await withTaskCancellationHandler {
+                            entered.fulfill()
+                            await gate.wait()
+                            return "Künstlicher Test"
+                        } onCancel: {
+                            disconnected.fulfill()
+                        }
+                    },
+                    cleanup: { text in
+                        CleanupService.Result(
+                            text: text, usedFallback: false, fallbackReason: nil, endpoint: nil)
+                    }, cleanupEnabled: false, version: "test")
+            })
+        defer { service.stop() }
+
+        let ready = expectation(description: "TLS listener")
+        service.onStatus = { active, _ in if active { ready.fulfill() } }
+        var config = Config()
+        config.bridge.enabled = true
+        config.bridge.port = port
+        config.bridge.maxRequestMegabytes = 1
+        service.configure(config)
+        let readiness = await XCTWaiter.fulfillment(of: [ready], timeout: 3)
+        XCTAssertEqual(readiness, .completed)
+
+        let client = try connect(port: port, certificate: certificate)
+        defer { LinuxChildProcess.stop(client.process) }
+        let body = "Künstliche Audiodaten"
+        let request = Data(("POST /v1/dictate HTTP/1.1\r\nHost: localhost\r\n"
+            + "Authorization: Bearer linux-test-token\r\n"
+            + "Content-Length: \(body.utf8.count)\r\n\r\n" + body).utf8)
+        try client.input.fileHandleForWriting.write(contentsOf: request)
+        let processing = await XCTWaiter.fulfillment(of: [entered], timeout: 3)
+        XCTAssertEqual(processing, .completed)
+        XCTAssertEqual(service.reservedBytes, request.count)
+
+        LinuxChildProcess.stop(client.process)
+        let cancelled = await XCTWaiter.fulfillment(of: [disconnected], timeout: 3)
+        XCTAssertEqual(cancelled, .completed)
+        XCTAssertEqual(service.reservedBytes, request.count)
+        service.stop()
+        XCTAssertEqual(service.reservedBytes, request.count)
+
+        await gate.release()
+        let deadline = ProcessInfo.processInfo.systemUptime + 2
+        while service.reservedBytes != 0, ProcessInfo.processInfo.systemUptime < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(service.reservedBytes, 0)
+    }
+
+}
+
+
+private actor RequestGate {
+    private var released = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func wait() async {
+        guard !released else { return }
+        await withCheckedContinuation { continuation = $0 }
+    }
+
+    func release() {
+        released = true
+        continuation?.resume()
+        continuation = nil
     }
 }
