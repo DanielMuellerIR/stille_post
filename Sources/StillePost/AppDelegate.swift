@@ -548,9 +548,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     }
 
     private var targetAppBundleID: String? {
-        if let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
-           front != Bundle.main.bundleIdentifier { return front }
-        return lastExternalAppBundleID
+        PasteService.requestAppBundleID(frontmost: NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+                                        lastExternal: lastExternalAppBundleID)
     }
 
     private var prospectiveConfiguration: Config {
@@ -1103,7 +1102,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
 
     private func startRegularDictation(onlyWhile shouldContinue: @escaping () -> Bool = { true }) {
         guard !terminationPending, canRecallResult, shouldContinue(), releaseTemporaryResultOwnership() else { return }
-        let start = PasteService.captureDictationStart(allowPaste: syntheticResultPasteboard == nil)
+        let start = PasteService.captureDictationStart(allowPaste: syntheticResultPasteboard == nil,
+                                                       lastExternalAppBundleID: lastExternalAppBundleID)
         pasteTarget = start.target
         engine.start(appBundleID: start.appBundleID, onlyWhile: shouldContinue)
         // Beim Warten auf AX kann die Haltetaste bereits losgelassen worden sein.

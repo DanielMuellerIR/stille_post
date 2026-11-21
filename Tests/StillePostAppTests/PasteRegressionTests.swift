@@ -4,6 +4,31 @@ import AppKit
 import StillePostCore
 
 final class PasteRegressionTests: XCTestCase {
+    @MainActor func testDictationInOwnWindowUsesLastExternalProfileWithoutPasteTarget() throws {
+        let foregroundID = "com.apple.finder"
+        let externalID = "example.test.editor"
+        guard let application = NSRunningApplication.runningApplications(withBundleIdentifier: foregroundID).first else {
+            throw XCTSkip("Für die Vordergrundprobe wird eine laufende Finder-Instanz benötigt.")
+        }
+        var reads = 0
+        var access = PasteService.Access()
+        access.frontmost = { reads += 1; return application }
+        access.trusted = { XCTFail("Eigenes Fenster darf keine AX-Einfügeprüfung auslösen."); return false }
+        let own = PasteService.captureDictationStart(allowPaste: true, lastExternalAppBundleID: externalID,
+                                                     ownBundleID: foregroundID, access: access)
+        XCTAssertEqual(own.appBundleID, externalID)
+        XCTAssertNil(own.target)
+        XCTAssertEqual(reads, 1)
+
+        access.trusted = { true }
+        access.read = { _, _, _ in nil }
+        let external = PasteService.captureDictationStart(allowPaste: true, lastExternalAppBundleID: externalID,
+                                                          ownBundleID: "example.test.stillepost", access: access)
+        XCTAssertEqual(external.appBundleID, foregroundID)
+        XCTAssertNotNil(external.target)
+        XCTAssertEqual(reads, 2)
+    }
+
     @MainActor func testPasteChecksTargetAndClipboardDuringHandoff() async throws {
         guard let application = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first else {
             throw XCTSkip("Für diese Probe wird die Prozessidentität einer laufenden Finder-Instanz benötigt.")

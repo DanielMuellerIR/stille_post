@@ -33,17 +33,27 @@ enum PasteService {
         fileprivate let fieldNotExposed: Bool
     }
 
+    static func requestAppBundleID(frontmost: String?, lastExternal: String?,
+                                   ownBundleID: String? = Bundle.main.bundleIdentifier) -> String? {
+        guard let frontmost, frontmost != ownBundleID else { return lastExternal }
+        return frontmost
+    }
+
     /// Profilwahl und Ausgabeziel stammen aus demselben Vordergrund-Snapshot.
-    static func captureDictationStart(allowPaste: Bool, access: Access? = nil) -> (appBundleID: String?, target: Target?) {
+    static func captureDictationStart(allowPaste: Bool, lastExternalAppBundleID: String?,
+                                      ownBundleID: String? = Bundle.main.bundleIdentifier,
+                                      access: Access? = nil) -> (appBundleID: String?, target: Target?) {
         let access = access ?? Access()
         let deadline = ProcessInfo.processInfo.systemUptime + 0.25
-        guard let application = access.frontmost(), let identity = identity(of: application) else {
-            return (nil, nil)
+        let application = access.frontmost()
+        let appBundleID = requestAppBundleID(frontmost: application?.bundleIdentifier,
+                                             lastExternal: lastExternalAppBundleID, ownBundleID: ownBundleID)
+        guard allowPaste, let application, application.bundleIdentifier != ownBundleID,
+              let identity = identity(of: application), access.trusted() else {
+            return (appBundleID, nil)
         }
-        let target = allowPaste && access.trusted()
-            ? captureTarget(application: application, identity: identity, access: access, deadline: deadline)
-            : nil
-        return (identity.bundleIdentifier, target)
+        let target = captureTarget(application: application, identity: identity, access: access, deadline: deadline)
+        return (appBundleID, target)
     }
 
     /// Liest nur Zielidentitäten, niemals den Inhalt eines fremden Textfelds.
