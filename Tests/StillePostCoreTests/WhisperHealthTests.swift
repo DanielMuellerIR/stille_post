@@ -61,3 +61,23 @@ private final class HealthTranscriber: DictationTranscriber {
     func transcribe(samples: [Float]) async throws -> String { "unused" }
     func transcribe(wavFile: URL) async throws -> String { "unused" }
 }
+
+final class WhisperArtifactTests: XCTestCase {
+    func testPreservesDictatedParenthesesAndBrackets() {
+        let text = "Termin (nur intern) morgen. Bitte [vorher prüfen]."
+        XCTAssertEqual(WhisperClient.cleanWhisperArtifacts(text), text)
+    }
+
+    func testRemovesKnownSoundMarkersWithoutJoiningOrChangingWords() {
+        XCTAssertEqual(
+            WhisperClient.cleanWhisperArtifacts("[MUSIK] Termin (nur intern) [Applaus] morgen. (Räuspern)"),
+            "Termin (nur intern) morgen."
+        )
+        XCTAssertEqual(WhisperClient.cleanWhisperArtifacts("[music] (laughter) [BLANK_AUDIO]"), "")
+        XCTAssertEqual(WhisperClient.cleanWhisperArtifacts("zwei[Applaus](Music)Wörter"), "zwei Wörter")
+        let text = "(über Musik) [Applaus ist optional] (Lachen]"
+        XCTAssertEqual(WhisperClient.cleanWhisperArtifacts(text), text)
+        XCTAssertEqual(WhisperClient.cleanWhisperArtifacts("Zeile  eins\n[Musik] Zeile zwei"),
+                       "Zeile  eins\n Zeile zwei")
+    }
+}

@@ -126,14 +126,29 @@ public final class WhisperClient {
 
     public func isReachable() async -> Bool { await health() == .ready }
 
+    private static let soundMarkerPattern: String = {
+        let labels = [
+            "Musik", "Music", "Applaus", "Applause", "Lachen", "Laughter",
+            "Räuspern", "Clears throat", "Throat clearing", "Husten", "Coughing", "BLANK_AUDIO",
+        ].joined(separator: "|")
+        let label = #"\h*(?:\#(labels))\h*"#
+        return #"(?:\[\#(label)\]|\(\#(label)\))"#
+    }()
+
     /// Entfernt bekannte Whisper-Artefakte: Marker wie [Musik], (Räuspern) und
     /// typische Halluzinations-Phrasen, die Whisper bei (Rest-)Stille erfindet.
     static func cleanWhisperArtifacts(_ text: String) -> String {
         var result = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Marker in eckigen/runden Klammern am Stück entfernen, z. B. "[Musik]", "(Applaus)".
-        for pattern in [#"\[[^\]]{1,40}\]"#, #"\([^)]{1,40}\)"#] {
-            result = result.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
-        }
+        let markers = #"\#(soundMarkerPattern)(?:\h*\#(soundMarkerPattern))*"#
+        // Nur Leerzeichen direkt an entfernten Markern ändern und benachbarte Wörter getrennt halten.
+        result = result.replacingOccurrences(
+            of: #"(?<=[\p{L}\p{N}])\#(markers)(?=[\p{L}\p{N}])"#,
+            with: " ", options: [.regularExpression, .caseInsensitive]
+        )
+        result = result.replacingOccurrences(
+            of: #"(?:(?<=\h)\#(markers)\h*|\#(markers))"#,
+            with: "", options: [.regularExpression, .caseInsensitive]
+        )
         // Bekannte Stille-Halluzinationen (ganze Ausgabe besteht nur daraus -> leer).
         let hallucinations = [
             "untertitel im auftrag des zdf für funk, 2017",
