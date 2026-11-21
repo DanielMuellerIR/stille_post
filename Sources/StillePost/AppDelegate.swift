@@ -612,24 +612,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         return result
     }
 
-    private func adoptRequestSettings(_ saved: Config) {
-        clearPreviewForChangedSettings(saved)
-        config.appProfiles = saved.appProfiles
-        config.profiles = saved.profiles
-        config.defaultProfileID = saved.defaultProfileID
-        config.selectedProfileID = saved.selectedProfileID
-        config.whisper.language = saved.whisper.language
-        config.cleanup = saved.cleanup
-        config.history = saved.history
+    private func configUpdatingRequestSettings(from saved: Config) -> Config {
+        var updated = config
+        updated.appProfiles = saved.appProfiles
+        updated.profiles = saved.profiles
+        updated.defaultProfileID = saved.defaultProfileID
+        updated.selectedProfileID = saved.selectedProfileID
+        updated.whisper.language = saved.whisper.language
+        updated.cleanup = saved.cleanup
+        updated.history = saved.history
+        return updated
     }
 
-    private func clearPreviewForChangedSettings(_ updated: Config) {
-        if config.profiles != updated.profiles || config.selectedProfileID != updated.selectedProfileID
-            || config.defaultProfileID != updated.defaultProfileID || config.appProfiles != updated.appProfiles
-            || config.whisper.language != updated.whisper.language || config.cleanup != updated.cleanup
-            || config.history != updated.history {
-            engine.suppressTranscriptPreview()
-        }
+    private func adoptRequestSettings(_ saved: Config) {
+        let updated = configUpdatingRequestSettings(from: saved)
+        if updated != config { engine.suppressTranscriptPreview() }
+        config = updated
     }
 
     private func updateRequestConfiguration() {
@@ -643,14 +641,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     /// oder Bedienung dürfen einen laufenden Auftrag nicht abbrechen.
     private func applySettings(_ newConfig: Config, expected: Config) throws {
         guard !terminationPending else { return }
-        var requestOnly = config
-        requestOnly.history = newConfig.history
-        requestOnly.cleanup = newConfig.cleanup
-        requestOnly.whisper.language = newConfig.whisper.language
-        requestOnly.appProfiles = newConfig.appProfiles
-        requestOnly.profiles = newConfig.profiles
-        requestOnly.defaultProfileID = newConfig.defaultProfileID
-        requestOnly.selectedProfileID = newConfig.selectedProfileID
+        let updatedRequestSettings = configUpdatingRequestSettings(from: newConfig)
+        var requestOnly = updatedRequestSettings
         requestOnly.hotkeyMode = newConfig.hotkeyMode
         requestOnly.hotkey = newConfig.hotkey
         requestOnly.lastResultHotkey = newConfig.lastResultHotkey
@@ -663,7 +655,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         }
         try newConfig.save(expected: expected)
         if !needsRebuild {
-            clearPreviewForChangedSettings(newConfig)
+            if updatedRequestSettings != config { engine.suppressTranscriptPreview() }
             config = newConfig
             if changesBindings { registerHotkey() }
             updateRequestConfiguration()

@@ -443,7 +443,7 @@ struct CleanupTab: View {
             if showsVocabulary { VocabularyEditor(cleanup: $cleanup) }
 
             Section(L10n.text("settings.cleanup.primary")) {
-                EndpointEditor(endpoint: primaryBinding)
+                EndpointEditor(endpoint: $cleanup.primaryEndpoint)
             }
 
             Section {
@@ -507,31 +507,6 @@ struct CleanupTab: View {
             guard let index = fallbackIndex(for: id) else { return }
             cleanup.fallbacks[index] = endpoint
         })
-    }
-
-    /// Der primäre Endpoint liegt in der Config als flache Felder (historisch) —
-    /// dieses Binding zeigt ihn dem Editor als ganz normalen Endpoint.
-    private var primaryBinding: Binding<Config.Cleanup.Endpoint> {
-        Binding(
-            get: {
-                var endpoint = Config.Cleanup.Endpoint()
-                endpoint.provider = cleanup.provider
-                endpoint.ollamaURL = cleanup.ollamaURL
-                endpoint.model = cleanup.model
-                endpoint.numCtx = cleanup.numCtx
-                endpoint.keepAlive = cleanup.keepAlive
-                endpoint.remote = cleanup.remote
-                return endpoint
-            },
-            set: { endpoint in
-                cleanup.provider = endpoint.provider
-                cleanup.ollamaURL = endpoint.ollamaURL
-                cleanup.model = endpoint.model
-                cleanup.numCtx = endpoint.numCtx
-                cleanup.keepAlive = endpoint.keepAlive
-                cleanup.remote = endpoint.remote
-            }
-        )
     }
 }
 
