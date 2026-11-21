@@ -33,6 +33,19 @@ enum PasteService {
         fileprivate let fieldNotExposed: Bool
     }
 
+    /// Profilwahl und Ausgabeziel stammen aus demselben Vordergrund-Snapshot.
+    static func captureDictationStart(allowPaste: Bool, access: Access? = nil) -> (appBundleID: String?, target: Target?) {
+        let access = access ?? Access()
+        let deadline = ProcessInfo.processInfo.systemUptime + 0.25
+        guard let application = access.frontmost(), let identity = identity(of: application) else {
+            return (nil, nil)
+        }
+        let target = allowPaste && access.trusted()
+            ? captureTarget(application: application, identity: identity, access: access, deadline: deadline)
+            : nil
+        return (identity.bundleIdentifier, target)
+    }
+
     /// Liest nur Zielidentitäten, niemals den Inhalt eines fremden Textfelds.
     /// Eine hängende Ziel-App darf den Aufnahmebeginn nicht lange blockieren.
     static func captureTarget(access: Access? = nil) -> Target? {
@@ -43,7 +56,12 @@ enum PasteService {
         guard access.trusted(),
               let application = access.frontmost(),
               let identity = identity(of: application) else { return nil }
-        let app = AXUIElementCreateApplication(application.processIdentifier)
+        return captureTarget(application: application, identity: identity, access: access, deadline: deadline)
+    }
+
+    private static func captureTarget(application: NSRunningApplication, identity: PasteTargetPolicy.ApplicationIdentity,
+                                      access: Access, deadline: TimeInterval) -> Target {
+        let app = AXUIElementCreateApplication(identity.processIdentifier)
         let window = element(kAXFocusedWindowAttribute, of: app, deadline: deadline, access: access)
         var field = element(kAXFocusedUIElementAttribute, of: app, deadline: deadline, access: access)
         let fieldNotExposed = field == nil

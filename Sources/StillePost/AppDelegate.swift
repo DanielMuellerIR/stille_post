@@ -328,12 +328,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         overlay.onClickStop = { [weak self] in
             guard let self, !self.hasActiveTemporaryDictation else { return }
             if self.engine.state == .starting { self.cancelDictation() }
-            else {
-                if self.canRecallResult {
-                    guard self.releaseTemporaryResultOwnership() else { return }
-                }
-                self.engine.toggle()
-            }
+            else { self.toggleRegularDictation() }
         }
         overlay.onPauseResume = { [weak self] in self?.togglePauseResume() }
         overlay.levelProvider = { [weak self] in
@@ -476,15 +471,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         case .unavailable: overlay.show(.failure(L10n.text("hotkey.hold.unavailable")))
         case .none: break
         case .toggle:
-            if canRecallResult {
-                guard releaseTemporaryResultOwnership() else { return }
-            }
-            engine.toggle()
+            toggleRegularDictation()
         case .start:
-            guard releaseTemporaryResultOwnership() else { return }
-            engine.start(onlyWhile: { [weak self] in
+            startRegularDictation { [weak self] in
                 self?.dictationHotkeyState.ownsHold == true && self?.hotkey?.isCombinationHeld == true
-            })
+            }
         case .stop: engine.stop()
         case .cancel, .cancelAtLimit:
             cancelDictation()
@@ -903,7 +894,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             self.overlay.liveTranscriptPreview = source.isTranscriptPreviewEnabled
             switch state {
             case .starting:
-                self.pasteTarget = self.capturePasteTarget()
                 self.overlay.show(.starting(hold: self.dictationHotkeyState.ownsHold))
             case .resuming:
                 self.overlay.show(.starting(hold: self.dictationHotkeyState.ownsHold, resuming: true))
@@ -1096,8 +1086,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         else if engine.state == .paused { engine.resume() }
     }
     @objc private func toggleDictation() {
-        guard !hasActiveTemporaryDictation, releaseTemporaryResultOwnership() else { return }
-        engine.toggle()
+        toggleRegularDictation()
+    }
+
+    private func toggleRegularDictation() {
+        guard !terminationPending, !hasActiveTemporaryDictation else { return }
+        switch engine.state {
+        case .idle, .error:
+            startRegularDictation()
+        case .recording, .paused, .resuming:
+            engine.stop()
+        case .starting, .processing:
+            break
+        }
+    }
+
+    private func startRegularDictation(onlyWhile shouldContinue: @escaping () -> Bool = { true }) {
+        guard !terminationPending, canRecallResult, shouldContinue(), releaseTemporaryResultOwnership() else { return }
+        let start = PasteService.captureDictationStart(allowPaste: syntheticResultPasteboard == nil)
+        pasteTarget = start.target
+        engine.start(appBundleID: start.appBundleID, onlyWhile: shouldContinue)
+        // Beim Warten auf AX kann die Haltetaste bereits losgelassen worden sein.
+        if engine.state != .starting { pasteTarget = nil }
     }
     @objc private func cancelDictation() {
         pasteTarget = nil
