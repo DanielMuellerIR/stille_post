@@ -244,12 +244,16 @@ class UpdateTests(unittest.TestCase):
 
         # Ein später gebautes Archiv kann dieselbe Versionsnummer tragen. Der
         # Desktop-Eintrag muss zum bereits installierten Paket gehören.
-        (source / "stillepost.desktop").write_text("[Desktop Entry]\nName=Not Installed\n")
+        (source / "stillepost.desktop").write_text(
+            "[Desktop Entry]\nName=Not Installed\n"
+        )
 
         result = subprocess.run(command, env=env, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         self.assertIn("vervollständigt", result.stdout.decode())
-        desktop = self.root / "applications/io.github.danielmuellerir.stillepost.desktop"
+        desktop = (
+            self.root / "applications/io.github.danielmuellerir.stillepost.desktop"
+        )
         self.assertIn("Name=Stille Post", desktop.read_text())
         self.assertTrue(os.access(launcher, os.X_OK))
         self.assertEqual(current.resolve(), installed)
