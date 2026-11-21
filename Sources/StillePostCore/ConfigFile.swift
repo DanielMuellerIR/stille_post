@@ -1,13 +1,8 @@
 import Foundation
-#if canImport(Darwin)
-import Darwin
-#else
-import Glibc
-#endif
 
 /// Laden für Änderungen, Prüfen und atomarer Schreibabschluss teilen denselben Dateilock.
 /// Wörterbuchaktionen ändern nur ihre Felder im frischen Konfigurationsstand.
-public final class ConfigFile: @unchecked Sendable {
+public final class ConfigFile: Sendable {
     public let url: URL
 
     public init(url: URL = Config.configFile) { self.url = url }
@@ -72,14 +67,6 @@ public final class ConfigFile: @unchecked Sendable {
     }
 
     private func locked<T>(_ body: () throws -> T) throws -> T {
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let descriptor = url.appendingPathExtension("lock").path.withCString {
-            open($0, O_CREAT | O_RDWR, mode_t(S_IRUSR | S_IWUSR))
-        }
-        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        defer { _ = close(descriptor) }
-        guard flock(descriptor, LOCK_EX) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        defer { _ = flock(descriptor, LOCK_UN) }
-        return try body()
+        try AdvisoryFileLock.withExclusiveAccess(at: url.appendingPathExtension("lock"), body)
     }
 }

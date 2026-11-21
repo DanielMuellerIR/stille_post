@@ -148,8 +148,14 @@ public final class HistoryStore: @unchecked Sendable {
         }
     }
 
-    /// Wird nach jeder Änderung aufgerufen (fürs Aktualisieren des Verlaufsfensters).
-    public var onChange: (() -> Void)?
+    /// Läuft nach einer Änderung außerhalb der History-Queue und der Dateisperre.
+    public var onChange: (@Sendable () -> Void)? {
+        get { observerLock.withLock { changeObserver } }
+        set { observerLock.withLock { changeObserver = newValue } }
+    }
+
+    private let observerLock = NSLock()
+    private var changeObserver: (@Sendable () -> Void)?
 
     private let historyFile: URL
     private let audioDir: URL
@@ -215,6 +221,8 @@ public final class HistoryStore: @unchecked Sendable {
     public func newRecordingURL() -> URL {
         // ISO-Zeitstempel im Dateinamen -> alphabetisch = chronologisch sortiert.
         let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = "yyyy-MM-dd'T'HH-mm-ss"
         let name = "aufnahme-\(formatter.string(from: Date()))-\(UUID().uuidString.prefix(6)).wav"
         return audioDir.appendingPathComponent(name)
@@ -711,34 +719,12 @@ public final class HistoryStore: @unchecked Sendable {
     /// `flock` schützt App und CLI gegeneinander. Entscheidend ist, dass Laden,
     /// Ändern und atomarer Schreibabschluss innerhalb desselben Locks liegen.
     private func withFileLock<T>(_ body: () throws -> T) throws -> T {
-        try FileManager.default.createDirectory(
-            at: historyFile.deletingLastPathComponent(), withIntermediateDirectories: true
-        )
-        let descriptor = lockFile.path.withCString {
-            open($0, O_CREAT | O_RDWR, mode_t(S_IRUSR | S_IWUSR))
-        }
-        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
-        defer { _ = close(descriptor) }
-        guard flock(descriptor, LOCK_EX) == 0 else {
-            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
-        }
-        defer { _ = flock(descriptor, LOCK_UN) }
-        return try body()
+        try AdvisoryFileLock.withExclusiveAccess(at: lockFile, body)
     }
 
-    /// Gibt den Namen zurück, wenn er wirklich nur ein Dateiname ist — sonst nil.
-    ///
-    /// `lastPathComponent` ist hier das Maß: Bei „../woanders.wav“ oder
-    /// „unter/ordner.wav“ liefert es etwas anderes als den Namen selbst, und
-    /// genau daran erkennt man den Ausbruch aus dem Aufnahme-Ordner. Lesen und
-    /// Löschen benutzen dieselbe Prüfung; eine Angabe, die zum Löschen zu
-    /// unsicher ist, darf auch nicht gelesen werden.
+    /// Historieneinträge dürfen nur eine einzelne Dateikomponente enthalten.
     private static func safeAudioName(_ name: String) -> String? {
-        // Beim Wurzelpfad ist lastPathComponent ebenfalls "/". Ohne diese
-        // zusätzliche Grenze würde appendingPathComponent den Aufnahmeordner
-        // selbst adressieren und eine Dateilöschung könnte ihn ganz entfernen.
-        guard !name.isEmpty, !name.contains("/"), !name.contains("\0"),
-              URL(fileURLWithPath: name).lastPathComponent == name else {
+        guard !name.isEmpty, name != ".", name != "..", !name.contains("/"), !name.contains("\0") else {
             return nil
         }
         return name
