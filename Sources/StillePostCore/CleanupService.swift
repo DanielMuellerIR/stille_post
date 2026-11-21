@@ -321,23 +321,22 @@ public final class CleanupService: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: [
-            "model": endpoint.model,
-            "prompt": "",
-            "keep_alive": Self.keepAliveValue(endpoint.keepAlive),
-            "options": Self.ollamaOptions(endpoint: endpoint),
-        ] as [String: Any])
+        let payload = OllamaWarmUpRequest(model: endpoint.model, keepAlive: Self.keepAliveValue(endpoint.keepAlive),
+                                          options: Self.ollamaOptions(endpoint: endpoint))
+        guard let body = try? JSONEncoder().encode(payload) else { return }
+        request.httpBody = body
         guard allowed(request) else { return }
         transport.sendWarmUp(request)  // Antwort ist egal, reines Vorwärmen
     }
 
-    private static func ollamaOptions(endpoint: Config.Cleanup.Endpoint, chat: Bool = false) -> [String: Any] {
-        var options: [String: Any] = ["num_ctx": endpoint.numCtx]
-        if chat { options["temperature"] = 0; options["repeat_penalty"] = 1.0 }
+    private static func ollamaOptions(endpoint: Config.Cleanup.Endpoint, chat: Bool = false) -> OllamaOptions {
 #if os(Linux)
-        if CleanupNetworkPolicy.allows(URL(string: endpoint.ollamaURL)) { options["num_thread"] = 4 }
+        let threadCount: Int? = CleanupNetworkPolicy.allows(URL(string: endpoint.ollamaURL)) ? 4 : nil
+#else
+        let threadCount: Int? = nil
 #endif
-        return options
+        return OllamaOptions(contextSize: endpoint.numCtx, threadCount: threadCount,
+                             temperature: chat ? 0 : nil, repeatPenalty: chat ? 1 : nil)
     }
 
     /// Übersetzt den keep_alive-Wert aus der Config in das, was Ollama im JSON erwartet.
@@ -351,13 +350,13 @@ public final class CleanupService: Sendable {
     /// landen bewusst auf einem befristeten Wert statt roh bei Ollama: Ein
     /// abgelehnter Request würde die ganze Bereinigung kosten, und ein Tippfehler
     /// soll erst recht nicht dauerhaft RAM belegen.
-    static func keepAliveValue(_ raw: String) -> Any {
+    static func keepAliveValue(_ raw: String) -> OllamaKeepAlive {
         let value = raw.trimmingCharacters(in: .whitespaces).lowercased()
-        if let seconds = Int(value) { return seconds }
+        if let seconds = Int(value) { return .seconds(seconds) }
         if value.range(of: "^[0-9]+(\\.[0-9]+)?(ms|s|m|h)$", options: .regularExpression) != nil {
-            return value
+            return .duration(value)
         }
-        return "30m"
+        return .duration("30m")
     }
 
     /// Soll dieser Wert das Modell DAUERHAFT geladen halten? (Ollama: jede negative
@@ -365,7 +364,8 @@ public final class CleanupService: Sendable {
     /// neu anpinnt — bei einem befristeten Wert darf sie das nicht, sonst liefe die
     /// eingestellte Frist nie ab (siehe AppDelegate).
     public static func pinsForever(_ raw: String) -> Bool {
-        (keepAliveValue(raw) as? Int).map { $0 < 0 } ?? false
+        guard case .seconds(let seconds) = keepAliveValue(raw) else { return false }
+        return seconds < 0
     }
 
     /// Antwortet der Ollama-Server unter dieser URL? (GET /api/version, 2-s-Timeout)
@@ -502,23 +502,11 @@ public final class CleanupService: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "model": endpoint.model,
-            "stream": streaming,
-            // Reasoning-/Thinking-Modus ausschalten: Fürs Textputzen bringt "Nachdenken"
-            // nichts außer VIEL Wartezeit (gemessen: 53 s statt <1 s bei qwen3.5:9b).
-            // Nicht-Thinking-Modelle ignorieren das Feld einfach.
-            "think": false,
-            // Wie lange das Modell nach diesem Diktat geladen bleibt — aus der Config
-            // des Endpoints (siehe keepAliveValue). Muss identisch zum Vorwärm-Request
-            // sein, sonst verschiebt jeder Diktat-Zyklus die Frist anders als gedacht.
-            "keep_alive": Self.keepAliveValue(endpoint.keepAlive),
-            "options": Self.ollamaOptions(endpoint: endpoint, chat: true),
-            "messages": [
-                ["role": "system", "content": requestSystemPrompt],
-                ["role": "user", "content": text],
-            ],
-        ] as [String: Any])
+        let payload = OllamaChatRequest(model: endpoint.model, stream: streaming,
+                                        keepAlive: Self.keepAliveValue(endpoint.keepAlive),
+                                        options: Self.ollamaOptions(endpoint: endpoint, chat: true),
+                                        messages: chatMessages(for: text))
+        request.httpBody = try JSONEncoder().encode(payload)
 
         try requireAllowed(request)
         if streaming {
@@ -562,9 +550,7 @@ public final class CleanupService: Sendable {
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw CleanupError.serverError(body: String(data: data, encoding: .utf8) ?? "")
         }
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let message = json["message"] as? [String: Any],
-              let content = message["content"] as? String else {
+        guard let content = try? JSONDecoder().decode(OllamaChatResponse.self, from: data).message.content else {
             throw CleanupError.badResponse
         }
         return Self.stripThinking(content, for: text).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -584,7 +570,6 @@ public final class CleanupService: Sendable {
 
     private struct OllamaStreamFrame: Decodable {
         private enum CodingKeys: String, CodingKey { case error, done, message }
-        private struct Message: Decodable { let content: String }
 
         let chunk: String?
         let done: Bool
@@ -595,7 +580,7 @@ public final class CleanupService: Sendable {
                 throw CleanupError.providerError(detail)
             }
             done = try frame.decode(Bool.self, forKey: .done)
-            chunk = (try? frame.decode(Message.self, forKey: .message))?.content
+            chunk = (try? frame.decode(CleanupResponseMessage.self, forKey: .message))?.content
             guard chunk != nil || done else { throw CleanupError.invalidStreamFrame }
         }
     }
@@ -654,26 +639,21 @@ public final class CleanupService: Sendable {
             }
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
-        request.httpBody = try JSONSerialization.data(withJSONObject: [
-            "model": endpoint.remote.model,
-            "temperature": 0,
-            "messages": [
-                ["role": "system", "content": requestSystemPrompt],
-                ["role": "user", "content": text],
-            ],
-        ] as [String: Any])
+        request.httpBody = try JSONEncoder().encode(OpenAIChatRequest(model: endpoint.remote.model,
+                                                                      messages: chatMessages(for: text)))
 
         let (data, response) = try await transport.data(for: request, probing: false)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw CleanupError.serverError(body: String(data: data, encoding: .utf8) ?? "")
         }
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = json["choices"] as? [[String: Any]],
-              let message = choices.first?["message"] as? [String: Any],
-              let content = message["content"] as? String else {
+        guard let content = try? JSONDecoder().decode(OpenAIChatResponse.self, from: data).first?.message.content else {
             throw CleanupError.badResponse
         }
         return Self.stripThinking(content, for: text).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func chatMessages(for text: String) -> [CleanupChatMessage] {
+        [.init(role: .system, content: requestSystemPrompt), .init(role: .user, content: text)]
     }
 
     // MARK: - API-Key-Bezug (nie aus der Config-Datei!)

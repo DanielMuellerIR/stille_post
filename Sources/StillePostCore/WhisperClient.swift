@@ -97,8 +97,8 @@ public final class WhisperClient: Sendable {
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw WhisperError.serverError(body: String(data: data, encoding: .utf8) ?? "")
         }
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let text = json["text"] as? String else {
+        struct Transcript: Decodable { let text: String }
+        guard let text = try? JSONDecoder().decode(Transcript.self, from: data).text else {
             throw WhisperError.badResponse
         }
         return Self.cleanWhisperArtifacts(text)

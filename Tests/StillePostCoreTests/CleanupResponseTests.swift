@@ -70,11 +70,43 @@ final class CleanupResponseTests: XCTestCase {
         let chatOptions = try XCTUnwrap(chat["options"] as? [String: Any])
         XCTAssertEqual(warmOptions["num_ctx"] as? Int, 8192)
         XCTAssertEqual(chatOptions["num_ctx"] as? Int, 8192)
+#if os(Linux)
+        XCTAssertEqual(warmOptions["num_thread"] as? Int, 4)
+        XCTAssertEqual(chatOptions["num_thread"] as? Int, 4)
+#else
+        XCTAssertNil(warmOptions["num_thread"])
+        XCTAssertNil(chatOptions["num_thread"])
+#endif
         XCTAssertEqual(warm["keep_alive"] as? String, "2h")
         XCTAssertEqual(chat["keep_alive"] as? String, "2h")
         XCTAssertEqual(warm["model"] as? String, chat["model"] as? String)
         XCTAssertEqual(chat["think"] as? Bool, false)
         XCTAssertEqual(chat["stream"] as? Bool, true)
+    }
+
+    func testOpenAIChatUsesFirstChoiceAndSendsExpectedFields() async throws {
+        var config = Config.Cleanup()
+        config.localOnly = true
+        config.provider = "openai"
+        config.remote.baseURL = "http://127.0.0.1:1234/v1"
+        config.remote.model = "review-model"
+        let transport = RequestRecordingCleanupTransport(chatBody: Data(
+            #"{"choices":[{"message":{"content":"Fertiger Text."}},{"message":{"other":"spätere Wahl"}}]}"#.utf8
+        ))
+        let result = await CleanupService(config: config, transport: transport).clean("ähm fertiger text")
+        XCTAssertEqual(result.text, "Fertiger Text.")
+        XCTAssertFalse(result.usedFallback)
+
+        let request = try XCTUnwrap(transport.requests.snapshot.first)
+        XCTAssertEqual(request.url?.path, "/v1/chat/completions")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        let body = try jsonBody(request)
+        XCTAssertEqual(Set(body.keys), ["model", "temperature", "messages"])
+        XCTAssertEqual(body["model"] as? String, "review-model")
+        XCTAssertEqual(body["temperature"] as? Int, 0)
+        let messages = try XCTUnwrap(body["messages"] as? [[String: String]])
+        XCTAssertEqual(messages.compactMap { $0["role"] }, ["system", "user"])
+        XCTAssertEqual(messages.last?["content"], "ähm fertiger text")
     }
 
     func testColdOllamaRetriesPartialTimeoutWithFreshStreamAndNoProbe() async throws {

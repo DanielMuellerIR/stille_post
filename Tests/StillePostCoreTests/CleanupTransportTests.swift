@@ -9,22 +9,22 @@ final class CleanupTransportTests: XCTestCase {
 
     func testKeepAliveNumericValuesBecomeNumbers() {
         // "-1" und "0" muss Ollama als ZAHL sehen — als String versteht es sie nicht.
-        XCTAssertEqual(CleanupService.keepAliveValue("-1") as? Int, -1)
-        XCTAssertEqual(CleanupService.keepAliveValue("0") as? Int, 0)
-        XCTAssertEqual(CleanupService.keepAliveValue("7200") as? Int, 7200, "Sekunden bleiben Sekunden")
+        XCTAssertEqual(CleanupService.keepAliveValue("-1"), .seconds(-1))
+        XCTAssertEqual(CleanupService.keepAliveValue("0"), .seconds(0))
+        XCTAssertEqual(CleanupService.keepAliveValue("7200"), .seconds(7200), "Sekunden bleiben Sekunden")
     }
 
     func testKeepAliveDurationsStayStrings() {
-        XCTAssertEqual(CleanupService.keepAliveValue("2h") as? String, "2h")
-        XCTAssertEqual(CleanupService.keepAliveValue("30m") as? String, "30m")
-        XCTAssertEqual(CleanupService.keepAliveValue(" 20M ") as? String, "20m", "Leerzeichen/Großschreibung tolerieren")
+        XCTAssertEqual(CleanupService.keepAliveValue("2h"), .duration("2h"))
+        XCTAssertEqual(CleanupService.keepAliveValue("30m"), .duration("30m"))
+        XCTAssertEqual(CleanupService.keepAliveValue(" 20M "), .duration("20m"), "Leerzeichen/Großschreibung tolerieren")
     }
 
     func testKeepAliveGarbageFallsBackToFiniteValue() {
         // Ein Tippfehler in einer handgeschriebenen config.json darf weder den
         // Request zerschießen noch dauerhaft RAM belegen.
-        XCTAssertEqual(CleanupService.keepAliveValue("für immer") as? String, "30m")
-        XCTAssertEqual(CleanupService.keepAliveValue("") as? String, "30m")
+        XCTAssertEqual(CleanupService.keepAliveValue("für immer"), .duration("30m"))
+        XCTAssertEqual(CleanupService.keepAliveValue(""), .duration("30m"))
     }
 
     func testPinsForeverOnlyForNegativeValues() {
