@@ -81,6 +81,20 @@ final class TransportTests: XCTestCase {
         XCTAssertTrue(server.received().isEmpty, "Token und Audio dürfen erst nach Pin-Prüfung gesendet werden")
     }
 
+    func testPinMismatchDisablesNetworkFetchDuringTrustEvaluation() throws {
+        let identity = try TestTLSIdentity()
+        var trust: SecTrust?
+        XCTAssertEqual(SecTrustCreateWithCertificates(identity.certificate, SecPolicyCreateSSL(true, nil), &trust), errSecSuccess)
+        let checked = try XCTUnwrap(trust)
+        XCTAssertEqual(SecTrustSetNetworkFetchAllowed(checked, true), errSecSuccess)
+        XCTAssertThrowsError(try PinnedTrust.validate(checked, fingerprint: String(repeating: "0", count: 64))) {
+            XCTAssertEqual($0 as? ClientFailure, .identityChanged)
+        }
+        var networkFetchAllowed = DarwinBoolean(true)
+        XCTAssertEqual(SecTrustGetNetworkFetchAllowed(checked, &networkFetchAllowed), errSecSuccess)
+        XCTAssertFalse(networkFetchAllowed.boolValue)
+    }
+
     func testPinnedCertificateStillChecksExpiry() throws {
         let identity = try TestTLSIdentity()
         var trust: SecTrust?

@@ -4,17 +4,18 @@ import CryptoKit
 
 public enum PinnedTrust {
     public static func validate(_ trust: SecTrust, fingerprint: String) throws {
-        guard BridgeConfiguration.validFingerprint(fingerprint),
-              let certificate = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first else { throw ClientFailure.pairingRequired }
+        guard BridgeConfiguration.validFingerprint(fingerprint) else { throw ClientFailure.pairingRequired }
+        // Das Kopieren der Kette kann schon eine Trust-Auswertung auslösen.
+        guard SecTrustSetPolicies(trust, SecPolicyCreateSSL(true, nil)) == errSecSuccess,
+              SecTrustSetNetworkFetchAllowed(trust, false) == errSecSuccess,
+              let certificate = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first
+        else { throw ClientFailure.invalidCertificate }
         let actual = SHA256.hash(data: SecCertificateCopyData(certificate) as Data).map { String(format: "%02x", $0) }.joined()
         guard actual == fingerprint else { throw ClientFailure.identityChanged }
-        // Die Identität kommt vom physischen QR-Code, nicht aus DNS oder einer CA.
-        // Deshalb prüft SSL hier Serverzweck, Signatur und Gültigkeit ohne DNS-Namen.
-        // Nur genau dieses Blatt darf Anker sein; AIA/Netz-Nachladen bleibt aus.
-        guard SecTrustSetPolicies(trust, SecPolicyCreateSSL(true, nil)) == errSecSuccess,
-              SecTrustSetAnchorCertificates(trust, [certificate] as CFArray) == errSecSuccess,
+        // Die Identität kommt vom physischen QR-Code. Die SSL-Prüfung bewertet
+        // Serverzweck, Signatur und Gültigkeit mit genau diesem Blatt als Anker.
+        guard SecTrustSetAnchorCertificates(trust, [certificate] as CFArray) == errSecSuccess,
               SecTrustSetAnchorCertificatesOnly(trust, true) == errSecSuccess,
-              SecTrustSetNetworkFetchAllowed(trust, false) == errSecSuccess,
               SecTrustEvaluateWithError(trust, nil) else { throw ClientFailure.invalidCertificate }
     }
 }
