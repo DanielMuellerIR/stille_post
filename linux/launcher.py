@@ -7,6 +7,10 @@ def main():
     # Diagnose- und Steueraufrufe sollen nicht auf eine GUI-Startbestätigung warten.
     if any(x in sys.argv for x in ['--toggle','--audio-devices','--smoke-test','--cli']):
         return subprocess.call([str(bundle/'AppRun'),*sys.argv[1:]])
+    from update import UpdateError, Updater
+
+    updater = Updater(bundle)
+    activation = updater.activation()
     for attempt in range(2):
         with tempfile.TemporaryDirectory(prefix='stillepost-start-') as temp:
             ack=pathlib.Path(temp)/'ready';env=dict(os.environ,STILLEPOST_STARTUP_ACK=str(ack))
@@ -23,12 +27,15 @@ def main():
                 child.terminate()
                 try:child.wait(timeout=5)
                 except subprocess.TimeoutExpired:child.kill();child.wait()
-        if attempt==0:
+        if attempt == 0 and activation is not None:
             try:
-                from update import Updater
-                root=bundle.parent;Updater(bundle).rollback();bundle=(root/'current').resolve()
+                updater.rollback(activation)
+            except (OSError, UpdateError):
+                pass
+            current = (bundle.parent / "current").resolve()
+            if current != bundle and (current / "AppRun").is_file():
+                bundle = current
                 continue
-            except Exception:pass
         print('Stille Post konnte nicht starten. Diagnose: AppRun direkt starten.',file=sys.stderr)
         return 1
 if __name__=='__main__':sys.exit(main())
