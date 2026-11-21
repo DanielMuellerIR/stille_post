@@ -3,12 +3,16 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     cmake ninja-build g++ pkg-config qt6-base-dev qt6-multimedia-dev qt6-wayland qt6-translations-l10n \
     qt6-base-private-dev qt6-wayland-dev qt6-wayland-private-dev qt6-declarative-dev extra-cmake-modules wayland-protocols libwayland-dev libxkbcommon-dev \
     libx11-dev libxtst-dev libatspi2.0-dev libqrencode-dev libpulse-dev libssl-dev libvulkan-dev glslc ffmpeg espeak-ng \
-    xz-utils patch patchelf libsecret-tools ca-certificates curl git && rm -rf /var/lib/apt/lists/*
+    xz-utils unzip patch patchelf libsecret-tools ca-certificates curl git && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
-RUN curl -fL --retry 2 https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-linux-x64-1.28.2.tgz -o /tmp/onnxruntime.tgz && \
-    echo 'd7209b8751b27b862b0c76332c2e20e203396edb5dab700ecf4bb485cf147415  /tmp/onnxruntime.tgz' | sha256sum -c - && \
-    mkdir -p /opt/onnxruntime && tar -xzf /tmp/onnxruntime.tgz --strip-components=1 -C /opt/onnxruntime && \
-    cp -a /opt/onnxruntime/include/. /usr/local/include/ && rm /tmp/onnxruntime.tgz
+RUN curl -fL --retry 2 https://api.nuget.org/v3-flatcontainer/microsoft.ml.onnxruntime/1.32.0/microsoft.ml.onnxruntime.1.32.0.nupkg -o /tmp/onnxruntime.nupkg && \
+    echo 'a9150bc2992cbbb6722070da9910e1ffa989a8bfc67bdd5bb8e745ca755641db  /tmp/onnxruntime.nupkg' | sha256sum -c - && \
+    mkdir -p /opt/onnxruntime/lib && \
+    unzip -qj /tmp/onnxruntime.nupkg 'build/native/include/*' -d /usr/local/include && \
+    unzip -qj /tmp/onnxruntime.nupkg 'runtimes/linux-x64/native/libonnxruntime*.so' -d /opt/onnxruntime/lib && \
+    mv /opt/onnxruntime/lib/libonnxruntime.so /opt/onnxruntime/lib/libonnxruntime.so.1 && \
+    unzip -qj /tmp/onnxruntime.nupkg LICENSE ThirdPartyNotices.txt -d /opt/onnxruntime && \
+    rm /tmp/onnxruntime.nupkg
 
 COPY linux/layer-shell-qt-geometry.patch /tmp/layer-shell-geometry.patch
 RUN curl -fL --retry 2 https://download.kde.org/stable/plasma/5.27.9/layer-shell-qt-5.27.9.tar.xz -o /tmp/layershell.tar.xz && \

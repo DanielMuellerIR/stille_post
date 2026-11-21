@@ -144,7 +144,7 @@ Build-Distribution liegen im Paket unter `licenses/`; die Bibliotheken bleiben
 als einzelne Dateien austauschbar. whisper.cpp und Ollama werden als separate
 Programme eingebunden.
 
-[ONNX Runtime 1.28.2](https://github.com/microsoft/onnxruntime/releases/tag/v1.28.2)
+[ONNX Runtime 1.32.0](https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime/1.32.0)
 wird als CPU-Laufzeit für Silero mitgeliefert. Die MIT-Lizenz und die Hinweise
 zu weiteren Bestandteilen liegen unter `licenses/onnxruntime.LICENSE` und
 `licenses/onnxruntime.ThirdPartyNotices.txt`.
