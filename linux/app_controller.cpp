@@ -583,7 +583,9 @@ void AppController::receive(QJsonObject event) {
   } else if (kind == "capture") {
     if (event["active"].toBool()) {
       sound("start");
-      audio.start(jsonValue(configuration, "audio.inputDeviceUID").toString());
+      const auto configuredDevice =
+          jsonValue(configuration, "audio.inputDeviceUID").toString();
+      audio.start(event["device"].toString(configuredDevice));
     } else
       audio.stop();
   } else if (kind == "state") {
