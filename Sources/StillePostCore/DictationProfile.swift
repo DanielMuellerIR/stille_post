@@ -62,7 +62,7 @@ public extension Config {
         public init(_ cleanup: Cleanup) {
             enabled = cleanup.enabled
             localOnly = cleanup.localOnly
-            primary = cleanup.chain[0]
+            primary = cleanup.primaryEndpoint
             fallbacks = cleanup.fallbacks
         }
 
@@ -79,12 +79,7 @@ public extension Config {
             var result = cleanup
             result.enabled = enabled
             result.localOnly = localOnly ?? cleanup.localOnly
-            result.provider = primary.provider
-            result.ollamaURL = primary.ollamaURL
-            result.model = primary.model
-            result.numCtx = primary.numCtx
-            result.keepAlive = primary.keepAlive
-            result.remote = primary.remote
+            result.primaryEndpoint = primary
             result.fallbacks = fallbacks
             return result
         }

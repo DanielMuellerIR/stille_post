@@ -171,18 +171,31 @@ public struct Config: Codable, Equatable, Sendable {
             }
         }
 
-        /// Die vollständige Probier-Kette: primärer Endpoint (aus den Feldern oben)
-        /// gefolgt von den konfigurierten Fallbacks.
-        public var chain: [Endpoint] {
-            var primary = Endpoint()
-            primary.provider = provider
-            primary.ollamaURL = ollamaURL
-            primary.model = model
-            primary.numCtx = numCtx
-            primary.keepAlive = keepAlive
-            primary.remote = remote
-            return [primary] + fallbacks
+        /// Gemeinsame Sicht für Profile, Einstellungen und die Bereinigung.
+        /// config.json behält die bisherigen flachen Felder für den Hauptdienst.
+        public var primaryEndpoint: Endpoint {
+            get {
+                var endpoint = Endpoint()
+                endpoint.provider = provider
+                endpoint.ollamaURL = ollamaURL
+                endpoint.model = model
+                endpoint.numCtx = numCtx
+                endpoint.keepAlive = keepAlive
+                endpoint.remote = remote
+                return endpoint
+            }
+            set {
+                provider = newValue.provider
+                ollamaURL = newValue.ollamaURL
+                model = newValue.model
+                numCtx = newValue.numCtx
+                keepAlive = newValue.keepAlive
+                remote = newValue.remote
+            }
         }
+
+        /// Die vollständige Probier-Kette beginnt mit dem Hauptdienst.
+        public var chain: [Endpoint] { [primaryEndpoint] + fallbacks }
 
         public struct Remote: Codable, Equatable, Sendable {
             /// Basis-URL des Anbieters inkl. /v1 (Beispiel: "https://api.example.com/v1").
