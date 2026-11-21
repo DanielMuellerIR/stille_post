@@ -107,6 +107,8 @@ struct ProfilesTab: View {
                 profile.wrappedValue.cleanup = options
             }), showsVocabulary: false, showsFormatting: false)
                 .disabled(profile.wrappedValue.cleanup == nil)
+                // Beim Vererbungswechsel bekommt der Editor eine andere Fallback-Liste.
+                .id(profile.wrappedValue.cleanup == nil)
         case .formatting:
             Form {
                 Toggle(L10n.text("profiles.inherit"), isOn: inherited(profile.spokenFormatting, initial: config.cleanup.spokenFormatting))

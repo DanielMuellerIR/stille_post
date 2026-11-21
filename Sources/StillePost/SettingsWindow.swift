@@ -404,11 +404,13 @@ private struct HotkeyRecorder: View {
 
 struct CleanupTab: View {
     @Binding var cleanup: Config.Cleanup
+    @State private var fallbackIDs: [UUID]
     var showsVocabulary = true
     var showsFormatting = true
 
     init(cleanup: Binding<Config.Cleanup>, showsVocabulary: Bool = true, showsFormatting: Bool = true) {
         self._cleanup = cleanup
+        self._fallbackIDs = State(initialValue: cleanup.wrappedValue.fallbacks.map { _ in UUID() })
         self.showsVocabulary = showsVocabulary
         self.showsFormatting = showsFormatting
     }
@@ -442,22 +444,27 @@ struct CleanupTab: View {
             }
 
             Section {
-                ForEach(cleanup.fallbacks.indices, id: \.self) { index in
-                    VStack(alignment: .leading) {
-                        HStack {
-                            Text(L10n.format("settings.cleanup.fallback_number", index + 1)).font(.headline)
-                            Spacer()
-                            Button(role: .destructive) {
-                                cleanup.fallbacks.remove(at: index)
-                            } label: {
-                                Image(systemName: "trash")
+                ForEach(Array(fallbackIDs.enumerated()), id: \.element) { index, id in
+                    if cleanup.fallbacks.indices.contains(index) {
+                        VStack(alignment: .leading) {
+                            HStack {
+                                Text(L10n.format("settings.cleanup.fallback_number", index + 1)).font(.headline)
+                                Spacer()
+                                Button(role: .destructive) {
+                                    guard let currentIndex = fallbackIndex(for: id) else { return }
+                                    fallbackIDs.remove(at: currentIndex)
+                                    cleanup.fallbacks.remove(at: currentIndex)
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .buttonStyle(.borderless)
                             }
-                            .buttonStyle(.borderless)
+                            EndpointEditor(endpoint: fallbackBinding(for: id, lastValue: cleanup.fallbacks[index]))
                         }
-                        EndpointEditor(endpoint: $cleanup.fallbacks[index])
                     }
                 }
                 Button {
+                    fallbackIDs.append(UUID())
                     cleanup.fallbacks.append(Config.Cleanup.Endpoint())
                 } label: {
                     Label(L10n.text("settings.cleanup.add_fallback"), systemImage: "plus")
@@ -481,6 +488,22 @@ struct CleanupTab: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func fallbackIndex(for id: UUID) -> Int? {
+        guard let index = fallbackIDs.firstIndex(of: id), cleanup.fallbacks.indices.contains(index) else { return nil }
+        return index
+    }
+
+    private func fallbackBinding(for id: UUID, lastValue: Config.Cleanup.Endpoint) -> Binding<Config.Cleanup.Endpoint> {
+        // SwiftUI kann beim Entfernen einer Zeile noch auf ihr Binding zugreifen.
+        Binding(get: {
+            guard let index = fallbackIndex(for: id) else { return lastValue }
+            return cleanup.fallbacks[index]
+        }, set: { endpoint in
+            guard let index = fallbackIndex(for: id) else { return }
+            cleanup.fallbacks[index] = endpoint
+        })
     }
 
     /// Der primäre Endpoint liegt in der Config als flache Felder (historisch) —
@@ -646,6 +669,7 @@ private struct BridgeRow: View {
         let image: NSImage
     }
     @State private var pairing: PairingDisplay?
+    @State private var host: String?
     @State private var rotateToken = false
     @State private var renewIdentity = false
     @Binding var bridge: Config.Bridge
@@ -656,11 +680,14 @@ private struct BridgeRow: View {
     /// ungültige Token in die Zwischenablage legen.
     @State private var busy = false
 
-    /// Adresse, die auf dem iPhone in den Kurzbefehl gehört (siehe BridgeAddress).
-    private var address: String { BridgeAddress.baseURL(port: bridge.port) }
-
     var body: some View {
         Toggle(L10n.text("settings.bridge.enabled"), isOn: $bridge.enabled)
+            .task(id: bridge.enabled) {
+                guard bridge.enabled else { host = nil; return }
+                guard host == nil else { return }
+                let resolvedHost = await Task.detached { BridgeAddress.resolveHost() }.value
+                if !Task.isCancelled { host = resolvedHost }
+            }
         Text(L10n.text("settings.bridge.description"))
             .font(.caption)
             .foregroundColor(.secondary)
@@ -668,10 +695,12 @@ private struct BridgeRow: View {
         if bridge.enabled {
             TextField(L10n.text("settings.bridge.port"), value: $bridge.port,
                       format: .number.grouping(.never))
-            LabeledContent(L10n.text("settings.bridge.address")) {
-                Text(address).textSelection(.enabled).font(.caption)
+            if let host {
+                LabeledContent(L10n.text("settings.bridge.address")) {
+                    Text(BridgeAddress.baseURL(port: bridge.port, host: host)).textSelection(.enabled).font(.caption)
+                }
             }
-            Button(L10n.text("settings.bridge.pair")) { showPairing() }.disabled(busy)
+            Button(L10n.text("settings.bridge.pair")) { showPairing() }.disabled(busy || host == nil)
                 .sheet(item: $pairing) { display in
                     BridgePairingView(address: display.address, fingerprint: display.fingerprint, image: display.image)
                 }
@@ -696,7 +725,7 @@ private struct BridgeRow: View {
     }
 
     @MainActor private func showPairing() {
-        guard !busy else { return }
+        guard !busy, let host else { return }
         busy = true; status = L10n.text("settings.bridge.token_working")
         let port = bridge.port
         Task {
@@ -706,8 +735,9 @@ private struct BridgeRow: View {
                 let token = outcome.token
                 if outcome.created { NotificationCenter.default.post(name: .bridgeCredentialsChanged, object: nil) }
                 let identity = try await Task.detached { try BridgeIdentity.loadOrCreate() }.value
-                let data = try BridgePairing(port: port, identity: identity, token: token).encoded()
-                pairing = PairingDisplay(address: address, fingerprint: identity.fingerprint, image: try BridgePairingView.qrImage(data: data))
+                let payload = try BridgePairing(port: port, identity: identity, token: token, host: host)
+                pairing = PairingDisplay(address: payload.url, fingerprint: identity.fingerprint,
+                                         image: try BridgePairingView.qrImage(data: payload.encoded()))
                 status = L10n.text("settings.bridge.pair_ready")
             } catch { status = error.localizedDescription }
         }

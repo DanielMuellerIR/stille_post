@@ -19,15 +19,18 @@ public enum BridgeAddress {
     ///
     /// `STILLEPOST_HOSTNAME` ist ein reproduzierbarer Testweg für Screenshots und
     /// Dokumentation — damit gerät kein echter Rechnername in öffentliche Bilder.
-    public static func baseURL(port: Int) -> String {
+    public static func resolveHost() -> String {
+        if let override = ProcessInfo.processInfo.environment["STILLEPOST_HOSTNAME"], !override.isEmpty {
+            return override
+        }
         // ProcessInfo.hostName kann synchron DNS auflösen. Die Adresse wird auch
         // im Einstellungsformular gerendert und muss ohne Netzwerkantwort lesbar sein.
         let localName = SCDynamicStoreCopyLocalHostName(nil) as String?
-        let host = ProcessInfo.processInfo.environment["STILLEPOST_HOSTNAME"]
-            .flatMap { $0.isEmpty ? nil : $0 }
-            ?? localName.flatMap { $0.isEmpty ? nil : "\($0).local" }
-            ?? "mac.local"
-        return "https://\(host.isEmpty ? "mac.local" : host):\(port)"
+        return localName.flatMap { $0.isEmpty ? nil : "\($0).local" } ?? "mac.local"
+    }
+
+    public static func baseURL(port: Int, host: String? = nil) -> String {
+        "https://\(host ?? resolveHost()):\(port)"
     }
 }
 

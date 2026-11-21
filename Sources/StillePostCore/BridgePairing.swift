@@ -8,9 +8,9 @@ public struct BridgePairing: Encodable {
     public let pin: String
     public let token: String
 
-    public init(port: Int, identity: BridgeIdentity, token: String) throws {
+    public init(port: Int, identity: BridgeIdentity, token: String, host: String? = nil) throws {
         guard (1...65535).contains(port), !token.isEmpty else { throw BridgeIdentity.IdentityError.invalid }
-        self.url = BridgeAddress.baseURL(port: port)
+        self.url = BridgeAddress.baseURL(port: port, host: host)
         self.pin = identity.fingerprint
         self.token = token
     }
