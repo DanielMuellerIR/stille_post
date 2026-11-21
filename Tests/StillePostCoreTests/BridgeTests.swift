@@ -4,8 +4,7 @@ import CryptoKit
 import XCTest
 @testable import StillePostCore
 
-/// Verträge der Netzwerk-Brücke — ohne offenen Port, ohne whisper-server und ohne
-/// Ollama. Geprüft wird genau das, was im Heimnetz schiefgehen darf und was nicht.
+/// Prüft den Listener über lokale TLS-Verbindungen ohne Whisper oder Ollama.
 final class BridgeTests: XCTestCase {
     private static let identityNamespace = "stillepost.test.bridge." + UUID().uuidString
     private static let identity = Result { try BridgeIdentity.loadOrCreate(namespace: identityNamespace) }
@@ -27,180 +26,6 @@ final class BridgeTests: XCTestCase {
         }, DispatchQueue(label: "bridge-test.verify"))
         return NWParameters(tls: tls)
     }
-
-
-    // MARK: - HTTP zerlegen
-
-    func testParsesCompletePostRequest() throws {
-        let raw = "POST /v1/cleanup?raw=1 HTTP/1.1\r\n"
-            + "Host: mac.local:8188\r\n"
-            + "Authorization: Bearer geheim123\r\n"
-            + "Content-Type: text/plain; charset=utf-8\r\n"
-            + "Content-Length: 5\r\n\r\nhallo"
-        guard case .complete(let request) = BridgeHTTP.parse(Data(raw.utf8), maxBodyBytes: 1024) else {
-            return XCTFail("Anfrage sollte vollständig sein")
-        }
-        XCTAssertEqual(request.method, "POST")
-        XCTAssertEqual(request.path, "/v1/cleanup")
-        XCTAssertEqual(request.query["raw"], "1")
-        XCTAssertEqual(request.bearerToken, "geheim123")
-        XCTAssertEqual(String(data: request.body, encoding: .utf8), "hallo")
-    }
-
-    func testWaitsForMissingBodyBytes() {
-        let raw = "POST /v1/cleanup HTTP/1.1\r\nContent-Length: 10\r\n\r\nhal"
-        XCTAssertEqual(BridgeHTTP.parse(Data(raw.utf8), maxBodyBytes: 1024), .incomplete)
-    }
-
-    func testRejectsOversizedBodyBeforeReadingIt() {
-        // Entscheidend: Die Ablehnung passiert schon anhand von Content-Length,
-        // also bevor auch nur ein Byte Inhalt im Speicher liegt.
-        let raw = "POST /v1/dictate HTTP/1.1\r\nContent-Length: 999999\r\n\r\n"
-        guard case .failure(let response) = BridgeHTTP.parse(Data(raw.utf8), maxBodyBytes: 1024) else {
-            return XCTFail("Zu große Anfrage muss abgelehnt werden")
-        }
-        XCTAssertEqual(response.status, 413)
-    }
-
-    func testRejectsChunkedEncodingHonestly() {
-        let raw = "POST /v1/dictate HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n"
-        guard case .failure(let response) = BridgeHTTP.parse(Data(raw.utf8), maxBodyBytes: 1024) else {
-            return XCTFail("Chunked ist nicht umgesetzt und muss abgelehnt werden")
-        }
-        XCTAssertEqual(response.status, 501)
-    }
-
-    func testHeaderFloodIsCutOff() {
-        let flood = String(repeating: "X-Fill: 1234567890\r\n", count: 1000)
-        let raw = "GET /v1/health HTTP/1.1\r\n" + flood
-        guard case .failure(let response) = BridgeHTTP.parse(Data(raw.utf8), maxBodyBytes: 1024) else {
-            return XCTFail("Endlose Kopfzeilen müssen abgebrochen werden")
-        }
-        XCTAssertEqual(response.status, 400)
-    }
-
-    func testProbeHeaderReadsTokenAndRouteBeforeBodyArrives() {
-        // Grundlage der frühen Token-Prüfung: Sobald der Kopf da ist, liegen
-        // Methode, Pfad und Token vor — ohne dass ein Byte Body angekommen ist.
-        let raw = "POST /v1/dictate?raw=1 HTTP/1.1\r\n"
-            + "Authorization: Bearer geheim123\r\n"
-            + "Content-Length: 999999\r\n\r\nERSTE"
-        XCTAssertEqual(BridgeHTTP.probeHeader(Data(raw.utf8)),
-                       .complete(method: "POST", path: "/v1/dictate", bearerToken: "geheim123"))
-        // Unvollständiger Kopf: weiterlesen, nichts bewerten.
-        XCTAssertEqual(BridgeHTTP.probeHeader(Data("POST /v1/dictate HTTP/1.1\r\nAuthor".utf8)),
-                       .incomplete)
-    }
-
-    func testRejectsControlCharactersInRequestLine() {
-        for control in ["\n", "\u{001B}", "\u{007F}", "\u{0085}", "\u{2028}", "\u{2029}"] {
-            let raw = "GET /v1/health\(control)FAKE HTTP/1.1\r\nContent-Length: 0\r\n\r\n"
-            guard case .failure(let response) = BridgeHTTP.parse(
-                Data(raw.utf8), maxBodyBytes: 1024
-            ) else {
-                return XCTFail("Steuerzeichen in der Request-Line muss abgelehnt werden")
-            }
-            XCTAssertEqual(response.status, 400)
-        }
-    }
-
-    // MARK: - Herkunft der Verbindung
-
-    func testAcceptsOnlyHomeNetworkAddresses() {
-        // Ohne eigene IPv6-Netze geprüft, damit das Ergebnis nicht davon abhängt,
-        // in welchem Netz der Mac steckt, auf dem der Test gerade läuft.
-        func isLocal(_ address: String) -> Bool {
-            BridgePeer.isLocalNetwork(address, ownPrefixes: { [] })
-        }
-        for address in ["127.0.0.1", "192.168.1.57", "10.0.0.5", "172.20.1.1",
-                        "169.254.3.4", "::1", "fe80::1cba:8c1a:1%en0", "fd00::1234",
-                        "::ffff:192.168.1.5"] {
-            XCTAssertTrue(isLocal(address), "\(address) ist Heimnetz")
-        }
-        // Öffentliche Adressen: Wenn die je hier ankommen, ist ein Port
-        // versehentlich weitergeleitet.
-        for address in ["8.8.8.8", "172.32.0.1", "192.169.0.1", "2001:db8::1",
-                        "2a02:8109:abcd::1", "", "nicht-ip"] {
-            XCTAssertFalse(isLocal(address), "\(address) ist nicht Heimnetz")
-        }
-    }
-
-    func testGlobalIPv6InDottedNotationIsNotHomeNetwork() {
-        // "2a00:1234::192.168.1.1" ist eine gueltige Schreibweise einer GLOBALEN
-        // IPv6-Adresse — die letzten vier Bytes duerfen als 1.2.3.4 geschrieben
-        // werden. Wer nur "enthaelt einen Punkt" prueft, sieht darin eine private
-        // IPv4-Adresse und laesst ein Geraet aus dem Internet durch.
-        XCTAssertFalse(
-            BridgePeer.isLocalNetwork("2a00:1234::192.168.1.1", ownPrefixes: { [] }),
-            "globale IPv6-Adresse mit Punkt-Schreibweise gehoert nicht zum Heimnetz"
-        )
-        XCTAssertFalse(
-            BridgePeer.isLocalNetwork("2a00:1234::10.0.0.5", ownPrefixes: { [] })
-        )
-        // Und die echte IPv4-in-IPv6-Form bleibt selbstverstaendlich Heimnetz —
-        // jetzt in beiden Schreibweisen derselben Adresse. Frueher entschied der
-        // Text: die Punkt-Form galt als Heimnetz, die gleichwertige Hex-Form nicht.
-        XCTAssertTrue(
-            BridgePeer.isLocalNetwork("::ffff:192.168.1.5", ownPrefixes: { [] })
-        )
-        XCTAssertTrue(
-            BridgePeer.isLocalNetwork("::ffff:c0a8:105", ownPrefixes: { [] }),
-            "dieselbe Adresse in Hex-Schreibweise"
-        )
-        // Eine eingebettete OEFFENTLICHE IPv4-Adresse bleibt draussen.
-        XCTAssertFalse(
-            BridgePeer.isLocalNetwork("::ffff:8.8.8.8", ownPrefixes: { [] })
-        )
-    }
-
-    func testGlobalIPv6CountsAsHomeNetworkOnlyInsideAnOwnPrefix() {
-        // Der Fall aus dem Alltag: Die FRITZ!Box gibt Mac und iPhone Adressen aus
-        // demselben globalen /64. Zählt das nicht als Heimnetz, weist die Brücke
-        // genau das iPhone ab, für das sie gebaut ist — und zwar lautlos, weil die
-        // Verbindung schon vor dem Token abgeschnitten wird.
-        let own = [IPv6Prefix("2001:db8:1:2::", bits: 64)!]
-
-        XCTAssertTrue(BridgePeer.isLocalNetwork("2001:db8:1:2:abcd::9", ownPrefixes: { own }),
-                      "gleiches /64 wie der Mac selbst: das ist das eigene Heimnetz")
-        // Andere Schreibweise derselben Adresse — der Vergleich läuft über die
-        // Bytes, nicht über den Text.
-        XCTAssertTrue(BridgePeer.isLocalNetwork("2001:0db8:0001:0002:0000:0000:0000:0009",
-                                                ownPrefixes: { own }))
-        XCTAssertFalse(BridgePeer.isLocalNetwork("2001:db8:1:3::9", ownPrefixes: { own }),
-                       "benachbartes /64 gehört nicht dazu")
-        XCTAssertFalse(BridgePeer.isLocalNetwork("2a02:8109:abcd::1", ownPrefixes: { own }),
-                       "fremdes Präfix aus dem Internet bleibt draußen")
-        XCTAssertFalse(BridgePeer.isLocalNetwork("2001:db8:1:2:abcd::9", ownPrefixes: { [] }),
-                       "ohne eigenes IPv6-Netz bleibt es bei den privaten Bereichen")
-    }
-
-    func testPrefixComparisonRespectsBitBoundaries() {
-        // Präfixlängen sind nicht immer durch acht teilbar. Bei /63 unterscheiden
-        // sich die beiden Netze erst im letzten Bit des vierten Blocks.
-        let slash63 = IPv6Prefix("2001:db8:1:2::", bits: 63)!
-        XCTAssertTrue(slash63.contains(IPv6Prefix.parse("2001:db8:1:3::1")!),
-                      "…:3:: liegt noch im /63, das bei …:2:: beginnt")
-        XCTAssertFalse(slash63.contains(IPv6Prefix.parse("2001:db8:1:4::1")!))
-
-        // Netzmaske aus der Schnittstellenliste in eine Präfixlänge übersetzen.
-        XCTAssertEqual(LocalNetworkInterfaces.leadingOneBits(
-            [UInt8](repeating: 0xFF, count: 8) + [UInt8](repeating: 0, count: 8)), 64)
-        XCTAssertEqual(LocalNetworkInterfaces.leadingOneBits(
-            [0xFF, 0xFF, 0xFF, 0xFC] + [UInt8](repeating: 0, count: 12)), 30)
-        XCTAssertEqual(LocalNetworkInterfaces.leadingOneBits(
-            [UInt8](repeating: 0, count: 16)), 0)
-    }
-
-    // MARK: - Routen und Token
-
-    /// Zähler, mit dem die Tests belegen, wie oft die Bereinigung wirklich lief.
-    private final class Counter: @unchecked Sendable {
-        private let lock = NSLock()
-        private var value = 0
-        func increment() { lock.lock(); value += 1; lock.unlock() }
-        var count: Int { lock.lock(); defer { lock.unlock() }; return value }
-    }
-
     /// Steuerbare Serverarbeit für den echten Verbindungsabbruch-Test. Der Test
     /// wartet nicht nach Gefühl: Er schließt die TLS-Sitzung erst, nachdem die
     /// Transkription nachweislich begonnen hat, und gibt einen fehlerhaften alten
@@ -239,280 +64,6 @@ final class BridgeTests: XCTestCase {
             released = true
             lock.unlock()
         }
-    }
-
-    private func makeRouter(
-        token: String? = "richtig",
-        cleanupEnabled: Bool = true,
-        transcribe: @escaping @Sendable (Data) async throws -> String = { _ in "roher text" },
-        cleanupCounter: Counter? = nil,
-        maxBodyBytes: Int = 1024
-    ) -> BridgeRouter {
-        let handlers = BridgeHandlers(
-            transcribe: transcribe,
-            cleanup: { raw in
-                cleanupCounter?.increment()
-                return CleanupService.Result(text: "Sauberer Text.", usedFallback: false,
-                                             fallbackReason: nil, endpoint: "test")
-            },
-            cleanupEnabled: cleanupEnabled,
-            version: "test"
-        )
-        return BridgeRouter(handlers: handlers, maxBodyBytes: maxBodyBytes,
-                            tokenProvider: { token })
-    }
-
-    private func object(_ response: BridgeResponse) throws -> [String: Any] {
-        try XCTUnwrap(JSONSerialization.jsonObject(with: response.body) as? [String: Any])
-    }
-
-    func testWrongOrMissingTokenIsRejectedEverywhere() async throws {
-        let router = makeRouter()
-        for request in [
-            BridgeRequest(method: "GET", path: "/v1/health"),
-            BridgeRequest(method: "GET", path: "/v1/health", bearerToken: "falsch"),
-            BridgeRequest(method: "POST", path: "/v1/dictate", bearerToken: "richtig2",
-                          body: Data("audio".utf8)),
-        ] {
-            let response = await router.respond(to: request)
-            XCTAssertEqual(response.status, 401, "\(request.path) ohne gültiges Token")
-        }
-    }
-
-    func testMissingTokenOnTheMacBlocksEvenACorrectRequest() async {
-        // Solange kein Token angelegt ist, ist die Brücke zu — auch für jemanden,
-        // der zufällig einen leeren Token schickt.
-        let router = makeRouter(token: nil)
-        let response = await router.respond(to: BridgeRequest(
-            method: "GET", path: "/v1/health", bearerToken: ""
-        ))
-        XCTAssertEqual(response.status, 401)
-    }
-
-    func testHealthReportsVersionAndCleanupState() async throws {
-        let router = makeRouter(cleanupEnabled: false)
-        let response = await router.respond(to: BridgeRequest(
-            method: "GET", path: "/v1/health", bearerToken: "richtig"
-        ))
-        XCTAssertEqual(response.status, 200)
-        let json = try object(response)
-        XCTAssertEqual(json["version"] as? String, "test")
-        XCTAssertEqual(json["cleanup"] as? Bool, false)
-    }
-
-    func testDictateRunsTranscriptionThenExactlyOneCleanup() async throws {
-        let counter = Counter()
-        let router = makeRouter(cleanupCounter: counter)
-        let response = await router.respond(to: BridgeRequest(
-            method: "POST", path: "/v1/dictate", bearerToken: "richtig",
-            body: Data("audio".utf8)
-        ))
-        XCTAssertEqual(response.status, 200)
-        let json = try object(response)
-        XCTAssertEqual(json["text"] as? String, "Sauberer Text.")
-        XCTAssertEqual(json["raw"] as? String, "roher text")
-        // Die Architekturregel „genau eine Bereinigung über den ganzen Text“ gilt
-        // auch auf diesem Weg.
-        XCTAssertEqual(counter.count, 1)
-    }
-
-    func testRawParameterSkipsCleanup() async throws {
-        let counter = Counter()
-        let router = makeRouter(cleanupCounter: counter)
-        let response = await router.respond(to: BridgeRequest(
-            method: "POST", path: "/v1/dictate", query: ["raw": "1"],
-            bearerToken: "richtig", body: Data("audio".utf8)
-        ))
-        let json = try object(response)
-        XCTAssertEqual(json["text"] as? String, "roher text")
-        XCTAssertEqual(counter.count, 0)
-    }
-
-    func testSilenceYieldsEmptyTextWithoutCleanup() async throws {
-        let counter = Counter()
-        let router = makeRouter(transcribe: { _ in "   " }, cleanupCounter: counter)
-        let response = await router.respond(to: BridgeRequest(
-            method: "POST", path: "/v1/dictate", bearerToken: "richtig",
-            body: Data("audio".utf8)
-        ))
-        XCTAssertEqual(response.status, 200)
-        XCTAssertEqual(try object(response)["text"] as? String, "")
-        XCTAssertEqual(counter.count, 0, "Auf Stille wird kein Modell bemüht")
-    }
-
-    func testTranscriptionFailureBecomesServerError() async throws {
-        struct Boom: Error, LocalizedError {
-            var errorDescription: String? { "whisper-server nicht erreichbar" }
-        }
-        let router = makeRouter(transcribe: { _ in throw Boom() })
-        let response = await router.respond(to: BridgeRequest(
-            method: "POST", path: "/v1/dictate", bearerToken: "richtig",
-            body: Data("audio".utf8)
-        ))
-        XCTAssertEqual(response.status, 500)
-        XCTAssertEqual(try object(response)["error"] as? String, "whisper-server nicht erreichbar")
-    }
-
-    func testCleanupRouteTakesPlainTextAndReturnsCleanText() async throws {
-        let counter = Counter()
-        let router = makeRouter(cleanupCounter: counter)
-        let response = await router.respond(to: BridgeRequest(
-            method: "POST", path: "/v1/cleanup", bearerToken: "richtig",
-            body: Data("äh also so".utf8)
-        ))
-        XCTAssertEqual(response.status, 200)
-        XCTAssertEqual(try object(response)["text"] as? String, "Sauberer Text.")
-        XCTAssertEqual(counter.count, 1)
-    }
-
-    func testCleanupRouteRejectsEmptyAndNonUTF8Input() async throws {
-        let router = makeRouter()
-        let empty = await router.respond(to: BridgeRequest(
-            method: "POST", path: "/v1/cleanup", bearerToken: "richtig", body: Data("  ".utf8)
-        ))
-        XCTAssertEqual(empty.status, 400)
-
-        // 0xFF ist in UTF-8 nie gültig.
-        let broken = await router.respond(to: BridgeRequest(
-            method: "POST", path: "/v1/cleanup", bearerToken: "richtig",
-            body: Data([0xFF, 0xFE, 0xFF])
-        ))
-        XCTAssertEqual(broken.status, 415)
-    }
-
-    func testRouterEnforcesTheBodyLimitItself() async throws {
-        // Zweite Schutzschicht: Auch ein direkt erzeugter (nicht über
-        // BridgeHTTP.parse gelaufener) Request unterliegt der Größengrenze.
-        let router = makeRouter()  // maxBodyBytes: 1024
-        let response = await router.respond(to: BridgeRequest(
-            method: "POST", path: "/v1/cleanup", bearerToken: "richtig",
-            body: Data(repeating: 65, count: 2048)
-        ))
-        XCTAssertEqual(response.status, 413)
-    }
-
-    func testHeavyRoutesNeverOverlap() async throws {
-        // Der Actor allein serialisiert NICHT: Jedes await auf die Handler gibt
-        // seine Isolation frei. Zwei gleichzeitige Diktate müssen trotzdem
-        // nacheinander laufen — sonst streiten sie sich um whisper-server und
-        // Bereinigungsmodell.
-        final class OverlapProbe: @unchecked Sendable {
-            private let lock = NSLock()
-            private var active = 0
-            private var peak = 0
-            func enter() { lock.lock(); active += 1; peak = max(peak, active); lock.unlock() }
-            func exit() { lock.lock(); active -= 1; lock.unlock() }
-            var maxActive: Int { lock.lock(); defer { lock.unlock() }; return peak }
-        }
-        let probe = OverlapProbe()
-        let router = makeRouter(transcribe: { _ in
-            probe.enter()
-            try? await Task.sleep(nanoseconds: 100_000_000)
-            probe.exit()
-            return "roher text"
-        })
-        async let first = router.respond(to: BridgeRequest(
-            method: "POST", path: "/v1/dictate", bearerToken: "richtig",
-            body: Data("audio-eins".utf8)))
-        async let second = router.respond(to: BridgeRequest(
-            method: "POST", path: "/v1/dictate", bearerToken: "richtig",
-            body: Data("audio-zwei".utf8)))
-        let responses = await [first, second]
-        XCTAssertEqual(responses.map(\.status), [200, 200])
-        XCTAssertEqual(probe.maxActive, 1, "Transkriptionen dürfen nie überlappen")
-    }
-
-    func testQueueLimitRejectsOverloadInsteadOfBufferingIt() async throws {
-        // Die Serialisierung allein reicht nicht: Ohne Obergrenze hält jede
-        // wartende Anfrage ihren vollständigen Body im Speicher, und ein
-        // authentifizierter Client könnte beliebig viel Arbeit aufstauen (die
-        // Größengrenze pro Anfrage sagt nichts über deren ANZAHL). Über der
-        // Grenze muss die Brücke klar mit 503 ablehnen statt anzunehmen.
-        let router = makeRouter(transcribe: { _ in
-            try? await Task.sleep(nanoseconds: 400_000_000)
-            return "roher text"
-        })
-        @Sendable func dictate() async -> BridgeResponse {
-            await router.respond(to: BridgeRequest(
-                method: "POST", path: "/v1/dictate", bearerToken: "richtig",
-                body: Data("audio".utf8)
-            ))
-        }
-        async let first = dictate()
-        async let second = dictate()
-        async let third = dictate()
-        async let fourth = dictate()
-        async let fifth = dictate()
-        let statuses = await [first, second, third, fourth, fifth].map(\.status)
-        XCTAssertEqual(statuses.filter { $0 == 200 }.count, 3,
-                       "genau die Warteschlangentiefe darf durchlaufen")
-        XCTAssertEqual(statuses.filter { $0 == 503 }.count, 2,
-                       "der Rest wird abgelehnt, nicht gepuffert")
-    }
-
-    func testAbandonedRequestIsDroppedInsteadOfTranscribedForNobody() async throws {
-        // Legt die Gegenstelle auf, während ihre Anfrage noch in der
-        // Warteschlange steht, darf die Brücke die teure Arbeit gar nicht erst
-        // beginnen — sonst belegt ein Client, der einfach geht, den einzigen
-        // Arbeitsplatz weiter, und niemand holt das Ergebnis je ab.
-        let started = Counter()
-        let router = makeRouter(transcribe: { _ in
-            started.increment()
-            try? await Task.sleep(nanoseconds: 300_000_000)
-            return "roher text"
-        })
-        @Sendable func dictate() async -> BridgeResponse {
-            await router.respond(to: BridgeRequest(
-                method: "POST", path: "/v1/dictate", bearerToken: "richtig",
-                body: Data("audio".utf8)
-            ))
-        }
-        // Die erste Anfrage belegt den Arbeitsplatz …
-        let first = Task { await dictate() }
-        try await Task.sleep(nanoseconds: 50_000_000)
-        // … die zweite stellt sich an und wird dann abgebrochen.
-        let second = Task { await dictate() }
-        try await Task.sleep(nanoseconds: 20_000_000)
-        second.cancel()
-
-        let abandoned = await second.value
-        let delivered = await first.value
-        XCTAssertEqual(delivered.status, 200, "die laufende Anfrage läuft normal zu Ende")
-        XCTAssertEqual(abandoned.status, 503)
-        // 503 allein wäre mehrdeutig — „ausgelastet“ hat denselben Status. Die
-        // Meldung belegt, dass die Anfrage wirklich am Abbruch scheiterte und
-        // nicht schon an der Warteschlangengrenze.
-        XCTAssertEqual(try object(abandoned)["error"] as? String,
-                       L10n.text("core.bridge.abandoned"))
-        XCTAssertEqual(started.count, 1,
-                       "die abgebrochene Anfrage darf nicht mehr transkribiert werden")
-    }
-
-    func testFinishedRequestLeavesNoDictationInTheQueue() async throws {
-        // Eine fertige Task hält ihr Ergebnis fest, und das ist hier die
-        // vollständige Antwort samt diktiertem Text. Bliebe sie als Kettenende
-        // stehen, stünde das letzte Diktat bis zur nächsten Anfrage im Speicher.
-        let router = makeRouter(transcribe: { _ in "streng vertrauliches diktat" })
-        let response = await router.respond(to: BridgeRequest(
-            method: "POST", path: "/v1/dictate", bearerToken: "richtig",
-            body: Data("audio".utf8)
-        ))
-        XCTAssertEqual(response.status, 200)
-        let tail = await router.pipelineTail
-        XCTAssertNil(tail, "nach getaner Arbeit darf am Kettenende nichts liegen bleiben")
-    }
-
-    func testUnknownPathAndWrongMethod() async {
-        let router = makeRouter()
-        let unknown = await router.respond(to: BridgeRequest(
-            method: "GET", path: "/v1/alles", bearerToken: "richtig"
-        ))
-        XCTAssertEqual(unknown.status, 404)
-
-        let wrongMethod = await router.respond(to: BridgeRequest(
-            method: "GET", path: "/v1/dictate", bearerToken: "richtig"
-        ))
-        XCTAssertEqual(wrongMethod.status, 405)
     }
 
     // MARK: - Server über echte Loopback-Verbindungen
@@ -619,7 +170,7 @@ final class BridgeTests: XCTestCase {
 
         var bridge = Config.Bridge()
         bridge.port = takenPort
-        let server = BridgeServer(config: bridge, router: makeRouter(), identityProvider: Self.serverIdentity)
+        let server = BridgeServer(config: bridge, router: makeBridgeRouter(), identityProvider: Self.serverIdentity)
         XCTAssertThrowsError(try server.start(), "belegter Port darf keinen Erfolg melden")
         XCTAssertFalse(server.isRunning)
     }
@@ -629,7 +180,7 @@ final class BridgeTests: XCTestCase {
         bridge.port = 39999
         // `tokenStatus` fest vorgeben, damit der Test nicht vom echten
         // Schlüsselbund des ausführenden Macs abhängt.
-        let server = BridgeServer(config: bridge, router: makeRouter(token: nil),
+        let server = BridgeServer(config: bridge, router: makeBridgeRouter(token: nil),
                                   tokenStatus: { .missing })
         XCTAssertThrowsError(try server.start()) { error in
             guard case BridgeServer.ServeError.noToken = error else {
@@ -643,7 +194,7 @@ final class BridgeTests: XCTestCase {
         // Speicherdruck-Schutz: Ein falsches Token wird direkt nach dem Kopf
         // abgewiesen — die Brücke wartet NICHT erst auf den angekündigten
         // (großen) Body. Der Test schickt bewusst nur den Kopf.
-        let (server, port) = try startServer(router: makeRouter())
+        let (server, port) = try startServer(router: makeBridgeRouter())
         defer { server.stop() }
         let headerOnly = "POST /v1/dictate HTTP/1.1\r\n"
             + "Authorization: Bearer falsch\r\n"
@@ -658,7 +209,7 @@ final class BridgeTests: XCTestCase {
         // Puffer wieder freigegeben werden.
         let deallocated = expectation(description: "Session freigegeben")
         deallocated.assertForOverFulfill = false
-        let (server, port) = try startServer(router: makeRouter())
+        let (server, port) = try startServer(router: makeBridgeRouter())
         defer { server.stop() }
         server.onSessionDeinitializedForTesting = { deallocated.fulfill() }
         let request = "GET /v1/health HTTP/1.1\r\n"
@@ -670,7 +221,7 @@ final class BridgeTests: XCTestCase {
     }
 
     func testPlainHTTPIsRejectedByTLSListener() throws {
-        let (server, port) = try startServer(router: makeRouter())
+        let (server, port) = try startServer(router: makeBridgeRouter())
         defer { server.stop() }
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { return XCTFail("Socket fehlt") }
@@ -691,7 +242,7 @@ final class BridgeTests: XCTestCase {
 
     func testStopCancelsInFlightRequest() throws {
         let work = DisconnectWork(testCase: self)
-        let (server, port) = try startServer(router: makeRouter(
+        let (server, port) = try startServer(router: makeBridgeRouter(
             transcribe: { _ in try await work.run() }
         ))
         let connection = NWConnection(
@@ -736,7 +287,7 @@ final class BridgeTests: XCTestCase {
 
     func testClientTLSCloseCancelsInFlightRequest() throws {
         let work = DisconnectWork(testCase: self)
-        let (server, port) = try startServer(router: makeRouter(
+        let (server, port) = try startServer(router: makeBridgeRouter(
             transcribe: { _ in try await work.run() }
         ))
         defer { work.release(); server.stop() }
@@ -771,20 +322,20 @@ final class BridgeTests: XCTestCase {
     }
 
     func testStopCompletionReleasesPortForReplacement() throws {
-        let (old, port) = try startServer(router: makeRouter())
+        let (old, port) = try startServer(router: makeBridgeRouter())
         let stopped = expectation(description: "Listener hat Port freigegeben")
         old.stop { stopped.fulfill() }
         wait(for: [stopped], timeout: 2)
         var config = Config.Bridge()
         config.port = port
-        let replacement = BridgeServer(config: config, router: makeRouter(), identityProvider: Self.serverIdentity)
+        let replacement = BridgeServer(config: config, router: makeBridgeRouter(), identityProvider: Self.serverIdentity)
         defer { replacement.stop() }
         XCTAssertNoThrow(try replacement.start())
         XCTAssertTrue(replacement.isRunning)
     }
 
     func testRepeatedStopCallbacksAndRestartWaitForListenerCancellation() throws {
-        let (server, _) = try startServer(router: makeRouter())
+        let (server, _) = try startServer(router: makeBridgeRouter())
         let first = expectation(description: "Erster Stop bestätigt")
         let second = expectation(description: "Zweiter Stop bestätigt")
         let restarted = expectation(description: "Dieselbe Instanz erneut gestartet")
@@ -807,7 +358,7 @@ final class BridgeTests: XCTestCase {
         // Servers passen (früher fehlten die vier Trenner-Bytes `\r\n\r\n`).
         var bridge = Config.Bridge()
         bridge.maxRequestMegabytes = 1
-        let server = BridgeServer(config: bridge, router: makeRouter(), identityProvider: Self.serverIdentity)
+        let server = BridgeServer(config: bridge, router: makeBridgeRouter(), identityProvider: Self.serverIdentity)
         let maxBody = server.maxBodyBytes
 
         var header = "POST /v1/dictate HTTP/1.1\r\n"
@@ -857,7 +408,7 @@ final class BridgeTests: XCTestCase {
         // Verbindungen durften bisher acht volle Bodys gleichzeitig puffern,
         // obwohl der Router hoechstens drei schwere Anfragen annimmt. Ueberlast
         // muss abgelehnt werden, BEVOR sie im Speicher liegt.
-        let (server, port) = try startServer(router: makeRouter())
+        let (server, port) = try startServer(router: makeBridgeRouter())
         defer { server.stop() }
 
         let announced = 1024 * 1024
@@ -905,7 +456,7 @@ final class BridgeTests: XCTestCase {
         // Rohpuffer ist zwar freigegeben, die Router-Tasks halten die Bodys aber
         // weiterhin. Eine vierte, noch unvollständige Anfrage darf deshalb
         // nicht ein zweites gemeinsames Budget daneben aufbauen.
-        let (server, port) = try startServer(router: makeRouter(
+        let (server, port) = try startServer(router: makeBridgeRouter(
             transcribe: { _ in
                 while !Task.isCancelled {
                     try? await Task.sleep(nanoseconds: 10_000_000)
@@ -986,12 +537,12 @@ final class BridgeTests: XCTestCase {
         // Kurzbefehl auf dem iPhone überhaupt einen Authorization-Kopf schickt
         // oder ob bloß das Token nicht passt — genau diese Frage kostete bei der
         // Einrichtung die meiste Zeit.
-        let router = makeRouter(token: "richtig")
+        let router = makeBridgeRouter(token: "richtig")
         XCTAssertNil(router.authorizationFailure(bearerToken: "richtig"))
         XCTAssertEqual(router.authorizationFailure(bearerToken: nil), .noTokenSent)
         XCTAssertEqual(router.authorizationFailure(bearerToken: "falsch"), .tokenMismatch)
 
-        let ohneToken = makeRouter(token: nil)
+        let ohneToken = makeBridgeRouter(token: nil)
         XCTAssertEqual(ohneToken.authorizationFailure(bearerToken: "egal"), .noTokenOnThisMac)
 
         // Die HTTP-Antwort bleibt in allen Fällen dieselbe knappe 401 — die
@@ -1087,7 +638,7 @@ final class BridgeTests: XCTestCase {
     func testStartNamesKeychainFailureInsteadOfSuggestingANewToken() {
         var bridge = Config.Bridge()
         bridge.port = 39998
-        let server = BridgeServer(config: bridge, router: makeRouter(token: nil),
+        let server = BridgeServer(config: bridge, router: makeBridgeRouter(token: nil),
                                   tokenStatus: { .failed(errSecInteractionNotAllowed) })
         XCTAssertThrowsError(try server.start()) { error in
             guard case BridgeServer.ServeError.keychainUnavailable(let status) = error else {
@@ -1182,156 +733,5 @@ final class BridgeTests: XCTestCase {
         XCTAssertNil(first.rangeOfCharacter(from: CharacterSet(charactersIn: "+/=")))
     }
 
-    // MARK: - Konfiguration
 
-    func testBridgeIsOffByDefaultAndValidatesItsRanges() throws {
-        var config = Config()
-        XCTAssertFalse(config.bridge.enabled, "Ein offener Port darf keine Voreinstellung sein")
-        XCTAssertNoThrow(try config.validate())
-
-        config.bridge.port = 80          // unter 1024: bräuchte Root-Rechte
-        XCTAssertThrowsError(try config.validate())
-        config.bridge.port = 8188
-        config.bridge.maxRequestMegabytes = 0
-        XCTAssertThrowsError(try config.validate())
-    }
-
-    func testBrokenBridgeValuesFallBackFieldByField() throws {
-        let json = """
-        {"bridge": {"enabled": true, "port": 70000, "maxRequestMegabytes": 40}}
-        """
-        let config = try JSONDecoder().decode(Config.self, from: Data(json.utf8))
-        XCTAssertTrue(config.bridge.enabled, "gültige Nachbarfelder bleiben erhalten")
-        XCTAssertEqual(config.bridge.port, Config.Bridge().port, "kaputter Port -> Default")
-        XCTAssertEqual(config.bridge.maxRequestMegabytes, 40)
-    }
-
-    // MARK: - Audio
-
-    func testAudioFormatIsRecognizedFromTheFirstBytes() {
-        XCTAssertEqual(AudioDecoder.fileExtension(for: Data("RIFF....WAVEfmt ".utf8)), "wav")
-        XCTAssertEqual(AudioDecoder.fileExtension(for: Data("....ftypM4A ".utf8)), "m4a")
-        XCTAssertEqual(AudioDecoder.fileExtension(for: Data("OggS".utf8)), "ogg")
-        XCTAssertEqual(AudioDecoder.fileExtension(for: Data("ID3".utf8)), "mp3")
-        XCTAssertEqual(AudioDecoder.fileExtension(for: Data([0xFF, 0xFB, 0x90])), "mp3")
-        XCTAssertEqual(AudioDecoder.fileExtension(for: Data("irgendwas".utf8)), "audio")
-    }
-
-    func testDecoderTurnsWavIntoSixteenKilohertzMono() throws {
-        // Eine Sekunde Sinuston bei 44,1 kHz -> muss auf 16 kHz mono landen.
-        let sampleRate = 44100
-        var samples = [Float]()
-        for index in 0..<sampleRate {
-            samples.append(sin(Float(index) * 2 * .pi * 440 / Float(sampleRate)) * 0.5)
-        }
-        let wav = wavData(from: samples, sampleRate: sampleRate)
-        let decoded = try AudioDecoder.samples16kMono(from: wav)
-        // Rundungen des Umwandlers zulassen, aber die Größenordnung festnageln.
-        XCTAssertEqual(Double(decoded.count), 16000, accuracy: 500)
-        XCTAssertTrue(decoded.contains { abs($0) > 0.1 }, "Signal darf nicht verschwinden")
-    }
-
-    func testDecoderEnforcesTheLengthLimit() throws {
-        // Zwei Sekunden Audio gegen ein (nur im Test) auf eine Sekunde gesetztes
-        // Limit: Die Grenze muss greifen, bevor der Speicher verbraucht ist.
-        let sampleRate = 16000
-        let samples = [Float](repeating: 0.25, count: sampleRate * 2)
-        let wav = wavData(from: samples, sampleRate: sampleRate)
-        XCTAssertThrowsError(try AudioDecoder.samples16kMono(from: wav,
-                                                             maxSampleCount: sampleRate)) { error in
-            guard case AudioDecoder.DecodeError.tooLong = error else {
-                return XCTFail("erwartet tooLong, war: \(error)")
-            }
-        }
-        // Dieselbe Datei ohne Test-Limit bleibt gültig.
-        XCTAssertNoThrow(try AudioDecoder.samples16kMono(from: wav))
-    }
-
-    func testDecoderTreatsMidFileReadErrorAsErrorNotAsShortSuccess() throws {
-        // Kaputte Aufnahme: Ein m4a, dessen hintere Audiodaten zerstört sind,
-        // liefert erst gültige Frames und dann einen Lesefehler mitten in der
-        // Datei. Das darf KEIN stiller Teilerfolg werden — sonst würde
-        // abgeschnittenes Audio kommentarlos transkribiert und als Erfolg
-        // gemeldet (frühere Lücke: Lesefehler galten pauschal als Dateiende).
-        let converter = URL(fileURLWithPath: "/usr/bin/afconvert")
-        try XCTSkipUnless(FileManager.default.isExecutableFile(atPath: converter.path),
-                          "afconvert nicht verfügbar")
-
-        // 1 s Sinuston als WAV, mit afconvert nach AAC/m4a gewandelt.
-        let sampleRate = 44100
-        var samples = [Float]()
-        for index in 0..<sampleRate {
-            samples.append(sin(Float(index) * 2 * .pi * 440 / Float(sampleRate)) * 0.5)
-        }
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("stillepost-test-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let wavURL = directory.appendingPathComponent("ton.wav")
-        let m4aURL = directory.appendingPathComponent("ton.m4a")
-        try wavData(from: samples, sampleRate: sampleRate).write(to: wavURL)
-        let convert = Process()
-        convert.executableURL = converter
-        convert.arguments = ["-f", "m4af", "-d", "aac", wavURL.path, m4aURL.path]
-        try convert.run()
-        convert.waitUntilExit()
-        try XCTSkipUnless(convert.terminationStatus == 0, "afconvert fehlgeschlagen")
-
-        // Erst der Gegenbeweis: Die unveränderte Datei muss sauber dekodieren.
-        // Ohne ihn belegt der Test unten nur, dass irgendetwas an der Datei
-        // kaputt ist — nicht, dass der Lesefehler-Pfad greift.
-        let intact = try Data(contentsOf: m4aURL)
-        XCTAssertFalse(try AudioDecoder.samples16kMono(from: intact).isEmpty)
-
-        // Hinteres Drittel der Audiodaten zerstören — aber nur INNERHALB des
-        // mdat-Atoms. Bis ans Dateiende zu schreiben träfe auch das dahinter
-        // liegende moov-Atom mit der Pakettabelle; dann scheiterte schon das
-        // Öffnen, und der zu prüfende Fehlerpfad MITTEN im Lesen käme nie dran.
-        var m4a = intact
-        let tag = try XCTUnwrap(m4a.range(of: Data("mdat".utf8)))
-        try XCTSkipUnless(tag.lowerBound >= 4, "mdat ohne vorangestelltes Größenfeld")
-        // Vor dem Atomnamen stehen vier Bytes Atomgröße (Big Endian).
-        let sizeField = tag.lowerBound - 4
-        let atomSize = Int(m4a[sizeField..<tag.lowerBound]
-            .reduce(UInt32(0)) { ($0 << 8) | UInt32($1) })
-        try XCTSkipUnless(atomSize > 8 && sizeField + atomSize <= m4a.count,
-                          "unerwartete mdat-Größe (64-Bit-Variante?)")
-        let payload = tag.upperBound..<(sizeField + atomSize)
-        for index in (payload.lowerBound + payload.count * 2 / 3)..<payload.upperBound {
-            m4a[index] = 0xAA
-        }
-
-        XCTAssertThrowsError(try AudioDecoder.samples16kMono(from: m4a)) { error in
-            guard case AudioDecoder.DecodeError.unsupported = error else {
-                return XCTFail("erwartet unsupported, war: \(error)")
-            }
-        }
-    }
-
-    func testDecoderRejectsGarbageAndEmptyInput() {
-        XCTAssertThrowsError(try AudioDecoder.samples16kMono(from: Data()))
-        XCTAssertThrowsError(try AudioDecoder.samples16kMono(
-            from: Data(repeating: 0x41, count: 4096)
-        ))
-    }
-
-    /// Minimaler WAV-Schreiber für den Test (16 Bit, mono, freie Abtastrate).
-    /// Der Kern-Schreiber `WavCodec` kann nur 16 kHz — hier brauchen wir aber
-    /// bewusst eine andere Rate, damit die Umrechnung überhaupt etwas tut.
-    private func wavData(from samples: [Float], sampleRate: Int) -> Data {
-        var data = Data()
-        let byteCount = samples.count * 2
-        func append(_ string: String) { data.append(Data(string.utf8)) }
-        func append32(_ value: Int) { data.append(contentsOf: withUnsafeBytes(of: UInt32(value).littleEndian, Array.init)) }
-        func append16(_ value: Int) { data.append(contentsOf: withUnsafeBytes(of: UInt16(value).littleEndian, Array.init)) }
-        append("RIFF"); append32(36 + byteCount); append("WAVE")
-        append("fmt "); append32(16); append16(1); append16(1)
-        append32(sampleRate); append32(sampleRate * 2); append16(2); append16(16)
-        append("data"); append32(byteCount)
-        for sample in samples {
-            let clamped = max(-1, min(1, sample))
-            data.append(contentsOf: withUnsafeBytes(of: Int16(clamped * 32767).littleEndian, Array.init))
-        }
-        return data
-    }
 }

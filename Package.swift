@@ -8,17 +8,22 @@
 import PackageDescription
 
 #if os(Linux)
-let linuxExcluded = ["AudioRecorder.swift", "AudioInputDevice.swift", "AudioDecoder.swift",
-    "SileroModel.swift", "KeychainUpsert.swift", "PasteboardSnapshot.swift",
-     "BridgeToken.swift", "BridgeServer.swift", "BridgePairing.swift",
-    "BridgeIdentity.swift"]
+let macOnlySources = [
+    "AudioRecorder.swift", "AudioInputDevice.swift", "AudioDecoder.swift", "SileroModel.swift",
+    "KeychainUpsert.swift", "PasteboardSnapshot.swift", "BridgeToken.swift", "BridgeServer.swift",
+    "BridgePairing.swift", "BridgeIdentity.swift"
+]
+let macOnlyTests = [
+    "AppProfilePolicyTests.swift", "AudioFileImportTests.swift", "BridgeIdentityTests.swift",
+    "BridgeInputTests.swift", "BridgeTests.swift", "CoreTests.swift", "SileroVadTests.swift"
+].map { "StillePostCoreTests/" + $0 } + ["StillePostAppTests"]
 let package = Package(name: "StillePost", defaultLocalization: "de", targets: [
     .target(name: "LinuxNative", path: "Sources/LinuxNative", linkerSettings: [.linkedLibrary("ssl"), .linkedLibrary("crypto"), .linkedLibrary("dl")]),
-    .target(name: "StillePostCore", dependencies: ["LinuxNative"], exclude: linuxExcluded, resources: [.process("Resources")],
+    .target(name: "StillePostCore", dependencies: ["LinuxNative"], exclude: macOnlySources, resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)]),
     .executableTarget(name: "stillepost-linux", dependencies: ["StillePostCore"],
             swiftSettings: [.swiftLanguageMode(.v6)]),
-    .testTarget(name: "LinuxCoreTests", dependencies: ["StillePostCore"], path: "Tests", sources: ["LinuxCoreTests", "StillePostCoreTests/LockedTestValue.swift", "StillePostCoreTests/ProfileTests.swift", "StillePostCoreTests/DiagnosticsTests.swift", "StillePostCoreTests/AudioFailureLifecycleTests.swift", "StillePostCoreTests/HistoryCorrectionTests.swift", "StillePostCoreTests/HistoryManagementTests.swift", "StillePostCoreTests/HistoryPrivacyTests.swift", "StillePostCoreTests/HotkeyStateTests.swift", "StillePostCoreTests/PasteTargetPolicyTests.swift", "StillePostCoreTests/SelectionCleanupTests.swift", "StillePostCoreTests/TextDifferenceTests.swift", "StillePostCoreTests/VadSegmenterTests.swift", "StillePostCoreTests/WhisperHealthTests.swift", "StillePostCoreTests/ResultDeliveryTests.swift", "StillePostCoreTests/TranscriptPreviewTests.swift"],
+    .testTarget(name: "LinuxCoreTests", dependencies: ["StillePostCore"], path: "Tests", exclude: macOnlyTests,
             swiftSettings: [.swiftLanguageMode(.v6)])
 ])
 #else
