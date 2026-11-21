@@ -111,8 +111,8 @@ enum StillePostCLI {
         }
         guard argumentsAreValid(arguments) else { fail(usage, code: 2) }
 
-        let config = Config.load().resolvedForRequest()
         do {
+            let config = try (command == "doctor" ? ConfigFile().loadSnapshot() : Config.load()).resolvedForRequest()
             try await run(command, arguments: arguments, config: config)
         } catch {
             fail(L10n.format("cli.error", error.localizedDescription))

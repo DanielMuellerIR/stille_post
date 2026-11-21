@@ -9,7 +9,7 @@
 _Static_assert(ATOMIC_POINTER_LOCK_FREE == 2, "Terminal-Signalhandler braucht lock-freie Zeiger");
 static atomic_flag terminalLock = ATOMIC_FLAG_INIT;
 static _Atomic(struct termios *) restoreSettings;
-static const int terminalSignals[] = { SIGINT, SIGTERM, SIGPIPE };
+static const int terminalSignals[] = { SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGPIPE };
 enum { terminalSignalCount = sizeof(terminalSignals) / sizeof(terminalSignals[0]) };
 static struct sigaction savedActions[terminalSignalCount];
 
