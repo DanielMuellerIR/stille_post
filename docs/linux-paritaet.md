@@ -1,8 +1,9 @@
-# Linux-Parität: verbindlicher Abgleich zur Mac-App
+# Technischer Mac-/Linux-Abgleich mit Prüfberichten
 
-Arbeitsstand 2026-11-05. Referenz ist die vorhandene macOS-App im selben
-Quellstand, nicht die reduzierte Linux-Oberfläche von 0.9.47. „Geprüft“ erfordert
-beobachtetes Verhalten auf beiden Ziel-Desktops; ein Build allein genügt nicht.
+Der Prüfkatalog vom 2026-11-05 verwendet die macOS-App desselben Quellstands als
+Referenz. Darunter folgen datierte Prüfberichte. „Geprüft“ bedeutet, dass das
+Verhalten auf beiden Ziel-Desktops beobachtet wurde. Installation, Nutzung und
+offene Geräteprüfungen stehen in der [Linux-Anleitung](linux.md).
 
 | Bereich | Mac-Vertrag | Linux-Abnahme |
 |---|---|---|

@@ -1,7 +1,8 @@
 # Offline-Diktat auf dem iPhone
 
-Stand: 2026-10-19. Entwicklungskandidat 0.9.44. Die menschliche Geräteabnahme
-des vollständigen Offline-Ablaufs steht noch aus.
+Die Entwicklungs-App bietet seit 0.9.44 lokale Spracherkennung auf dem iPhone.
+Die Ergebnisse der Simulatorprüfungen und offenen Gerätefälle stehen unter
+[Prüfstand und Grenzen](#prüfstand-und-grenzen).
 
 ## Benutzung
 
@@ -88,12 +89,3 @@ physisches iOS-17-Gerät; dessen Offline-Kompatibilität bleibt zu prüfen.
 Die App-Untergrenze bleibt iOS 17. Simulatorprüfungen sind keine Leistungs-
 oder Mikrofonabnahme älterer Hardware. Menschliche Flugmodus-, DE/EN-, Langtext-
 und Unterbrechungsabnahmen auf dem iPhone bleiben bis zur Durchführung offen.
-
-## Zusammenführung am 2026-11-06
-
-Der bisher lokale Kandidat wurde mit dem privaten Entwicklungsstand 0.9.48
-zusammengeführt. Alle 50 `StillePostClientCore`-Prüfungen bestanden in der
-bestehenden macOS-Benutzersitzung; `xcodebuild build-for-testing` für den
-generischen iOS-Simulator bestand ohne Signierung. Der SSH-Lauf konnte zuvor
-sechs Zertifikatsfixtures wegen des dort gesperrten Schlüsselbunds nicht anlegen.
-Die oben genannten menschlichen iPhone-Abnahmen bleiben offen.

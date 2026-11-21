@@ -1,6 +1,8 @@
-# Geplante Erweiterungen für Stille Post
+# Ursprünglicher Erweiterungsplan für Stille Post
 
-Stand: 2026-10-16. Ausgangsversion: 0.9.20. Die folgenden Funktionen sind geplant; diese Übersicht beschreibt keinen bereits ausgelieferten Funktionsstand. Der aktuelle Projektstatus steht im [Backlog](../backlog.md).
+Dieser historische Plan vom 2026-10-16 beschreibt die Vorhaben ausgehend von
+Version 0.9.20. Den heutigen Funktionsumfang beschreibt die
+[Produktübersicht](../README.de.md). Offene Aufgaben stehen im [Backlog](../backlog.md).
 
 ## Sicheres Einfügen und Korrigieren
 

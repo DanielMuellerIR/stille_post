@@ -2,56 +2,40 @@
 
 **🌐 Sprache / Language:** [English](README.md) · [Deutsch](README.de.md)
 
-Lokale Diktier-App für macOS und Linux: Globaler Hotkey, Spracherkennung mit Whisper und
-Textbereinigung mit einem lokalen Sprachmodell. Der fertige Text landet direkt an
-der Cursor-Position. Aufnahmen verlassen den Rechner nicht.
+Stille Post nimmt über einen globalen Hotkey auf, transkribiert lokal mit Whisper
+und bereinigt den fertigen Text auf Wunsch mit einem Sprachmodell. Die App fügt
+das Ergebnis in der aktiven Anwendung ein oder bietet es zum manuellen Einfügen
+an. Oberfläche und CLI-Diagnosen sind auf Deutsch und Englisch verfügbar.
 
-Die Linux-Version 0.9.48 für CachyOS/KDE/Wayland und Linux Mint/Cinnamon/X11 bietet die erweiterten Mac-Funktionen und ist auf beiden Zielsystemen mit künstlichen Audioquellen geprüft. Physische Geräteabnahme und mehrtägiger Betrieb stehen noch aus. Siehe [Linux-Nutzung und Status](docs/linux.md) und [Mac-/Linux-Abgleich](docs/linux-paritaet.md). [Linux 0.9.48 herunterladen](https://github.com/DanielMuellerIR/stille_post/releases/tag/v0.9.48); der signierte Linux-Updatefeed ist verfügbar.
+## Downloads
 
-Die vollständige Oberfläche — Menü, Einstellungen, Verlauf, Overlays,
-Modell-Download und nutzernahe Fehler — ist auf Deutsch und Englisch verfügbar.
-macOS wählt die Sprache aus den systemweiten oder app-spezifischen
-Spracheinstellungen. Auch die CLI-Diagnosen sind lokalisiert.
+- **macOS** [Signiertes DMG herunterladen](https://github.com/DanielMuellerIR/stille_post/releases/latest) für Apple Silicon ab macOS 13. Die [Einrichtung steht unten](#in-fünf-minuten-startklar).
+- **Linux** [0.9.53 herunterladen](https://github.com/DanielMuellerIR/stille_post/releases/tag/v0.9.53) für x86_64. [Installation und Gerätestand](docs/linux.md) beschreiben CachyOS/KDE/Wayland und Linux Mint/Cinnamon/X11.
+- **iPhone** Die [Entwicklungs-App](iOS/README.md) nimmt Diktate auf und kann sie über eine gekoppelte HTTPS-Verbindung an den Mac senden. Sie bietet auch Spracherkennung direkt auf dem Gerät.
 
-Optional erkennt [Silero die Sprachaktivität](docs/silero-vad.md). Auswahl und
-separater, SHA-256-geprüfter Modell-Download stehen unter Einstellungen → Aufnahme.
-RMS bleibt Standard und Rückfall; macOS 13 bleibt unterstützt. Der belegte Nutzen
-stammt aus künstlichen Sprachdateien, menschliche Mikrofonabnahme steht noch aus.
+## Diktieren unter macOS
+
+- Den Diktier-Hotkey zum Umschalten oder [Gedrückthalten](docs/gedrueckthalten.md) einrichten, Aufnahmen [pausieren und fortsetzen](docs/aufnahme-pausieren.md) oder die [laufende Rohtextvorschau](docs/rohtextvorschau.md) ohne Fokuswechsel einblenden.
+- Mit [gesprochener Formatierung](docs/gesprochene-formatierung.md) Absätze, Zeilen, Listen und Anführungszeichen auf Deutsch oder Englisch diktieren. Die Befehle funktionieren auch bei ausgeschalteter Bereinigung.
+- Im [Testdiktat](docs/testdiktat.md) Text und Phasenzeiten ohne Einfügen prüfen oder [Audiodateien lokal transkribieren](docs/audioimport.md), ohne das Original zu verändern. Die [Diagnose](docs/diagnose.md) prüft Einrichtung und Fehler.
+- [Ausgewählten Text bereinigen](docs/auswahl-bereinigen.md) über das Menü oder einen macOS-Dienst. Die App zeigt eine Vorschau und prüft vor dem Ersetzen erneut das Ziel.
+- In [Diktierprofilen](docs/diktierprofile.md) Sprache, Wörterbuch, Bereinigung und Aufbewahrung einstellen. Profile lassen sich Apps zuordnen oder im Menü manuell auswählen.
+- [Silero zur Sprachaktivitätserkennung](docs/silero-vad.md) unter **Einstellungen → Aufnahme** auswählen. Dazu ist ein separater, SHA-256-geprüfter Modell-Download nötig. RMS ist Standard und Rückfall.
 
 ## Menüleiste & Verlauf
 
 | | |
 |:---:|:---:|
-| ![Menüleisten-Menü](assets/menu.png) | ![Verlauf-Fenster](assets/history.png) |
-| *Menüleiste: Start/Stopp, Verlauf, Einstellungen, Beenden* | *Verlauf: jedes Diktat (roh + bereinigt), Kopieren per Klick* |
+| ![Menüleisten-Menü](assets/menu.png) | ![Verlaufsfenster](assets/history.png) |
+| *Diktat starten oder stoppen, Einstellungen und Verlauf öffnen* | *Rohtext und bereinigten Text ansehen und kopieren* |
 
 Ist das Menüleistensymbol ausgeblendet, die laufende App über Finder oder Spotlight
-erneut öffnen. Dadurch öffnet sich der Verlauf und das Symbol wird wieder eingeblendet.
-Bei aktivem App-Fenster ist der Verlauf auch im App-Menü mit ⌘⌥H erreichbar.
+erneut öffnen. Dadurch erscheint das Symbol wieder und der Verlauf öffnet sich.
+Bei aktivem Stille-Post-Fenster öffnet **⌘⌥H** den Verlauf.
 
-Der [Verlauf](docs/verlauf-verwalten.md) lässt sich lokal nach Rohtext und Ergebnis durchsuchen, nach Zeitraum und Fehlerstatus filtern und eintragsweise löschen. ⌘F fokussiert die Suche, ⌘R lädt Änderungen der CLI nach. Ein Löschfehler erhält einen textfreien, erneut löschbaren Audioverweis.
-
-Textaufbewahrung und ein vorübergehender Modus ohne Textverlauf sind unter **Einstellungen → Verlauf** konfigurierbar. Fehleraufnahmen haben eine getrennte ausdrückliche Regel; vorhandene Einträge behalten ihre bisherige Regel. [Details zur Aufbewahrung](docs/aufbewahrung.md).
-
-**Bearbeiten** im Verlauf öffnet Textkorrektur, Wortvergleich und frühere Fassungen. Der Rohtext und die ursprüngliche Ausgabe bleiben erhalten; höchstens drei Vorfassungen folgen denselben Aufbewahrungsregeln. [Details zur Textkorrektur](docs/textkorrektur.md).
-
-Im Editor übernimmt **Ins Wörterbuch …** ausdrücklich bestätigte Schreibweisen für künftige Bereinigungen. **Neu bereinigen** erstellt aus dem vollständigen Rohtext eine neue Fassung mit der aktuellen Konfiguration; sie wird erst nach **Neue Fassung übernehmen** gespeichert und nie automatisch eingefügt.
-
-Profile für Sprache, Wörterbuch, Bereinigung und Aufbewahrung lassen sich in den Einstellungen verwalten, Apps zuordnen und im Menü manuell wechseln. Geerbte Bereiche verwenden globale Einstellungen; laufende Aufträge behalten ihren Startstand. Eine lokale Richtlinie begrenzt auch sämtliche Textanfragen auf Loopback. Siehe [Diktierprofile](docs/diktierprofile.md).
-
-Ausdrückliche deutsche und englische Befehle für Absätze, Zeilen, Listen und Anführungszeichen lassen sich optional aktivieren, auch ohne LLM. Zitate bleiben wörtlich; siehe [gesprochene Formatierung](docs/gesprochene-formatierung.md).
-
-Ausgewählter Text anderer Apps lässt sich ausdrücklich über Menü oder macOS-Dienst bereinigen. Eine Vorschau und erneute Zielprüfung gehen dem bestätigten Ersetzen voraus. Siehe [Auswahl bereinigen](docs/auswahl-bereinigen.md).
-
-
-
-Der Diktier-Hotkey kann umschalten oder zum Sprechen gehalten werden. Siehe [Gedrückthalten](docs/gedrueckthalten.md).
-
-Längere Diktate lassen sich über Menü und Aufnahmefeld pausieren. Siehe [Pause und Fortsetzen](docs/aufnahme-pausieren.md).
-Einrichtung und Fehler lassen sich über die [Diagnose](docs/diagnose.md) prüfen.
-Ein [Testdiktat](docs/testdiktat.md) zeigt Aufnahme, Vorschau und getrennte Phasenzeiten ohne automatisches Einfügen.
-- Optionale [laufende Rohtextvorschau](docs/rohtextvorschau.md) im fokusfreien Aufnahmeoverlay.
-- [Audiodateien auswählen und lokal transkribieren](docs/audioimport.md), mit geschütztem Original und Vorschau ohne Einfügen.
+- Der [Verlauf](docs/verlauf-verwalten.md) durchsucht Rohtext und Ergebnis lokal, filtert nach Zeitraum und Status und löscht einzelne Einträge. **⌘F** fokussiert die Suche und **⌘R** lädt CLI-Änderungen nach. Schlägt das Löschen einer Aufnahme fehl, bleibt ein textfreier Verweis für einen weiteren Versuch.
+- Die [Aufbewahrung](docs/aufbewahrung.md) lässt sich unter **Einstellungen → Verlauf** einstellen. Der temporäre Modus unterdrückt den Textverlauf. Fehleraufnahmen haben eine getrennte Regel und vorhandene Einträge behalten ihre bisherige Regel.
+- [Bearbeiten](docs/textkorrektur.md) öffnet den Wortvergleich mit Rohtext, ursprünglicher Ausgabe und bis zu drei früheren Fassungen. **Ins Wörterbuch …** übernimmt bestätigte Schreibweisen. **Neu bereinigen** nutzt den vollständigen Rohtext und die aktuellen Einstellungen. **Neue Fassung übernehmen** speichert das Ergebnis im Verlauf.
 
 ## In fünf Minuten startklar
 
@@ -189,15 +173,15 @@ Dialog. Darunter liegt `~/Library/Application Support/StillePost/config.json`
 (entsteht beim ersten Start, Menüpunkt „Konfigurationsdatei öffnen"). Die Datei
 bleibt von Hand editierbar.
 
-Der Dialog ist in vier Tabs gegliedert, die üblichen Fälle brauchen also kein JSON
-(das gezeigte Bereinigungsmodell ist der Standard):
-
-| | |
-|:---:|:---:|
-| ![Tab Allgemein](assets/settings-general.png) | ![Tab Bereinigung](assets/settings-cleanup.png) |
-| *Allgemein — Aufnahme-Hotkey & Overlay* | *Bereinigung — Anbieter, Modell, Kontext, Fallbacks* |
-| ![Tab Spracherkennung](assets/settings-speech.png) | ![Tab Aufnahme](assets/settings-recording.png) |
-| *Spracherkennung — Sprache & Whisper-Server* | *Aufnahme — Mikrofon, Stille-Erkennung & Auto-Stopp* |
+| Tab | Einstellungen |
+|---|---|
+| Allgemein | Tastenkürzel, Startverhalten, Einblendung und Heimnetzbrücke |
+| Profile | Diktierprofile und übernommene Vorgaben |
+| Apps | Profile einzelnen Apps zuordnen |
+| Bereinigung | Anbieter, Modell, Wörterbuch und Ausweichdienste |
+| Spracherkennung | Sprache, Whisper-Modell und lokaler Server |
+| Aufnahme | Mikrofon, Sprachaktivitätserkennung und Auto-Stopp |
+| Verlauf | Textaufbewahrung und Umgang mit Fehleraufnahmen |
 
 Die wichtigsten Schalter:
 
@@ -313,11 +297,11 @@ Unbekannte Identitäten, Weiterleitungen und öffentliche Gegenstellen werden
 abgewiesen. Der Mac bleibt reiner Audioempfänger; kein WAN und keine Tastatur-
 Erweiterung.
 
-0.9.42 entfernt HTTP samt Entwicklungsausnahme. Vorhandene HTTP-Kurzbefehle
-müssen auf die App-Aktion „Diktat öffnen“ wechseln; das iPhone muss neu gekoppelt
-werden. Tokenwechsel und Zertifikatserneuerung verlangen ebenfalls neue Kopplung.
-Migration, Zertifikatslebensdauer, Grenzen und Prüfung stehen in der
-[Brückenanleitung](docs/ios-bridge.md). Die Geräteabnahme des Kandidaten steht noch aus.
+Vorhandene HTTP-Kurzbefehle auf die App-Aktion **„Diktat öffnen“** umstellen
+und das iPhone erneut koppeln. Tokenwechsel und Zertifikatserneuerung erfordern
+ebenfalls eine neue Kopplung. Details und Geräteprüfungen stehen in der
+[Brückenanleitung](docs/ios-bridge.md). Die [Anleitung zum Offline-Diktat](docs/ios-offline-dictation.md)
+beschreibt die Erkennung auf dem Gerät und die offenen iPhone-Prüfungen.
 
 ## Steuerbar ohne GUI
 

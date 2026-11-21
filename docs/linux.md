@@ -6,27 +6,22 @@ Mint 22.2/Cinnamon unter X11. Sie benötigt mindestens glibc 2.39, Python 3.10,
 eine PulseAudio-kompatible Audiositzung (zum Beispiel PipeWire) und für den
 GPU-Pfad einen funktionierenden Vulkan-Treiber. CPU bleibt konfigurierbar.
 
-**Stand 0.9.48:** Der erweiterte Funktionsumfang ist auf den beiden Zielsystemen
-installiert und mit künstlichen Audioquellen geprüft. Release und signierter Updatefeed sind veröffentlicht. Physische Geräteabnahme
-und mehrtägiger Betrieb stehen noch aus.
-Verbindliche Funktionen, bestandene Prüfungen und offene Grenzen stehen im
-[Mac-/Linux-Abgleich](linux-paritaet.md). Die [erste Paketprüfung](linux-abnahme.md)
-dokumentiert ausdrücklich den älteren, eingeschränkten Stand von 0.9.47.
-
 ## Installieren und starten
 
-Aus dem Quellstand mit Docker:
+Das [Linux-Archiv für x86_64](https://github.com/DanielMuellerIR/stille_post/releases/tag/v0.9.53)
+entpacken und `StillePost.AppDir/install.sh` ausführen.
+
+Wer das Archiv aus dem Quellstand bauen möchte, benötigt Docker.
 
 ```bash
 ./build.sh
 ./install.sh
 ```
 
-`build.sh` erzeugt ausschließlich ein Archiv unter `build/`. `install.sh`
-installiert benutzerlokal, ohne sudo und ohne Änderungen an Systemdiensten.
-Alternativ das gebaute `StillePost-<version>-linux-x86_64.tar.gz` entpacken und
-`StillePost.AppDir/install.sh` ausführen. Der Installer richtet das App-Menü und
-`$HOME/.local/bin/stillepost` ein und prüft beziehungsweise lädt die Modelle.
+`build.sh` legt das Archiv unter `build/` ab. Der Installer richtet die App
+benutzerlokal ein, ohne sudo und ohne Änderungen an Systemdiensten. Er legt den
+App-Menüeintrag sowie `$HOME/.local/bin/stillepost` an und prüft beziehungsweise
+lädt die Modelle.
 Whisper benötigt ungefähr 1,6 GB, der Gemma-Fallback ungefähr 6,2 GB Plattenplatz;
 die App-Laufzeit liegt zusätzlich im Benutzerkonto.
 
@@ -162,8 +157,7 @@ Links und übergroße Inhalte geprüft. Die neue Laufzeit wird vor dem atomaren
 Versionswechsel isoliert gestartet. Der Launcher kann bei fehlgeschlagenem Start
 einmal auf das bereits geprüfte Vorgängerpaket zurückgehen.
 
-**Seit 0.9.48 öffentlich verfügbar:** [Linux-Release](https://github.com/DanielMuellerIR/stille_post/releases/tag/v0.9.48)
-und [signierter Linux-Feed](https://danielmuellerir.github.io/stille_post/linux/stable.json)
+Die Update-Funktion verwendet den [signierten Linux-Feed](https://danielmuellerir.github.io/stille_post/linux/stable.json)
 mit [separater Signatur](https://danielmuellerir.github.io/stille_post/linux/stable.json.sig).
 Die installierte App prüft diesen Feed mit ihrem mitgelieferten Vertrauensanker.
 Das Erzeugen eines lokalen Installationspakets veröffentlicht nichts. Der
@@ -197,12 +191,11 @@ einmalige Bereinigung, Ausfall, Worttreue, Redirect-/Proxy-Grenzen und WAV-Datei
 `linux/smoke-real.py` prüft ein ausdrücklich übergebenes synthetisches
 Referenzaudio gegen echte lokale Dienste, ohne dessen Text zu protokollieren.
 
-Die erste Geräteprüfung umfasst korrekte deutsche Referenztranskription auf
-beiden GPU-Pfaden, LAN-Bereinigung und reale lokale Gemma-Fallbacks. Der Qt-
-Aufnahmepfad unter Wayland und X11 wurde mit virtuellen Mikrofonen und künstlicher
-Sprache geprüft. Ein physischer Mikrofontest, Hotkey-Abnahme am tatsächlich
-gewählten Desktopkürzel, Gerätewechsel/Suspend und mehrtägiger Pilotbetrieb
-bleiben eigene Abnahmeschritte. Ein reiner Monitor-Eingang ersetzt auf einem
-Rechner ohne angeschlossenes Mikrofon keine echte Mikrofonabnahme.
-
-Datierte Belege und offene Grenzen: [Mac-/Linux-Abgleich](linux-paritaet.md).
+0.9.48 wurde auf beiden Zielsystemen installiert und mit künstlicher Sprache über
+virtuelle Mikrofone geprüft. Frühere Geräteprüfungen belegen die deutsche
+Referenztranskription auf beiden GPU-Pfaden, LAN-Bereinigung und die lokalen
+Gemma-Fallbacks. Die [erste Paketprüfung für 0.9.47](linux-abnahme.md) und der
+[technische Mac-/Linux-Abgleich](linux-paritaet.md) halten die jeweiligen Belege
+fest. Für die Geräteabnahme fehlen noch physische Mikrofontests, Hotkey-Tests
+mit den tatsächlich gewählten Desktopkürzeln, Gerätewechsel, Suspend und ein
+mehrtägiger Einsatz.

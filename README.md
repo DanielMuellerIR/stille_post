@@ -2,56 +2,39 @@
 
 **🌐 Sprache / Language:** [English](README.md) · [Deutsch](README.de.md)
 
-Local dictation app for macOS and Linux: Global hotkey, speech-to-text with Whisper, and text
-cleanup with a local language model. The finished text lands right at your cursor.
-Recordings never leave your machine.
+Stille Post records with a global shortcut, transcribes locally with Whisper, and
+optionally cleans up the finished text with a language model. It inserts the result
+in the focused app or offers it for manual pasting. The macOS interface and CLI
+diagnostics are available in English and German.
 
-Linux version 0.9.48 for CachyOS/KDE/Wayland and Linux Mint/Cinnamon/X11 includes the expanded Mac features and has been tested on both target systems using artificial audio sources. Physical device acceptance and extended daily use are still pending. See [Linux usage and status](docs/linux.md) and the [Mac/Linux checklist](docs/linux-paritaet.md) (German). [Download Linux 0.9.48](https://github.com/DanielMuellerIR/stille_post/releases/tag/v0.9.48); the signed Linux update feed is available.
+## Downloads
 
-The complete interface — menu, settings, history, overlays, model download, and
-user-facing errors — is available in English and German. macOS chooses the language
-from the system or per-app language preferences. CLI diagnostics are localized as
-well.
+- **macOS** [Download the signed DMG](https://github.com/DanielMuellerIR/stille_post/releases/latest) for Apple Silicon with macOS 13 or later. Follow the [setup steps below](#ready-in-five-minutes).
+- **Linux** [Download 0.9.53](https://github.com/DanielMuellerIR/stille_post/releases/tag/v0.9.53) for x86_64. See the [Linux installation guide and device test status (German)](docs/linux.md) for CachyOS/KDE/Wayland and Linux Mint/Cinnamon/X11.
+- **iPhone** The [development app (German)](iOS/README.md) records dictations and can send them to your Mac over a paired HTTPS connection. It also offers on-device recognition.
 
-Optional [Silero speech activity detection](docs/silero-vad.md) is available in
-Settings → Recording with an explicit, SHA-256-verified model download. RMS remains
-the default and fallback; the minimum stays macOS 13. Evidence comes from synthetic
-speech files; human microphone validation is still pending.
+## Dictating on macOS
+
+- Choose Toggle or [Hold to Talk (German)](docs/gedrueckthalten.md), [pause and resume (German)](docs/aufnahme-pausieren.md), or show a [live transcript preview (German)](docs/rohtextvorschau.md) without moving focus.
+- Use [spoken formatting](docs/spoken-formatting.md) for paragraphs, lines, lists, and quotation marks in English or German. It also works with cleanup off.
+- Use [test dictation (German)](docs/testdiktat.md) to review the transcript and phase timings without inserting text, or [transcribe an audio file (German)](docs/audioimport.md) without changing the original. The [diagnostics window (German)](docs/diagnose.md) checks setup and failures.
+- Open [selected text cleanup (German)](docs/auswahl-bereinigen.md) from the menu or a macOS service. The app previews the result and checks the target before replacing the selection.
+- Set a language, dictionary, cleanup, and retention policy in [dictation profiles (German)](docs/diktierprofile.md). Assign them to apps or select them manually from the menu.
+- Turn on [Silero speech activity detection (German)](docs/silero-vad.md) under **Settings → Recording**. It requires a separate SHA-256-verified model download. RMS is the default and fallback.
 
 ## Menu bar & history
 
 | | |
 |:---:|:---:|
 | ![Menu bar menu](assets/en/menu.png) | ![History window](assets/en/history.png) |
-| *Menu bar: start/stop, history, settings, quit* | *History: every dictation (raw + cleaned), copy with one click* |
+| *Start or stop dictation and open Settings or History* | *Review and copy the raw or cleaned transcript* |
 
-If the menu bar icon is hidden, open the running app again from Finder or Spotlight.
-This opens history and restores the icon. With an app window active, history is also
-available from the app menu with ⌘⌥H.
+Reopen the running app through Finder or Spotlight to restore a hidden menu bar
+icon and open History. When a Stille Post window is active, use **⌘⌥H**.
 
-History supports local search across raw and cleaned text, date and status filters, and confirmed deletion of individual entries. ⌘F focuses search; ⌘R reloads changes made by the CLI. If audio deletion fails, a text-free reference remains available for another deletion attempt. [History details](docs/verlauf-verwalten.md).
-
-Text retention and a temporary mode without text history are available under **Settings → History**. Error recordings have a separate explicit policy; existing entries retain their previous policy. [Retention details](docs/aufbewahrung.md).
-
-**Edit** in history opens text correction, word comparison, and previous versions. Raw text and the original output are preserved; up to three previous versions follow the same retention policy. [Text correction details](docs/textkorrektur.md).
-
-In the editor, **Add to dictionary …** adopts explicitly confirmed spellings for future cleanup. **Clean up again** creates a new version from the entire raw transcript with the current configuration; it is saved only after **Accept new version** and is never pasted automatically.
-
-Manage profiles for language, dictionary, cleanup and retention in Settings, assign them to apps, or select them manually from the menu. Inherited areas use global settings; running requests keep their initial configuration. A local policy also confines every text request to loopback. See [dictation profiles](docs/diktierprofile.md) (German).
-
-Optional explicit German and English commands create paragraphs, line breaks, bullet lists and quotation marks, including with LLM cleanup disabled. Quoted text stays literal; see [spoken formatting](docs/spoken-formatting.md).
-
-Explicitly clean up selected text in another app through the menu or a macOS service. A preview and a fresh target check precede confirmed replacement. See [selected text cleanup](docs/auswahl-bereinigen.md) (German).
-
-
-
-Choose Toggle or Hold to talk for the dictation hotkey in Settings. See [hold to talk](docs/gedrueckthalten.md) (German).
-
-Pause and resume longer dictations from the menu or recording overlay. See [pause and resume](docs/aufnahme-pausieren.md) (German).
-Use the [diagnostics window](docs/diagnose.md) to check setup and failures (German).
-An explicit [test dictation](docs/testdiktat.md) provides a preview and phase timings without automatic insertion (German).
-- Optional [live raw transcript preview](docs/rohtextvorschau.md) in the recording overlay without changing focus.
-- [Choose and transcribe audio files locally](docs/audioimport.md), preserving the original and previewing without insertion.
+- [History (German)](docs/verlauf-verwalten.md) searches raw text and results locally, filters by date and status, and deletes individual entries. **⌘F** focuses search and **⌘R** reloads CLI changes. An audio deletion error leaves a text-free reference for retry.
+- [Retention (German)](docs/aufbewahrung.md) is configured in **Settings → History**. The temporary mode suppresses text history. Failed recordings have a separate policy and existing entries keep their original policy.
+- [Edit (German)](docs/textkorrektur.md) opens word comparison and up to three previous versions alongside the raw text and original output. **Add to Dictionary …** records confirmed spellings. **Clean up again** uses the entire raw transcript and current settings. **Accept new version** saves the result to history.
 
 ## Ready in five minutes
 
@@ -87,7 +70,7 @@ ollama pull gemma4:e4b-it-qat
 
 The default model uses about 6 GB of disk space and is suitable for most Macs with
 16–32 GB of memory. It won a comparison of local models on fidelity and speed (see
-[docs/cleanup-model-benchmark.md](docs/cleanup-model-benchmark.md)); for this narrow
+[cleanup model benchmark (German)](docs/cleanup-model-benchmark.md)); for this narrow
 task a small, disciplined model cleans better than the large ones.
 
 ### 5. Install Stille Post
@@ -163,7 +146,7 @@ and sentence boundaries. The cleanup model is warmed when recording begins.
 
 Which local models clean most faithfully, and how the check is designed, is
 documented with reproducible measurements in
-[docs/cleanup-model-benchmark.md](docs/cleanup-model-benchmark.md).
+[cleanup model benchmark (German)](docs/cleanup-model-benchmark.md).
 
 ### Which Whisper model?
 
@@ -184,15 +167,15 @@ Underneath lives `~/Library/Application Support/StillePost/config.json`
 (created on first launch, menu item “Open configuration file”). The file stays
 hand-editable.
 
-The dialog is organized into four tabs, so the common cases never require editing
-JSON (the cleanup model shown is the default):
-
-| | |
-|:---:|:---:|
-| ![General tab](assets/en/settings-general.png) | ![Cleanup tab](assets/en/settings-cleanup.png) |
-| *General — recording hotkey & overlay* | *Cleanup — provider, model, context, fallbacks* |
-| ![Speech recognition tab](assets/en/settings-speech.png) | ![Recording tab](assets/en/settings-recording.png) |
-| *Speech recognition — language & Whisper server* | *Recording — microphone, silence detection & auto-stop* |
+| Tab | Settings |
+|---|---|
+| General | Shortcuts, startup, overlay, and home-network bridge |
+| Profiles | Dictation profiles and inherited defaults |
+| Apps | Assign profiles to individual apps |
+| Cleanup | Provider, model, glossary, and fallback endpoints |
+| Speech Recognition | Language, Whisper model, and local server |
+| Recording | Microphone, speech activity detection, and auto-stop |
+| History | Text retention and handling of failed recordings |
 
 The most important switches:
 
@@ -209,7 +192,7 @@ The most important switches:
 | `cleanup.remote` | `baseURL`, `model` | OpenAI-compatible provider |
 | `cleanup` | `fallbacks` | backup endpoints tried when the primary does not respond (see below) |
 | `cleanup` | `dictionary` | personal glossary of preferred spellings (e.g. `"RAG"`). Passed to the cleanup model, and the word-fidelity check accepts sound-alike corrections to exactly these terms ("Rack" → "RAG") |
-| `cleanup` | `dictionaryVariants` | explicitly confirmed, narrowly bounded splits of technical terms, e.g. `[{"source":"Whis per","target":"Whisper"}]`; create in the editor and remove in Settings. [Limits and behavior](docs/textkorrektur.md) |
+| `cleanup` | `dictionaryVariants` | explicitly confirmed, narrowly bounded splits of technical terms, e.g. `[{"source":"Whis per","target":"Whisper"}]`; create in the editor and remove in Settings. [Limits and behavior (German)](docs/textkorrektur.md) |
 | `vad` | `autoStopAfterSilenceSec` | absence auto-stop (0 = off) |
 | `ui` | `overlayPosition` | `"mouse"` or `"bottomCenter"` |
 
@@ -300,11 +283,12 @@ pinned certificate identity and a token; the bridge is off by default. Unknown
 identities, redirects and public peers are rejected. The Mac remains only an
 audio receiver; no WAN bridge or custom keyboard is provided.
 
-Version 0.9.42 removes HTTP, including the development exception. Existing HTTP
-shortcuts must switch to the Open Dictation app action and the phone must pair
-again. Token rotation and certificate renewal also require new pairing.
-See [the bridge guide](docs/ios-bridge.md) for migration, certificate lifetime,
-limits and verification. Device acceptance of the current candidate is pending.
+Switch existing HTTP shortcuts to the **Open Dictation** app action and pair the
+iPhone again. Rotating the token or renewing the certificate also requires
+pairing again. Details and physical-device test results are in the
+[bridge guide (German)](docs/ios-bridge.md). The
+[offline dictation guide (German)](docs/ios-offline-dictation.md) covers
+on-device recognition and the remaining iPhone checks.
 
 ## Scriptable without the GUI
 
@@ -361,7 +345,7 @@ copies it — so you only need this script after changing the artwork; commit th
 new `.icns` along with it. Requires `rsvg-convert` (`brew install librsvg`).
 
 The Sparkle feed and release automation are documented in
-[`docs/sparkle-release.md`](docs/sparkle-release.md).
+[Sparkle release guide (German)](docs/sparkle-release.md).
 
 ## Status
 

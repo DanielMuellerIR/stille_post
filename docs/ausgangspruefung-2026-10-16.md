@@ -1,4 +1,4 @@
-# Ausgangsprüfung am 2026-10-16
+# Historischer Prüfbericht vom 2026-10-16
 
 Geprüft wurde die Quellbasis `6e7dce3` mit Produktversion 0.9.20. Ein dabei
 reproduzierter Fehler in den Brücken-Einstellungen wurde in 0.9.21 korrigiert

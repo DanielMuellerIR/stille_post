@@ -52,7 +52,7 @@ Fallbacks oder Konfiguration zusätzlich auszuführen. GUI-/Hotkey-Änderungen b
 einen echten App-Bundle-Smoke-Test; Signatur/Notarisierung braucht die vorhandenen
 Build-Prüfungen und einen Start des resultierenden Bundles.
 
-Änderungsspezifische Evals:
+### Änderungsspezifische Prüfungen
 
 - Streaming/Zusammenfügen: mehrere Segmente ergeben genau einen Cleanup-Aufruf in
   richtiger Reihenfolge.
@@ -68,3 +68,12 @@ Build-Prüfungen und einen Start des resultierenden Bundles.
   Warteschlangengrenze werden abgelehnt statt gepuffert. Zusätzlich einmal echtes
   Audio über `.local` durchschicken — das prüft die Umwandlung von AAC nach
   16 kHz mono mit.
+
+## Entwicklungsunterlagen und Prüfberichte
+
+Die [Produktübersicht](README.de.md) und die jeweiligen Nutzungsanleitungen
+beschreiben die aktuellen Funktionen. Aufgaben stehen im [Backlog](backlog.md).
+
+- Ausgangsstand 0.9.20. [Prüfbericht vom 2026-10-16](docs/ausgangspruefung-2026-10-16.md) und [ursprünglicher Erweiterungsplan](docs/erweiterungsplan.md).
+- Linux. [Ursprünglicher Portierungsplan](docs/linux-portierung.md), [Paketprüfung für 0.9.47](docs/linux-abnahme.md) und [Mac-/Linux-Abgleich](docs/linux-paritaet.md).
+- iOS. Am 2026-11-06 bestand der mobile Kern nach der Zusammenführung mit 0.9.48 in einer angemeldeten macOS-Sitzung. Der iOS-Simulator-Build für die UI-Tests bestand ohne Codesignierung. Im vorherigen SSH-Lauf konnten die TLS-Tests wegen des gesperrten Schlüsselbunds keine temporären Zertifikate anlegen.
