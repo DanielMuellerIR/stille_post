@@ -1,10 +1,9 @@
 #!/bin/bash
-# Prüft CLI-Argumente und Diagnose-Exit-Codes ohne persönliche Konfiguration,
-# Schlüsselbund, Verlauf oder Netz zu berühren.
+# Prüft CLI-Verträge mit isolierter Konfiguration und ohne Schlüsselbundzugriff.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-swift build >/dev/null
+swift build --product stillepost-cli >/dev/null
 
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT INT TERM
@@ -88,4 +87,56 @@ set -e
 grep -Fq 'Terminal-Anzeige konnte nicht sicher abgeschaltet werden' \
     <<<"$echo_failure_output"
 
-echo "✓ CLI weist unbekannte Argumente vor jeder Nebenwirkung ab"
+STILLEPOST_LANGUAGE=de STILLEPOST_CONFIG="$CONFIG" STILLEPOST_APP_SUPPORT="$TEST_ROOT/app-support" \
+    /usr/bin/python3 - .build/debug/stillepost-cli <<'PYTHON'
+import os
+import pty
+import signal
+import subprocess
+import sys
+import termios
+import time
+
+cli = sys.argv[1]
+byte_limit = 1_048_576
+
+def cleanup(payload):
+    return subprocess.run([cli, 'cleanup', '-'], input=payload, capture_output=True, timeout=10)
+
+valid = cleanup('Grüße aus der Pipe'.encode())
+assert valid.returncode == 0 and valid.stdout == 'Grüße aus der Pipe\n'.encode()
+at_limit = cleanup(b'a' * byte_limit)
+assert at_limit.returncode == 0 and len(at_limit.stdout) == byte_limit + 1
+for payload, message in [(b'\xff', 'ungültiges UTF-8'), (b'a' * (byte_limit + 1), 'überschreitet die Grenze')]:
+    result = cleanup(payload)
+    assert result.returncode == 2 and not result.stdout and message.encode() in result.stderr
+
+for interrupt in [signal.SIGINT, signal.SIGTERM, None]:
+    master, terminal = pty.openpty()
+    try:
+        original = termios.tcgetattr(terminal)
+        assert original[3] & termios.ECHO
+        with subprocess.Popen([cli, 'set-cleanup-key'], stdin=terminal, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE) as child:
+            try:
+                deadline = time.monotonic() + 5
+                while termios.tcgetattr(terminal)[3] & termios.ECHO:
+                    assert child.poll() is None and time.monotonic() < deadline
+                    time.sleep(.005)
+                if interrupt is None:
+                    os.write(master, bytes(original[6][termios.VEOF]))
+                else:
+                    child.send_signal(interrupt)
+                output, _ = child.communicate(timeout=5)
+                assert child.returncode == (2 if interrupt is None else -interrupt)
+                assert not output
+                assert termios.tcgetattr(terminal) == original
+            finally:
+                if child.poll() is None:
+                    child.kill()
+    finally:
+        os.close(master)
+        os.close(terminal)
+PYTHON
+
+echo "✓ CLI-Aufrufe, Standardeingabe und Terminalzustand geprüft"

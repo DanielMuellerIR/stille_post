@@ -273,6 +273,8 @@
 "cli.bridge.token_reused" = "Using the existing token (force a new one with --new).";
 "cli.bridge.token_copied" = "The token is on the clipboard. Paste it into the shortcut on your iPhone.";
 "cli.bridge.token_copy_failed" = "The token could not be copied to the clipboard: %@";
+"cli.bridge.token_copy_exit" = "pbcopy exited with status %d.";
+"cli.bridge.token_copy_signal" = "pbcopy was terminated by signal %d.";
 "cli.bridge.serving" = "Bridge is running: %@ — stop it with Ctrl-C";
 "cli.doctor.binary_ok" = "✓ whisper-server binary: %@";
 "cli.doctor.binary_missing" = "✗ whisper-server binary missing: %@ (brew install whisper-cpp)";
@@ -312,6 +314,8 @@
 "cli.cleanup.timing_with_suffix" = "Cleanup: %.2f s via %@%@";
 "cli.cleanup.raw_fallback_suffix" = " (raw-text fallback: %@)";
 "cli.cleanup.raw_fallback" = "Raw-text fallback: %@";
+"cli.cleanup.stdin_too_large" = "Standard input exceeds the limit of %d bytes.";
+"cli.cleanup.stdin_invalid_utf8" = "Standard input contains invalid UTF-8.";
 "cli.history.failed" = "FAILED";
 "cli.history.cleanup_info" = "  [%.1f s via %@]";
 "cli.history.empty" = "History is empty.";
@@ -319,6 +323,7 @@
 "cli.history.persistence_failed" = "History operation failed: %@";
 "cli.key.prompt" = "Enter the API key (input is hidden; press Enter when finished):";
 "cli.key.echo_failed" = "Terminal echo could not be disabled safely; no API key was read.";
+"cli.key.echo_restore_failed" = "Terminal echo could not be restored; no API key was saved.";
 "cli.key.empty" = "No key entered.";
 "cli.key.saved" = "Key saved in Keychain (entry: %@).";
 "cli.key.save_failed" = "Could not save: %@";

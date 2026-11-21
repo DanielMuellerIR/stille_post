@@ -273,6 +273,8 @@
 "cli.bridge.token_reused" = "Vorhandenes Token wird verwendet (neues erzwingen mit --new).";
 "cli.bridge.token_copied" = "Token liegt in der Zwischenablage. Auf dem iPhone in den Kurzbefehl einfügen.";
 "cli.bridge.token_copy_failed" = "Token konnte nicht in die Zwischenablage gelegt werden: %@";
+"cli.bridge.token_copy_exit" = "pbcopy wurde mit Exit-Code %d beendet.";
+"cli.bridge.token_copy_signal" = "pbcopy wurde durch Signal %d beendet.";
 "cli.bridge.serving" = "Brücke läuft: %@ — beenden mit Strg-C";
 "cli.doctor.binary_ok" = "✓ whisper-server-Binary: %@";
 "cli.doctor.binary_missing" = "✗ whisper-server-Binary fehlt: %@ (brew install whisper-cpp)";
@@ -312,6 +314,8 @@
 "cli.cleanup.timing_with_suffix" = "Bereinigung: %.2f s via %@%@";
 "cli.cleanup.raw_fallback_suffix" = " (Fallback auf Rohtext: %@)";
 "cli.cleanup.raw_fallback" = "Fallback auf Rohtext: %@";
+"cli.cleanup.stdin_too_large" = "Die Standardeingabe überschreitet die Grenze von %d Bytes.";
+"cli.cleanup.stdin_invalid_utf8" = "Die Standardeingabe enthält ungültiges UTF-8.";
 "cli.history.failed" = "FEHLGESCHLAGEN";
 "cli.history.cleanup_info" = "  [%.1f s via %@]";
 "cli.history.empty" = "Verlauf ist leer.";
@@ -319,6 +323,7 @@
 "cli.history.persistence_failed" = "Verlaufsoperation fehlgeschlagen: %@";
 "cli.key.prompt" = "API-Key eingeben (Eingabe wird nicht angezeigt, Ende mit Enter):";
 "cli.key.echo_failed" = "Terminal-Anzeige konnte nicht sicher abgeschaltet werden; es wurde kein API-Key gelesen.";
+"cli.key.echo_restore_failed" = "Terminal-Anzeige konnte nicht wiederhergestellt werden; es wurde kein API-Key gespeichert.";
 "cli.key.empty" = "Kein Key eingegeben.";
 "cli.key.saved" = "Key im Schlüsselbund gespeichert (Eintrag: %@).";
 "cli.key.save_failed" = "Speichern fehlgeschlagen: %@";

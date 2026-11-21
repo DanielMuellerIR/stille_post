@@ -55,10 +55,11 @@ let package = Package(
                 .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../Frameworks"])
             ]
         ),
+        .target(name: "StillePostCLITerminal"),
         .executableTarget(
             name: "stillepost-cli",
-            dependencies: ["StillePostCore"],
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            dependencies: ["StillePostCore", "StillePostCLITerminal"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
             name: "StillePostCoreTests",
