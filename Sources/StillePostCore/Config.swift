@@ -530,6 +530,9 @@ extension Config.Whisper {
         serverURL = c.decodeOrDefault(String.self, forKey: .serverURL, default: serverURL)
         autostart = c.decodeOrDefault(Bool.self, forKey: .autostart, default: autostart)
         binaryPath = c.decodeOrDefault(String.self, forKey: .binaryPath, default: binaryPath)
+#if os(Linux)
+        binaryPath = LinuxInstallation.migrateWhisperBinaryPath(binaryPath)
+#endif
         modelPath = c.decodeOrDefault(String.self, forKey: .modelPath, default: modelPath)
         threads = c.decodeOrDefault(Int.self, forKey: .threads, default: threads)
         useGPU = c.decodeOrDefault(Bool.self, forKey: .useGPU, default: useGPU)

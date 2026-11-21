@@ -6,6 +6,7 @@ import math
 import os
 import pathlib
 import queue
+import shutil
 import struct
 import subprocess
 import tempfile
@@ -534,6 +535,70 @@ class PipelineTests(unittest.TestCase):
             configuration["whisper"]["binaryPath"],
             str(executable.with_name("whisper-server")),
         )
+
+    def test_saved_whisper_path_follows_the_active_installed_bundle(self):
+        executable = pathlib.Path(self.process.args[0])
+        data_home = self.path / "xdg-data"
+        managed_root = data_home / "stillepost/app"
+        old_version, new_version = "0.8.5", "0.8.6"
+        for version in (old_version, new_version):
+            bin_dir = managed_root / version / "bin"
+            bin_dir.mkdir(parents=True)
+            shutil.copy2(executable, bin_dir)
+            resources = executable.with_name("StillePost_StillePostCore.resources")
+            shutil.copytree(resources, bin_dir / resources.name)
+
+        config_path = self.path / "managed-config.json"
+        configuration = json.loads((self.path / "config.json").read_text())
+        config_path.write_text(json.dumps(configuration))
+        environment = dict(
+            self.worker_environment,
+            XDG_DATA_HOME=str(data_home),
+            STILLEPOST_CONFIG=str(config_path),
+        )
+
+        def read_configuration(version):
+            process = subprocess.run(
+                [str(managed_root / version / "bin/stillepost-linux")],
+                input=b'{"command":"config"}\n{"command":"quit"}\n',
+                env=environment,
+                capture_output=True,
+                check=True,
+                timeout=8,
+            )
+            events = [json.loads(line) for line in process.stdout.splitlines()]
+            return next(
+                event["config"] for event in events if event["event"] == "config"
+            )
+
+        current = managed_root / "current"
+        current.symlink_to(old_version)
+        old_path = str(managed_root / old_version / "bin/whisper-server")
+        new_path = str(managed_root / new_version / "bin/whisper-server")
+        saved = read_configuration(old_version)
+        self.assertEqual(saved["whisper"]["binaryPath"], old_path)
+        config_path.write_text(json.dumps(saved))
+
+        self.assertEqual(
+            read_configuration(new_version)["whisper"]["binaryPath"], old_path
+        )
+        current.unlink()
+        current.symlink_to(new_version)
+        self.assertEqual(
+            read_configuration(new_version)["whisper"]["binaryPath"], new_path
+        )
+
+        for configured in (
+            managed_root / old_version / "bin/whisper-custom",
+            data_home / "other/app/0.8.5/bin/whisper-server",
+            managed_root / "development/bin/whisper-server",
+        ):
+            saved["whisper"]["binaryPath"] = str(configured)
+            config_path.write_text(json.dumps(saved))
+            self.assertEqual(
+                read_configuration(new_version)["whisper"]["binaryPath"],
+                str(configured),
+            )
 
     def test_quit_and_parent_pipe_closure_share_one_shutdown(self):
         for _ in range(10):

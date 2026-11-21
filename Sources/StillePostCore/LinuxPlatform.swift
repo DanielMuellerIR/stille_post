@@ -11,6 +11,38 @@ enum LinuxInstallation {
         return URL(fileURLWithPath: executable).deletingLastPathComponent()
     }()
 
+    private static let managedRoot: URL = {
+        let configured = ProcessInfo.processInfo.environment["XDG_DATA_HOME"] ?? ""
+        let dataHome = configured.isEmpty
+            ? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/share")
+            : URL(fileURLWithPath: configured)
+        return dataHome.resolvingSymlinksInPath().appendingPathComponent("stillepost/app")
+    }()
+
+    static func migrateWhisperBinaryPath(_ path: String) -> String {
+        let prefix = managedRoot.path + "/"
+        guard path.hasPrefix(prefix) else { return path }
+        let components = path.dropFirst(prefix.count).split(separator: "/", omittingEmptySubsequences: false)
+        guard components.count == 3, isReleaseVersion(String(components[0])),
+            components[1] == "bin", components[2] == "whisper-server"
+        else { return path }
+
+        let package = executableDirectory.deletingLastPathComponent()
+        guard executableDirectory.lastPathComponent == "bin",
+            package.deletingLastPathComponent().path == managedRoot.path,
+            isReleaseVersion(package.lastPathComponent),
+            managedRoot.appendingPathComponent("current").resolvingSymlinksInPath().path == package.path
+        else { return path }
+
+        // Ältere Einstellungen speicherten die damalige Paketvorgabe absolut.
+        return executableDirectory.appendingPathComponent("whisper-server").path
+    }
+
+    private static func isReleaseVersion(_ value: String) -> Bool {
+        value.utf8.count <= 30 &&
+            value.range(of: #"\A[0-9]+\.[0-9]+\.[0-9]+\z"#, options: .regularExpression) != nil
+    }
+
     static var version: String {
         let file = executableDirectory.deletingLastPathComponent().appendingPathComponent("VERSION")
         return (try? String(contentsOf: file, encoding: .utf8))?
