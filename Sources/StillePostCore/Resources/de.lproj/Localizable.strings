@@ -196,6 +196,8 @@
 "core.model.incomplete" = "Download unvollständig (%lld von %lld Bytes). Die Teildatei bleibt liegen, ein erneuter Versuch setzt dort fort: %@";
 "core.model.target_not_replaceable" = "Am Modellpfad liegt kein Modell, sondern ein Verzeichnis oder eine Sonderdatei: %@ — bitte whisper.modelPath korrigieren; hier wird nichts gelöscht";
 "core.model.partial_not_replaceable" = "Die Download-Teildatei ist kein sicheres reguläres Schreibziel: %@";
+"core.model.already_installing" = "An diesem Pfad wird bereits ein Modell installiert.";
+"core.model.checksum_mismatch" = "Die Prüfsumme des geladenen Modells stimmt nicht. Bitte erneut laden.";
 "core.cleanup.failed" = "Bereinigung fehlgeschlagen — %@";
 "core.cleanup.empty" = "Bereinigung lieferte leeren Text";
 "core.cleanup.no_words" = "Bereinigte Fassung enthält kein einziges Wort mehr";

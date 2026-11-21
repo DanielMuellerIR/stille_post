@@ -1,5 +1,6 @@
 #ifndef STILLEPOST_LINUX_NATIVE_H
 #define STILLEPOST_LINUX_NATIVE_H
+#include "ModelDigest.h"
 #include <stddef.h>
 #include <stdint.h>
 typedef struct sp_tls_context sp_tls_context;

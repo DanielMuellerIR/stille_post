@@ -20,7 +20,20 @@ done
 
 DEST_DIR="$HOME/Library/Application Support/StillePost/models"
 DEST="$DEST_DIR/ggml-$MODEL.bin"
-URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-$MODEL.bin"
+[[ "$MODEL" =~ ^[[:alnum:]_.-]+$ ]] || { echo "Ungültiger Modellname: $MODEL" >&2; exit 1; }
+REVISION=main
+SHA256=
+case "$MODEL" in
+    large-v3-turbo|large-v3)
+        REVISION=5359861c739e955e79d9a303bcbc70fb988958b1
+        if [ "$MODEL" = large-v3-turbo ]; then
+            SHA256=1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69
+        else
+            SHA256=64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2
+        fi
+        ;;
+esac
+URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/$REVISION/ggml-$MODEL.bin"
 
 # Reguläre Dateien und Verweise sind ersetzbar. Ein Verzeichnis oder eine
 # Spezialdatei am Modellpfad gehört dem Installer dagegen nicht. Diese Prüfung
@@ -38,10 +51,8 @@ fi
 # Ist schon eine eigene Kopie da?
 #
 # Bewusst `-L` VOR `-f` prüfen: `-f` folgt Symlinks und ist deshalb auch dann wahr,
-# wenn hier nur ein Verweis auf einen fremden Cache liegt (auf dem Entwicklungsrechner zeigt der
-# Pfad nach ~/.cache/openwhispr/). Genau daran hat das Skript früher immer "Modell
-# ist schon da" gemeldet und nie geladen — und Stille Post verliert sein Modell,
-# sobald der fremde Cache geräumt wird.
+# wenn hier nur ein Verweis auf einen fremden Cache liegt. Dessen Lebensdauer
+# bestimmt die fremde Anwendung, deshalb wird eine eigene Kopie angelegt.
 if [ -L "$DEST" ]; then
     echo "Hinweis: $DEST ist nur ein Verweis auf"
     echo "         $(readlink "$DEST")"
@@ -97,7 +108,7 @@ fi
 echo "Lade $MODEL ($((EXPECTED / 1024 / 1024)) MB) von Hugging Face …"
 # -L folgt Redirects; --fail bricht bei HTTP-Fehlern ab statt HTML zu speichern;
 # -C - setzt einen abgebrochenen Download an der Abbruchstelle fort.
-curl -L --fail --progress-bar -C - -o "$DEST.partial" "$URL"
+curl -L --fail --progress-bar --max-filesize "$EXPECTED" -C - -o "$DEST.partial" "$URL"
 
 ACTUAL=$(wc -c < "$DEST.partial" | tr -d ' ')
 if [ "$ACTUAL" -ne "$EXPECTED" ]; then
@@ -114,6 +125,14 @@ fi
 if [[ ! -f "$DEST.partial" || -L "$DEST.partial" ]] || unsupported_path "$DEST"; then
     echo "Fehler: Modell- oder Zielpfad hat sich während des Downloads geändert." >&2
     exit 1
+fi
+if [ -n "$SHA256" ]; then
+    ACTUAL_SHA=$(shasum -a 256 "$DEST.partial" | awk '{print $1}')
+    if [ "$ACTUAL_SHA" != "$SHA256" ]; then
+        rm -f -- "$DEST.partial"
+        echo "Fehler: Prüfsumme für $MODEL stimmt nicht. Bitte erneut laden." >&2
+        exit 1
+    fi
 fi
 mv -f -h "$DEST.partial" "$DEST"
 echo "Fertig: $DEST"

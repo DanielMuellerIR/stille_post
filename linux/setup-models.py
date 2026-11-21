@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """Öffentliche Modelle einmalig und geprüft im privaten Benutzerdatenordner ablegen."""
+import fcntl
 import hashlib
 import json
 import os
 import pathlib
+import stat
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 
 REVISION = "5359861c739e955e79d9a303bcbc70fb988958b1"
 WHISPER_SHA = "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69"
+WHISPER_BYTES = 1624555275
+WHISPER_LARGE_SHA = "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2"
 GEMMA_SHA = "ee665637121887cf3befff38abbb1be4ee117c7db867d97a67e29049ecd7e15f"
 bundle = pathlib.Path(__file__).resolve().parent
 root = (
@@ -29,13 +34,35 @@ def digest(path):
     return h.hexdigest()
 
 
-def main():
-    os.umask(0o077)
-    models = root / "models"
+def install_whisper(models):
     models.mkdir(parents=True, exist_ok=True)
     target = models / "ggml-large-v3-turbo.bin"
-    if not target.exists():
-        temporary = models / "ggml-large-v3-turbo.bin.download"
+    descriptor = os.open(
+        target.with_suffix(".bin.lock"),
+        os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK,
+        0o600,
+    )
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise RuntimeError("Die Modellsperre ist keine reguläre Datei.")
+        # Dieselbe Zieldatei wie bei der Modellinstallation aus der App.
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        if os.path.lexists(target):
+            hashes = {WHISPER_BYTES: WHISPER_SHA, 3095033483: WHISPER_LARGE_SHA}
+            expected = hashes.get(target.stat().st_size) if target.is_file() else None
+            if expected is None or digest(target) != expected:
+                raise RuntimeError(
+                    "Vorhandenes Whisper-Modell hat eine andere Prüfsumme; Datei bleibt erhalten."
+                )
+            return
+        download_whisper(target)
+    finally:
+        os.close(descriptor)
+
+
+def download_whisper(target):
+    with tempfile.TemporaryDirectory(prefix=".whisper-", dir=target.parent) as stage:
+        temporary = pathlib.Path(stage) / target.name
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         print("Whisper large-v3-turbo laden (1,6 GB) …", flush=True)
         with opener.open(
@@ -50,16 +77,17 @@ def main():
                 if not block:
                     break
                 count += len(block)
-                if count > 1624555275:
+                if count > WHISPER_BYTES:
                     raise RuntimeError("Modell ist zu groß.")
                 out.write(block)
         if digest(temporary) != WHISPER_SHA:
             raise RuntimeError("Whisper-Prüfsumme stimmt nicht.")
         temporary.rename(target)
-    elif digest(target) != WHISPER_SHA:
-        raise RuntimeError(
-            "Vorhandenes Whisper-Modell hat eine andere Prüfsumme; Datei bleibt erhalten."
-        )
+
+
+def main():
+    os.umask(0o077)
+    install_whisper(root / "models")
     env = dict(
         os.environ,
         OLLAMA_HOST="127.0.0.1:11434",

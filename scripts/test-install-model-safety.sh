@@ -34,6 +34,16 @@ done
 /usr/sbin/mkfile 1000001 "$output"
 CURL
 chmod +x "$FAKE_BIN/curl"
+cat > "$FAKE_BIN/shasum" <<'SHASUM'
+#!/bin/bash
+set -euo pipefail
+if [[ "${TEST_BAD_MODEL_HASH:-0}" == 1 ]]; then
+    printf '%064d  fixture\n' 0
+else
+    printf '1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69  fixture\n'
+fi
+SHASUM
+chmod +x "$FAKE_BIN/shasum"
 
 run_installer() {
     local home=$1
@@ -75,6 +85,17 @@ run_installer "$symlink_home" "$TEST_ROOT/symlink.log"
 [[ -f "$symlink_target" && ! -L "$symlink_target" ]]
 [[ $(wc -c < "$symlink_target" | tr -d ' ') -eq 1000001 ]]
 [[ -z "$(find "$foreign_directory" -mindepth 1 -print -quit)" ]]
+
+TEST_BAD_MODEL_HASH=1
+export TEST_BAD_MODEL_HASH
+if HOME="$symlink_home" PATH="$FAKE_BIN:/usr/bin:/bin" /bin/bash scripts/install-model.sh --force \
+    > "$TEST_ROOT/checksum.log" 2>&1; then
+    echo "FEHLER: Dateien mit falscher Prüfsumme wurden veröffentlicht" >&2
+    exit 1
+fi
+grep -q 'Prüfsumme' "$TEST_ROOT/checksum.log"
+[[ $(wc -c < "$symlink_target" | tr -d ' ') -eq 1000001 && ! -e "$symlink_target.partial" ]]
+unset TEST_BAD_MODEL_HASH
 
 # Auch die Teildatei darf kein Verweis sein: curl würde beim Fortsetzen sonst
 # eine fremde Datei verändern. Wieder muss der Abbruch vor jedem Netzaufruf kommen.

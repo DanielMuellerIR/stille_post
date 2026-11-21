@@ -161,6 +161,42 @@ final class ModelInstallerTests: XCTestCase {
         XCTAssertNil(ModelInstaller.contentRange("bytes */1234"), "ohne Bereich unbrauchbar")
         XCTAssertNil(ModelInstaller.contentRange("bytes 100-199/*"),
                      "ohne bekannte Gesamtgröße lässt sich nichts vergleichen")
+        XCTAssertNil(ModelInstaller.contentRange("bytes 200-199/1234"))
+        XCTAssertNil(ModelInstaller.contentRange("bytes 100-1234/1234"))
+    }
+
+    func testRejectsWrongBytesOfExpectedSizeBeforeReplacingExistingModel() throws {
+        let target = directory.appendingPathComponent("model.bin")
+        let partial = target.appendingPathExtension("partial")
+        let existing = Data("altes Modell".utf8)
+        try existing.write(to: target)
+        try Data("bad".utf8).write(to: partial)
+        let sha256 = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+
+        XCTAssertThrowsError(try ModelInstaller.publishPartial(at: partial.path, to: target.path, expected: 3, sha256: sha256)) {
+            XCTAssertEqual($0 as? ModelInstaller.InstallError, .checksumMismatch)
+        }
+        XCTAssertEqual(try Data(contentsOf: target), existing)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: partial.path))
+
+        let validated = Data("abc".utf8)
+        try validated.write(to: partial)
+        try ModelInstaller.publishPartial(at: partial.path, to: target.path, expected: 3, sha256: sha256)
+        XCTAssertEqual(try Data(contentsOf: target), validated)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: partial.path))
+    }
+
+    func testConcurrentInstallFailsBeforeRequestingModel() async throws {
+        let target = directory.appendingPathComponent("model.bin")
+        let descriptor = try AdvisoryFileLock.acquire(at: target.appendingPathExtension("lock"))
+        defer { _ = close(descriptor) }
+
+        do {
+            _ = try await ModelInstaller().install(ModelCatalog.turbo, to: target.path)
+            XCTFail("Die laufende Installation muss den Modellpfad exklusiv belegen.")
+        } catch let error as ModelInstaller.InstallError {
+            XCTAssertEqual(error, .alreadyInstalling)
+        }
     }
 
     // MARK: - Katalog
@@ -178,7 +214,7 @@ final class ModelInstallerTests: XCTestCase {
     func testFileNameAndURLFollowWhisperConvention() {
         XCTAssertEqual(ModelCatalog.turbo.fileName, "ggml-large-v3-turbo.bin")
         XCTAssertEqual(ModelCatalog.turbo.downloadURL.absoluteString,
-                       "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin")
+                       "https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-large-v3-turbo.bin")
     }
 
     /// Der Default-Modellpfad der Config und der Dateiname des Standardmodells müssen
