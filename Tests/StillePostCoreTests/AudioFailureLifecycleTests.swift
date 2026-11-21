@@ -166,6 +166,24 @@ final class AudioFailureLifecycleTests: XCTestCase {
     }
 
     @MainActor
+    func testAppendFailureStopsRecordingBeforeUserIntervenes() async throws {
+        let fixture = try LossFixture(writerFailure: .append)
+        defer { fixture.removeFiles() }
+        await start(fixture)
+
+        fixture.recorder.onSamples?([0.1])
+        await drainMainQueue()
+
+        let url = try XCTUnwrap(fixture.writerURL)
+        guard case .error(let message) = fixture.engine.state else { return XCTFail("Schreibfehler fehlt") }
+        XCTAssertTrue(message.contains(url.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertEqual(fixture.recorder.stopCount, 1)
+        XCTAssertEqual(fixture.cleanup.calls, 0)
+        XCTAssertEqual(fixture.deliveries, 0)
+    }
+
+    @MainActor
     func testWriterFailureRetainsDiagnosticWavAndDoesNotAdvertiseRetry() async throws {
         for failure in [LossWriter.Failure.append, .finish] {
             let fixture = try LossFixture(writerFailure: failure)

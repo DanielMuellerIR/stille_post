@@ -467,14 +467,27 @@ public final class DictationEngine {
                 self.stop()
             }
         }
-        recorder.onSamples = { samples in
+        recorder.onSamples = { [weak self] samples in
+            var newFailure: RecordingWriteFailure?
             audioSession.consume(samples, in: phase) {
-                segmenter.process(samples)
-                do { try writer.append(samples) } catch {}
+                guard recordingFailure.error == nil else { return }
+                do {
+                    try writer.append(samples)
+                    segmenter.process(samples)
+                } catch {
+                    let failure = RecordingWriteFailure(url: writer.url, underlying: error)
+                    if recordingFailure.record(failure) { newFailure = failure }
+                }
+            }
+            if let failure = newFailure {
+                DispatchQueue.main.async {
+                    guard let self, self.recordingPhaseID == phase, self.state == .recording else { return }
+                    self.failRecording(failure, generation: generation)
+                }
             }
         }
         recorder.onFailure = { [weak self] error in
-            recordingFailure.record(error)
+            guard recordingFailure.record(error) else { return }
             if Thread.isMainThread {
                 guard let self, self.recordingPhaseID == phase, !self.closingAudioPhase,
                       self.state == .recording else { return }
@@ -553,12 +566,14 @@ public final class DictationEngine {
         wavWriter = nil
         processingWavURL = nil
         var message = error.localizedDescription
-        var validAudio = !writerAlreadyFailed
-        if validAudio {
+        var validAudio = !writerAlreadyFailed && !(error is RecordingWriteFailure)
+        if !writerAlreadyFailed {
             do { try writer?.finish() }
-            catch {
+            catch let finishError {
                 validAudio = false
-                message = L10n.format("core.dictation.audio_write_failed", writer?.url.path ?? "–", error.localizedDescription)
+                if !(error is RecordingWriteFailure) {
+                    message = L10n.format("core.dictation.audio_write_failed", writer?.url.path ?? "–", finishError.localizedDescription)
+                }
             }
         }
         setState(.error(message))
@@ -1349,9 +1364,21 @@ private final class RecordingFailure {
     private var storedError: Error?
     var error: Error? { lock.withLock { storedError } }
 
-    func record(_ error: Error) {
+    @discardableResult
+    func record(_ error: Error) -> Bool {
         lock.withLock {
-            if storedError == nil { storedError = error }
+            guard storedError == nil else { return false }
+            storedError = error
+            return true
         }
+    }
+}
+
+private struct RecordingWriteFailure: LocalizedError {
+    let url: URL
+    let underlying: Error
+
+    var errorDescription: String? {
+        L10n.format("core.dictation.audio_write_failed", url.path, underlying.localizedDescription)
     }
 }

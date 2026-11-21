@@ -117,8 +117,7 @@ public final class WavFileWriter {
 
     /// Trägt die echten Längen in den Header ein und schließt die Datei.
     /// Ein früherer Append-Fehler wird nach dem bestmöglichen Finalisieren erneut
-    /// geworfen. Dadurch kann der Audio-Thread weiterlaufen, aber `stop()` meldet
-    /// den ersten Datenverlust zuverlässig und verwendet die Datei nicht für Retry.
+    /// geworfen. So bleibt der erste Datenverlust auch beim Schließen sichtbar.
     public func finish() throws {
         lock.lock()
         defer { lock.unlock() }
