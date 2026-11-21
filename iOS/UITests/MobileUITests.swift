@@ -54,7 +54,10 @@ import XCTest
         shot(app, "sending-de")
         app.buttons["dictation.cancelUpload"].tap(); waitForPhase(app, "Aufnahme bereit")
         app.buttons["dictation.discard"].tap()
-        app.sheets.buttons["Aufnahme verwerfen"].tap()
+        let confirm = app.buttons.matching(NSPredicate(
+            format: "label == %@ AND identifier != %@", "Aufnahme verwerfen", "dictation.discard")).firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
         waitForPhase(app, "Bereit für dein Diktat")
     }
 
@@ -68,9 +71,11 @@ import XCTest
         XCTAssertTrue(app.buttons["dictation.primary"].isHittable)
         shot(app, "main-en-large")
         app.buttons["connection.open"].tap()
-        XCTAssertTrue(app.textFields["connection.address"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Mac connection"].waitForExistence(timeout: 5))
+        reveal(app.textFields["connection.address"], in: app)
         shot(app, "connection-en-large")
         XCUIDevice.shared.orientation = .landscapeLeft
+        defer { XCUIDevice.shared.orientation = .portrait }
         let landscape = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
             let frame = app.windows.firstMatch.frame
             return frame.width > frame.height
@@ -78,7 +83,6 @@ import XCTest
         XCTAssertEqual(XCTWaiter.wait(for: [landscape], timeout: 10), .completed)
         sleep(3)
         shot(app, "connection-en-landscape")
-        XCUIDevice.shared.orientation = .portrait
     }
 
     func testDeviceMicrophoneAndBridge() throws {

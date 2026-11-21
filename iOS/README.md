@@ -77,8 +77,9 @@ Migration vorhandener Kurzbefehle und Zertifikatslebenszyklus:
 ## Bauen
 
 Das versionierte Xcode-Projekt benötigt keine Projektgenerierung zum Bauen.
-Benötigt wird ein Swift-6-fähiges Xcode mit iOS-SDK. Geprüft wird der tatsächlich
-vorhandene SDK-/Gerätestand; daraus folgt kein Test aller unterstützten iOS-Versionen.
+Benötigt wird Xcode mit iOS-SDK und Swift ab 6.2. Der App-Build verwendet einen
+Main-Actor-isolierten Destruktor für Audio-Observer und Timer. Geprüft wird der
+tatsächlich vorhandene SDK-/Gerätestand.
 
 ```bash
 ./iOS/build.sh                 # Simulator, Debug, lokale Signatur
