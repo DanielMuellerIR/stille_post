@@ -184,7 +184,7 @@ final class HistoryPrivacyTests: XCTestCase {
             delivered.fulfill()
         }
         engine.processForTesting(rawText: marker, wavURL: audio)
-        await fulfillment(of: [delivered], timeout: 3)
+        await awaitTestExpectations([delivered], timeout: 3)
         XCTAssertTrue(try history.list().isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath: audio.path))
         let saved = snapshots.snapshot
@@ -215,7 +215,7 @@ final class HistoryPrivacyTests: XCTestCase {
             }
             do { _ = try await engine.retry(entry: entry); XCTAssertFalse(unlinkFails) }
             catch { XCTAssertTrue(unlinkFails, "Unerwarteter Fehler: \(error)") }
-            await fulfillment(of: [emitted], timeout: 2)
+            await awaitTestExpectations([emitted], timeout: 2)
             let stored = try history.list()
             XCTAssertEqual(stored.count, unlinkFails ? 1 : 0)
             XCTAssertTrue(stored.allSatisfy { $0.rawText.isEmpty && $0.cleanText.isEmpty && $0.isTextPrivate })
@@ -239,16 +239,16 @@ final class HistoryPrivacyTests: XCTestCase {
         let first = expectation(description: "Alter Auftrag fertig")
         engine.onResult = { _ in first.fulfill() }
         engine.processForTesting(rawText: "Alter Auftrag")
-        await fulfillment(of: [started], timeout: 2)
+        await awaitTestExpectations([started], timeout: 2)
         var policy = Config.History(); policy.storeText = false
         engine.configureHistory(policy)
         await gate.release()
-        await fulfillment(of: [first], timeout: 2)
+        await awaitTestExpectations([first], timeout: 2)
         XCTAssertEqual(try history.list().first?.cleanText, "Alter Auftrag")
         let second = expectation(description: "Neuer privater Auftrag fertig")
         engine.onResult = { result in XCTAssertTrue(result.entry?.isTextPrivate == true); second.fulfill() }
         engine.processForTesting(rawText: marker)
-        await fulfillment(of: [second], timeout: 2)
+        await awaitTestExpectations([second], timeout: 2)
         XCTAssertEqual(try history.list().count, 1)
         XCTAssertFalse(String(decoding: try Data(contentsOf: base.appendingPathComponent("history.json")), as: UTF8.self).contains(marker))
     }

@@ -188,12 +188,12 @@ final class ProfileTests: XCTestCase {
         let startGate = ProfileGate()
         engine.onBeforeRecordingStart = { starting.fulfill(); await startGate.wait() }
         engine.start()
-        await fulfillment(of: [starting], timeout: 2)
+        await awaitTestExpectations([starting], timeout: 2)
         config.selectedProfileID = config.profiles[1].id
         engine.configure(config)
         XCTAssertEqual(engine.sessionConfiguration.whisper.language, "de")
         await startGate.release()
-        await fulfillment(of: [recording], timeout: 2)
+        await awaitTestExpectations([recording], timeout: 2)
         engine.onBeforeRecordingStart = nil
         let completed = expectation(description: "Altes Profil abgeschlossen")
         engine.onResult = { result in
@@ -206,12 +206,12 @@ final class ProfileTests: XCTestCase {
         engine.configure(config)
         segmenter.emit()
         engine.stop()
-        await fulfillment(of: [cleanupEntered], timeout: 2)
+        await awaitTestExpectations([cleanupEntered], timeout: 2)
         config.selectedProfileID = config.profiles[2].id
         engine.configure(config)
         XCTAssertEqual(engine.sessionConfiguration.activeProfile?.name, "Deutsch")
         await gate.release()
-        await fulfillment(of: [completed], timeout: 2)
+        await awaitTestExpectations([completed], timeout: 2)
         XCTAssertEqual(languageLog.values, ["de", "de"])
         XCTAssertEqual(server.stops, 0)
         XCTAssertEqual(transport.inputs.count, 1, "Alle Segmente ergeben einen Bereinigungsauftrag")
@@ -222,7 +222,7 @@ final class ProfileTests: XCTestCase {
             technical.fulfill()
         }
         engine.processForTesting(rawText: "Whis per bleibt bei 128.")
-        await fulfillment(of: [technical], timeout: 2)
+        await awaitTestExpectations([technical], timeout: 2)
         XCTAssertEqual(transport.inputs.last, "Whisper bleibt bei 128.")
         config.selectedProfileID = config.profiles[1].id
         engine.configure(config)
@@ -231,10 +231,10 @@ final class ProfileTests: XCTestCase {
         let englishRecording = expectation(description: "EN-Aufnahme läuft")
         engine.onStateChange = { if $0 == .recording { englishRecording.fulfill() } }
         engine.start()
-        await fulfillment(of: [englishRecording], timeout: 2)
+        await awaitTestExpectations([englishRecording], timeout: 2)
         segmenter.emit()
         engine.stop()
-        await fulfillment(of: [english], timeout: 2)
+        await awaitTestExpectations([english], timeout: 2)
         XCTAssertEqual(languageLog.values.last, "en")
         XCTAssertFalse(try String(contentsOf: directory.appendingPathComponent("history.json")).contains("The number stays"))
         await engine.shutdown().value
@@ -258,7 +258,7 @@ final class ProfileTests: XCTestCase {
         }
         let router = BridgeRouter(handlers: handlers, maxBodyBytes: 1024, tokenProvider: { "fixture" })
         let first = Task { await router.respond(to: .init(method: "POST", path: "/v1/dictate", bearerToken: "fixture", body: Data([1]))) }
-        await fulfillment(of: [entered], timeout: 2)
+        await awaitTestExpectations([entered], timeout: 2)
         config.selectedProfileID = config.profiles[1].id
         config.profiles[1].cleanup = Config.CleanupOptions(config.cleanup)
         config.profiles[1].cleanup?.enabled = false
@@ -327,22 +327,22 @@ final class ProfileTests: XCTestCase {
             completed.fulfill()
         }
         engine.start()
-        await fulfillment(of: [starting], timeout: 2)
+        await awaitTestExpectations([starting], timeout: 2)
         target = "com.example.Unknown"
         config.appProfiles["com.example.Editor"] = config.profiles[2].id
         engine.configure(config)
         XCTAssertEqual(engine.sessionConfiguration.whisper.language, "en")
         XCTAssertEqual(engine.sessionConfiguration.requestProfileSelection?.reason, .application)
         await startGate.release()
-        await fulfillment(of: [recording], timeout: 2)
+        await awaitTestExpectations([recording], timeout: 2)
         segmenter.emit()
         target = "com.example.Editor"
         engine.stop()
-        await fulfillment(of: [cleanupEntered], timeout: 2)
+        await awaitTestExpectations([cleanupEntered], timeout: 2)
         XCTAssertTrue(engine.sessionConfiguration.cleanup.localOnly)
         XCTAssertEqual(engine.sessionConfiguration.activeProfile?.name, "English")
         await cleanupGate.release()
-        await fulfillment(of: [completed], timeout: 2)
+        await awaitTestExpectations([completed], timeout: 2)
         XCTAssertEqual(languageLog.values, ["en"])
         XCTAssertEqual(transport.inputs.count, 1)
         XCTAssertEqual(server.stops, 0)
@@ -351,7 +351,7 @@ final class ProfileTests: XCTestCase {
         let next = expectation(description: "Neue App-Regel gilt erst beim nächsten Auftrag")
         engine.onResult = { result in XCTAssertEqual(result.text, "Whisper bleibt bei 128."); next.fulfill() }
         engine.processForTesting(rawText: "Whis per bleibt bei 128.")
-        await fulfillment(of: [next], timeout: 2)
+        await awaitTestExpectations([next], timeout: 2)
         XCTAssertEqual(engine.sessionConfiguration.activeProfile?.name, "Technik")
         await engine.shutdown().value
     }
@@ -469,7 +469,7 @@ final class HoldEngineTests: XCTestCase {
             engine.onStateChange = { input.didChangeState($0) }
             XCTAssertEqual(input.handle(.pressed, mode: .hold, state: engine.state), .start)
             engine.start(onlyWhile: { input.ownsHold })
-            await fulfillment(of: [entered], timeout: 2)
+            await awaitTestExpectations([entered], timeout: 2)
             XCTAssertEqual(input.handle(.released, mode: .hold, state: engine.state), .cancel)
             engine.cancel()
             await gate.release()
@@ -500,10 +500,10 @@ final class HoldEngineTests: XCTestCase {
         var input = DictationHotkeyState()
         engine.onStateChange = { state in input.didChangeState(state); if state == .recording { recording.fulfill() } }
         _ = input.handle(.pressed, mode: .hold, state: engine.state); engine.start(onlyWhile: { input.ownsHold })
-        await fulfillment(of: [entered], timeout: 2)
+        await awaitTestExpectations([entered], timeout: 2)
         XCTAssertEqual(input.handle(.released, mode: .hold, state: engine.state), .cancel); engine.cancel()
         XCTAssertEqual(input.handle(.pressed, mode: .hold, state: engine.state), .start); engine.start(onlyWhile: { input.ownsHold })
-        await fulfillment(of: [recording], timeout: 2)
+        await awaitTestExpectations([recording], timeout: 2)
         await gate.release()
         for _ in 0..<10 { await Task.yield() }
         XCTAssertEqual(recorderCreations, 1)
@@ -527,7 +527,7 @@ final class HoldEngineTests: XCTestCase {
         engine.onStateChange = { state in input.didChangeState(state); if state == .recording { recording.fulfill() } }
         engine.onResult = { _ in finished.fulfill() }
         _ = input.handle(.pressed, mode: .hold, state: engine.state); engine.start(onlyWhile: { input.ownsHold })
-        await fulfillment(of: [recording], timeout: 2)
+        await awaitTestExpectations([recording], timeout: 2)
         segmenter.emit(); segmenter.emit()
         config.hotkeyMode = .toggle; config.cleanup.localOnly = false; config.whisper.language = "de"
         engine.configure(config)
@@ -535,7 +535,7 @@ final class HoldEngineTests: XCTestCase {
         XCTAssertEqual(engine.sessionConfiguration.hotkeyMode, .hold)
         XCTAssertEqual(input.handle(.released, mode: .hold, state: engine.state), .stop); engine.stop()
         XCTAssertEqual(input.handle(.released, mode: .hold, state: engine.state), .none)
-        await fulfillment(of: [finished], timeout: 2)
+        await awaitTestExpectations([finished], timeout: 2)
         XCTAssertEqual(transport.inputs, ["The number stays 128. The number stays 128."])
         XCTAssertEqual(server.stops, 0)
         await engine.shutdown().value
@@ -581,7 +581,7 @@ extension HoldEngineTests {
             engine.onResult = { _ in XCTFail("Abbruch darf kein Ergebnis liefern") }
             engine.start(onlyWhile: { held.snapshot })
             if ["permission", "server", "sound"].contains(boundary) {
-                await fulfillment(of: [entered!], timeout: 2)
+                await awaitTestExpectations([entered!], timeout: 2)
                 held.update { $0 = false }; await gate.release()
             } else if boundary == "scheduled" { held.update { $0 = false } }
             for _ in 0..<200 where engine.state != .idle { try await Task.sleep(nanoseconds: 10_000_000) }

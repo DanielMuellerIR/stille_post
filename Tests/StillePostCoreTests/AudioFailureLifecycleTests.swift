@@ -16,9 +16,9 @@ final class AudioFailureLifecycleTests: XCTestCase {
         await start(fixture)
         fixture.recorder.onSamples?([0.2, 0.1, -0.1])
         fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [0.2], hadSpeech: true, reason: .pause))
-        await fulfillment(of: [transcribing], timeout: 2)
+        await awaitTestExpectations([transcribing], timeout: 2)
         fixture.recorder.onFailure?(AudioRecorder.RecorderError.recordingInterrupted)
-        await fulfillment(of: [saved, cancelled], timeout: 2)
+        await awaitTestExpectations([saved, cancelled], timeout: 2)
 
         guard case .error = fixture.engine.state else { return XCTFail("Geräteverlust muss als Fehler stoppen") }
         XCTAssertEqual(fixture.recorder.stopCount, 1)
@@ -107,9 +107,9 @@ final class AudioFailureLifecycleTests: XCTestCase {
         await start(fixture)
         fixture.recorder.onSamples?([0.1])
         fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [0.1], hadSpeech: true, reason: .pause))
-        await fulfillment(of: [transcribing], timeout: 2)
+        await awaitTestExpectations([transcribing], timeout: 2)
         fixture.engine.stop()
-        await fulfillment(of: [cancelled], timeout: 2)
+        await awaitTestExpectations([cancelled], timeout: 2)
         guard case .error = fixture.engine.state else { return XCTFail("Schreibfehler fehlt") }
         XCTAssertEqual(fixture.cleanup.calls, 0)
         XCTAssertEqual(fixture.deliveries, 0)
@@ -129,7 +129,7 @@ final class AudioFailureLifecycleTests: XCTestCase {
             fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [0.1], hadSpeech: true, reason: .pause))
         }
         fixture.engine.stop()
-        await fulfillment(of: [delivered], timeout: 2)
+        await awaitTestExpectations([delivered], timeout: 2)
         XCTAssertEqual(fixture.cleanup.calls, 1)
         XCTAssertEqual(result?.text, "Testtext Testtext")
         XCTAssertEqual(fixture.segmenter.flushCount, 1)
@@ -149,7 +149,7 @@ final class AudioFailureLifecycleTests: XCTestCase {
         let oldAutoStop = try XCTUnwrap(fixture.segmenter.onAutoStop)
         oldFailure(AudioRecorder.RecorderError.recordingInterrupted)
         oldFailure(AudioRecorder.RecorderError.recordingInterrupted)
-        await fulfillment(of: [saved], timeout: 2)
+        await awaitTestExpectations([saved], timeout: 2)
         await drainMainQueue()
         XCTAssertEqual(try fixture.history.list().count, 1)
         XCTAssertEqual(fixture.recorder.stopCount, 1)
@@ -213,7 +213,7 @@ final class AudioFailureLifecycleTests: XCTestCase {
         let failed = expectation(description: "Startfehler sichtbar")
         fixture.engine.onStateChange = { if case .error = $0 { failed.fulfill() } }
         fixture.engine.start()
-        await fulfillment(of: [failed], timeout: 2)
+        await awaitTestExpectations([failed], timeout: 2)
         let url = try XCTUnwrap(fixture.writerURL)
         XCTAssertGreaterThan(try Data(contentsOf: url).count, 44)
         guard case .error(let message) = fixture.engine.state else { return XCTFail("Startfehler fehlt") }
@@ -237,7 +237,7 @@ final class AudioFailureLifecycleTests: XCTestCase {
         await start(fixture, preserveStateCallback: true)
         fixture.recorder.onSamples?([0.1])
         fixture.recorder.onFailure?(AudioRecorder.RecorderError.recordingInterrupted)
-        await fulfillment(of: [failed], timeout: 2)
+        await awaitTestExpectations([failed], timeout: 2)
         let url = try XCTUnwrap(fixture.writerURL)
         guard case .error(let message) = fixture.engine.state else { return XCTFail("Verlaufsfehler fehlt") }
         XCTAssertTrue(message.contains(url.path))
@@ -266,10 +266,10 @@ final class AudioFailureLifecycleTests: XCTestCase {
         fixture.recorder.onSamples?([0.1])
         fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [0.1], hadSpeech: true, reason: .pause))
         fixture.engine.stop()
-        await fulfillment(of: [entered], timeout: 2)
+        await awaitTestExpectations([entered], timeout: 2)
         fixture.engine.cancel()
         release.signal()
-        await fulfillment(of: [rolledBack], timeout: 2)
+        await awaitTestExpectations([rolledBack], timeout: 2)
         XCTAssertTrue(try fixture.history.list().isEmpty)
         XCTAssertEqual(fixture.deliveries, 0)
         XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(fixture.writerURL).path))
@@ -297,14 +297,14 @@ final class AudioFailureLifecycleTests: XCTestCase {
         fixture.recorder.onSamples?([0.1])
         fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [0.1], hadSpeech: true, reason: .pause))
         fixture.engine.stop()
-        await fulfillment(of: [entered], timeout: 2)
+        await awaitTestExpectations([entered], timeout: 2)
         // Den MainActor festhalten, während die Plattenarbeit vollständig endet.
         // Seine Fortsetzung muss erst NACH dem synchronen Abbruch laufen können.
         release.signal()
         XCTAssertEqual(finalWrite.wait(timeout: .now() + 2), .success)
         usleep(100_000)
         fixture.engine.cancel()
-        await fulfillment(of: [discarded], timeout: 2)
+        await awaitTestExpectations([discarded], timeout: 2)
         XCTAssertTrue(try fixture.history.list().isEmpty)
         XCTAssertEqual(fixture.deliveries, 0)
         XCTAssertEqual(fixture.engine.state, .idle)
@@ -333,14 +333,14 @@ final class AudioFailureLifecycleTests: XCTestCase {
             fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [sample], hadSpeech: true, reason: .pause))
         }
         fixture.engine.stop()
-        await fulfillment(of: [entered], timeout: 2)
+        await awaitTestExpectations([entered], timeout: 2)
         release.signal()
         // onChange läuft erst nach dem Cancellation-Handler des Appends.
         // Der MainActor bleibt bis zum Abbruch blockiert, der Write ist fertig.
         XCTAssertEqual(appended.wait(timeout: .now() + 2), .success)
         XCTAssertEqual(try fixture.history.list().first?.rawText, "Testtext")
         fixture.engine.cancel()
-        await fulfillment(of: [discarded], timeout: 2)
+        await awaitTestExpectations([discarded], timeout: 2)
         let reloaded = HistoryStore(baseDir: fixture.directory)
         XCTAssertTrue(try reloaded.list().isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(fixture.writerURL).path))
@@ -377,13 +377,13 @@ final class AudioFailureLifecycleTests: XCTestCase {
         let foreign = HistoryStore.Entry(date: Date(timeIntervalSince1970: 1_700_000_000), rawText: "Anderes Diktat", cleanText: "Anderes Diktat", status: "ok", durationSec: 1)
         let history = fixture.history
         let foreignWrite = Task { try await history.appendAsync(foreign) }
-        await fulfillment(of: [entered], timeout: 2)
+        await awaitTestExpectations([entered], timeout: 2)
         fixture.cleanup.onClean = { cleaned.fulfill() }
         await start(fixture)
         fixture.recorder.onSamples?([0.1])
         fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [0.1], hadSpeech: true, reason: .pause))
         fixture.engine.stop()
-        await fulfillment(of: [cleaned], timeout: 2)
+        await awaitTestExpectations([cleaned], timeout: 2)
         await drainMainQueue()
         let cancelledWav = try XCTUnwrap(fixture.writerURL)
         try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: history.recordingsDir.path)
@@ -402,11 +402,11 @@ final class AudioFailureLifecycleTests: XCTestCase {
         await start(fixture)
         fixture.recorder.onSamples?([0.1])
         fixture.engine.stop()
-        await fulfillment(of: [delivered], timeout: 2)
+        await awaitTestExpectations([delivered], timeout: 2)
         XCTAssertFalse(FileManager.default.fileExists(atPath: try XCTUnwrap(fixture.writerURL).path))
         release.signal()
         _ = try await foreignWrite.value
-        await fulfillment(of: [retained], timeout: 2)
+        await awaitTestExpectations([retained], timeout: 2)
         let reloaded = HistoryStore(baseDir: fixture.directory)
         let entries = try reloaded.list()
         XCTAssertEqual(entries.count, 2)
@@ -434,7 +434,7 @@ final class AudioFailureLifecycleTests: XCTestCase {
         let wav = try XCTUnwrap(fixture.writerURL)
         try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: fixture.history.recordingsDir.path)
         fixture.engine.cancel()
-        await fulfillment(of: [saved], timeout: 2)
+        await awaitTestExpectations([saved], timeout: 2)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixture.history.recordingsDir.path)
         let reloaded = HistoryStore(baseDir: fixture.directory)
         let entry = try XCTUnwrap(reloaded.list().first)
@@ -511,7 +511,7 @@ final class AudioFailureLifecycleTests: XCTestCase {
         fixture.recorder.onSamples?([0.1])
         try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: fixture.history.recordingsDir.path)
         fixture.engine.stop()
-        await fulfillment(of: [entered], timeout: 2)
+        await awaitTestExpectations([entered], timeout: 2)
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixture.history.recordingsDir.path)
         fixture.engine.cancel()
         fixture.transcriber.waitForCancellation = true
@@ -520,7 +520,7 @@ final class AudioFailureLifecycleTests: XCTestCase {
         await start(fixture)
         fixture.recorder.onSamples?([0.1])
         fixture.segmenter.onSegment?(VadSegmenter.Segment(samples: [0.1], hadSpeech: true, reason: .pause))
-        await fulfillment(of: [transcribing], timeout: 2)
+        await awaitTestExpectations([transcribing], timeout: 2)
         fixture.engine.stop()
         let newWav = try XCTUnwrap(fixture.writerURL)
         release.signal()
@@ -568,7 +568,7 @@ final class AudioFailureLifecycleTests: XCTestCase {
                 try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: fixture.history.recordingsDir.path)
                 fixture.engine.cancel()
             }
-            await fulfillment(of: [saved], timeout: 2)
+            await awaitTestExpectations([saved], timeout: 2)
             let entry = try XCTUnwrap(HistoryStore(baseDir: fixture.directory).list().first)
             XCTAssertTrue(entry.isTextPrivate)
             XCTAssertEqual(entry.rawText, "")
@@ -591,7 +591,7 @@ final class AudioFailureLifecycleTests: XCTestCase {
             if state == .recording { started.fulfill() }
         }
         fixture.engine.start()
-        await fulfillment(of: [started], timeout: 2)
+        await awaitTestExpectations([started], timeout: 2)
         fixture.engine.onStateChange = preserveStateCallback ? prior : nil
     }
 
