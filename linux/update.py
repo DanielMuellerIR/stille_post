@@ -357,7 +357,7 @@ class Updater:
                 # Launcher, Desktop-Eintrag oder Modell-Setup können nach der
                 # Aktivierung abbrechen. Dasselbe aktive Paket bleibt erhalten.
                 self._probe_local_bundle(destination)
-                return {"installed": True, "version": version}
+                return {"installed": True, "version": version, "resumed": True}
 
             with tempfile.TemporaryDirectory(prefix=".install-", dir=root) as temp:
                 stage = pathlib.Path(temp) / "app"
