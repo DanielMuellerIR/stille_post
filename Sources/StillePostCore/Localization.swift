@@ -85,7 +85,8 @@ public enum L10n {
             subdirectory: nil,
             localization: language
         ),
-        let dictionary = NSDictionary(contentsOf: url) as? [String: String] else {
+        let bytes = try? Data(contentsOf: url),
+        let dictionary = try? PropertyListSerialization.propertyList(from: bytes, format: nil) as? [String: String] else {
             return []
         }
         return Set(dictionary.keys)

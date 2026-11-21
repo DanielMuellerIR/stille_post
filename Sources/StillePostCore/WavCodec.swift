@@ -87,7 +87,9 @@ public final class WavFileWriter: @unchecked Sendable {
     init(url: URL, beforeWrite: (@Sendable (Int) throws -> Void)?) throws {
         self.url = url
         self.beforeWrite = beforeWrite
-        FileManager.default.createFile(atPath: url.path, contents: nil)
+        guard FileManager.default.createFile(atPath: url.path, contents: nil) else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSURLErrorKey: url])
+        }
         handle = try FileHandle(forWritingTo: url)
         // Platzhalter-Header (Längenfelder 0) — wird in finish() korrigiert.
         try beforeWrite?(0)
