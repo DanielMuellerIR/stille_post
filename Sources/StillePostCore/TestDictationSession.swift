@@ -2,6 +2,7 @@ import Foundation
 
 /// Orchestriert einen ausdrücklichen Test auf der vorhandenen App-Engine.
 /// Alle Methoden/Callbacks werden auf dem Hauptthread aufgerufen.
+@MainActor
 public final class TestDictationSession {
     public enum State: Equatable { case ready, preparing, recording, paused, processing, completed, silence, cancelled, failed(String) }
     public private(set) var state: State = .ready
@@ -31,7 +32,7 @@ public final class TestDictationSession {
         self.maximumDuration = max(0.01, min(20, maximumRecordingDuration))
         self.clock = clock
     }
-    deinit { timer?.invalidate() }
+    isolated deinit { timer?.invalidate() }
     public func owns(_ source: DictationEngine) -> Bool { ownsCurrentSession && engine === source }
     public func uses(_ source: DictationEngine) -> Bool { engine === source }
 
@@ -44,16 +45,14 @@ public final class TestDictationSession {
         guard reviewed == currentConfiguration else { fail("test_dictation.changed"); return }
         guard inputAvailable else { fail("test_dictation.no_input"); return }
         guard beforeStart() else { fail("test_dictation.busy"); return }
-        configuration = reviewed.resolvedForRequest()
+        let requestConfiguration = reviewed.resolvedForRequest()
+        configuration = requestConfiguration
         result = nil; timings = .empty; audioDuration = 0; levelDb = -120
         cancelling = false; recordingBegan = nil
         ownsCurrentSession = true; isActive = true; state = .preparing
         onChange?()
-        engine.configure(configuration!)
-        engine.start()
-        // start() hat bereits einen eigenen Snapshot. Die globale Auswahl gilt
-        // sofort wieder für kommende Aufträge, ohne den Test zu verändern.
         engine.configure(nextRequestConfiguration)
+        engine.start(configuration: requestConfiguration)
         if isActive, engine.state == .idle { fail("test_dictation.cannot_start") }
     }
 
@@ -174,7 +173,10 @@ public final class TestDictationSession {
     }
     private func startTimer() {
         guard timer == nil else { return }
-        let value = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in self?.pulse() }
+        let value = Timer(timeInterval: 0.05, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            MainActor.assumeIsolated { self.pulse() }
+        }
         timer = value
         RunLoop.main.add(value, forMode: .common)
     }

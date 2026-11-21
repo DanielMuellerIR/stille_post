@@ -36,9 +36,9 @@ final class HistoryPrivacyTests: XCTestCase {
     func testFirstPrivateWriteNeverContainsTextOrFreeDiagnostics() throws {
         let base = directory()
         defer { try? FileManager.default.removeItem(at: base) }
-        var writes: [Data] = []
+        let writes = LockedTestValue<[Data]>([])
         let history = HistoryStore(baseDir: base) { data, url in
-            writes.append(data)
+            writes.update { $0.append(data) }
             try data.write(to: url, options: .atomic)
         }
         var entry = try audioEntry(history, text: marker)
@@ -46,8 +46,8 @@ final class HistoryPrivacyTests: XCTestCase {
         let receipt = try history.append(entry)
         XCTAssertEqual(receipt.cleanText, marker, "Ausgabetext darf im RAM bleiben")
         XCTAssertTrue(receipt.isTextPrivate)
-        XCTAssertFalse(writes.isEmpty)
-        XCTAssertTrue(writes.allSatisfy { !String(decoding: $0, as: UTF8.self).contains(marker) })
+        XCTAssertFalse(writes.snapshot.isEmpty)
+        XCTAssertTrue(writes.snapshot.allSatisfy { !String(decoding: $0, as: UTF8.self).contains(marker) })
         let retained = try XCTUnwrap(HistoryStore(baseDir: base).list().first)
         XCTAssertEqual(retained.rawText, "")
         XCTAssertEqual(retained.cleanText, "")
@@ -152,13 +152,12 @@ final class HistoryPrivacyTests: XCTestCase {
         var privateEntry = original
         privateEntry.storesText = false
         try HistoryStore(baseDir: base).update(privateEntry)
-        let lock = NSLock()
-        var failures = 0
+        let failures = LockedTestValue(0)
         DispatchQueue.concurrentPerform(iterations: 20) { _ in
             do { try HistoryStore(baseDir: base).update(original) }
-            catch { lock.lock(); failures += 1; lock.unlock() }
+            catch { failures.update { $0 += 1 } }
         }
-        XCTAssertEqual(failures, 0)
+        XCTAssertEqual(failures.snapshot, 0)
         XCTAssertTrue(try XCTUnwrap(history.list().first).isTextPrivate)
         XCTAssertFalse(String(decoding: try Data(contentsOf: base.appendingPathComponent("history.json")), as: UTF8.self).contains(marker))
     }
@@ -167,10 +166,9 @@ final class HistoryPrivacyTests: XCTestCase {
     func testPrivateSuccessIsTextFreeFromFirstWriteAndDeletesItsAudio() async throws {
         let base = directory()
         defer { try? FileManager.default.removeItem(at: base) }
-        let lock = NSLock()
-        var snapshots: [Data] = []
+        let snapshots = LockedTestValue<[Data]>([])
         let history = HistoryStore(baseDir: base) { data, url in
-            lock.withLock { snapshots.append(data) }
+            snapshots.update { $0.append(data) }
             try data.write(to: url, options: .atomic)
         }
         let entry = try audioEntry(history, text: marker)
@@ -189,11 +187,12 @@ final class HistoryPrivacyTests: XCTestCase {
         await fulfillment(of: [delivered], timeout: 3)
         XCTAssertTrue(try history.list().isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath: audio.path))
-        let saved = lock.withLock { snapshots }
+        let saved = snapshots.snapshot
         XCTAssertGreaterThanOrEqual(saved.count, 2)
         XCTAssertTrue(saved.allSatisfy { !String(decoding: $0, as: UTF8.self).contains(marker) })
     }
 
+    @MainActor
     func testPrivateRetryEmitsOnlyTransientTextIncludingOnAudioDeletionFailure() async throws {
         for unlinkFails in [false, true] {
             let base = directory()
@@ -231,10 +230,10 @@ final class HistoryPrivacyTests: XCTestCase {
         let history = HistoryStore(baseDir: base)
         let gate = PrivacyGate()
         let started = expectation(description: "Bereinigung begonnen")
-        var calls = 0
+        let calls = LockedTestValue(0)
         let engine = DictationEngine(config: Config(), history: history) { text in
-            calls += 1
-            if calls == 1 { started.fulfill(); await gate.wait() }
+            let call = calls.update { count in count += 1; return count }
+            if call == 1 { started.fulfill(); await gate.wait() }
             return CleanupService.Result(text: text, usedFallback: false, fallbackReason: nil, endpoint: nil)
         }
         let first = expectation(description: "Alter Auftrag fertig")
@@ -285,6 +284,7 @@ final class HistoryPrivacyTests: XCTestCase {
         XCTAssertTrue(try working.list().isEmpty)
     }
 
+    @MainActor
     func testRetryStartsOnlyNewTextDeadlineAndDoesNotRetrofitAudioDeadline() async throws {
         let base = directory()
         let history = HistoryStore(baseDir: base)
@@ -308,7 +308,7 @@ final class HistoryPrivacyTests: XCTestCase {
         XCTAssertEqual(stored.date, entry.date)
     }
 
-    private func retryEngine(history: HistoryStore, config: Config = Config()) -> DictationEngine {
+    @MainActor private func retryEngine(history: HistoryStore, config: Config = Config()) -> DictationEngine {
         let dependencies = DictationDependencies(transcriber: PrivacyTranscriber(text: marker), server: PrivacyServer(),
             cleanup: PrivacyCleanup(), makeRecorder: { _ in fatalError("im Retry unbenutzt") },
             makeSegmenter: { _ in fatalError("im Retry unbenutzt") }, makeWavWriter: { _ in fatalError("im Retry unbenutzt") })
@@ -334,9 +334,9 @@ private final class PrivacyServer: DictationServer {
     func ensureRunning(reachability: any DictationTranscriber) async throws {}
     func stop() {}
 }
-private final class PrivacyCleanup: DictationCleanup {
-    var onFallbackEndpoint: ((String) -> Void)?
-    var onPrimaryRetry: (() -> Void)?
+private final class PrivacyCleanup: DictationCleanup, @unchecked Sendable {
+    var onFallbackEndpoint: (@Sendable (String) -> Void)?
+    var onPrimaryRetry: (@Sendable () -> Void)?
     func clean(_ text: String) async -> CleanupService.Result {
         CleanupService.Result(text: text, usedFallback: false, fallbackReason: nil, endpoint: nil)
     }

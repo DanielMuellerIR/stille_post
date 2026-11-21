@@ -4,7 +4,8 @@ import CryptoKit
 
 /// Dauerhafte, selbstsignierte TLS-Identität. Der private Schlüssel verlässt den
 /// Schlüsselbund nie. Vertrauen entsteht ausschließlich durch Kopplung am Mac.
-public struct BridgeIdentity {
+public struct BridgeIdentity: @unchecked Sendable {
+    // Beide Security-Referenzen sind unveränderliche Objekte.
     public let identity: SecIdentity
     public let certificate: SecCertificate
     public var fingerprint: String {

@@ -68,14 +68,14 @@ import Foundation
 }
 private enum FixtureError: Error { case failed, timeout }
 private final class FileRecorder: DictationRecorder {
-    var onSamples: (([Float]) -> Void)?, onFailure: ((Error) -> Void)?
+    var onSamples: (@Sendable ([Float]) -> Void)?, onFailure: (@Sendable (Error) -> Void)?
     func start() throws {}
     func stop() {}
 }
 private final class CountingCleanup: DictationCleanup {
     let service: CleanupService
     var calls = 0, warmups = 0
-    var onFallbackEndpoint: ((String) -> Void)?, onPrimaryRetry: (() -> Void)?
+    var onFallbackEndpoint: (@Sendable (String) -> Void)?, onPrimaryRetry: (@Sendable () -> Void)?
     init(config: Config.Cleanup) { service = CleanupService(config: config) }
     func warmUp() { warmups += 1; service.warmUp() }
     func clean(_ rawText: String) async -> CleanupService.Result { calls += 1; return await service.clean(rawText) }

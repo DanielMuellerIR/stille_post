@@ -1,4 +1,10 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
+#if canImport(CFNetwork)
+import CFNetwork
+#endif
 #if canImport(Darwin)
 import Darwin
 #else
@@ -8,6 +14,21 @@ import Glibc
 /// Keine Namensauflösung: Eine lokale Richtlinie vertraut nur numerischen
 /// Loopback-Zielen. Dieselbe Grenze gilt vor Requests und vor Weiterleitungen.
 enum CleanupNetworkPolicy {
+    static func configureLocalSession(_ config: URLSessionConfiguration) {
+        // Systemproxies einschließlich automatischer Proxy-Suche umgehen.
+#if canImport(CFNetwork)
+        config.connectionProxyDictionary = [
+            kCFNetworkProxiesHTTPEnable as String: 0, kCFNetworkProxiesHTTPSEnable as String: 0,
+            kCFNetworkProxiesSOCKSEnable as String: 0, kCFNetworkProxiesProxyAutoConfigEnable as String: 0,
+            kCFNetworkProxiesProxyAutoDiscoveryEnable as String: 0,
+        ]
+#else
+        config.connectionProxyDictionary = [:]
+#endif
+        config.urlCredentialStorage = nil
+        config.httpShouldSetCookies = false
+    }
+
     static func allows(_ url: URL?) -> Bool {
         guard let url, let c = URLComponents(url: url, resolvingAgainstBaseURL: false),
               ["http", "https"].contains(c.scheme?.lowercased() ?? ""),

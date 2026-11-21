@@ -2,7 +2,7 @@ import Foundation
 
 /// Schließt eine Aufnahmephase erst, wenn ihr letzter Sample-Callback fertig ist.
 /// Späte Taps einer alten Phase dürfen weder die WAV noch den neuen VAD erreichen.
-final class RecordingAudioSession {
+final class RecordingAudioSession: @unchecked Sendable {
     private let lock = NSLock()
     private var phase: UUID?
     private var acceptingSamples = false

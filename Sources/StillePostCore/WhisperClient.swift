@@ -8,7 +8,7 @@ import FoundationNetworking
 /// Der Server läuft dauerhaft und hält das Whisper-Modell warm im Speicher —
 /// dadurch kostet eine Transkription nur die reine Rechenzeit (Bruchteile einer
 /// Sekunde pro Segment), nie das Laden des Modells.
-public final class WhisperClient {
+public final class WhisperClient: Sendable {
 
     private let config: Config.Whisper
     private let session: URLSession
@@ -35,6 +35,7 @@ public final class WhisperClient {
 #endif
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.timeoutIntervalForRequest = 300  // sehr lange Aufnahmen abdecken
+        CleanupNetworkPolicy.configureLocalSession(sessionConfig)
         self.session = URLSession(configuration: sessionConfig,
                                   delegate: RejectRedirects(), delegateQueue: nil)
     }

@@ -302,7 +302,7 @@ final class AudioFailureLifecycleTests: XCTestCase {
         // Seine Fortsetzung muss erst NACH dem synchronen Abbruch laufen können.
         release.signal()
         XCTAssertEqual(finalWrite.wait(timeout: .now() + 2), .success)
-        Thread.sleep(forTimeInterval: 0.1)
+        usleep(100_000)
         fixture.engine.cancel()
         await fulfillment(of: [discarded], timeout: 2)
         XCTAssertTrue(try fixture.history.list().isEmpty)
@@ -612,12 +612,12 @@ private final class LossFixture {
     let cleanup = LossCleanup()
     let transcriber = LossTranscriber()
     let engine: DictationEngine
-    private let urlBox = LossURLBox()
-    var writerURL: URL? { urlBox.url }
+    private let urlBox = LockedTestValue<URL?>(nil)
+    var writerURL: URL? { urlBox.snapshot }
     var deliveries = 0
 
     init(writerFailure: LossWriter.Failure? = nil, historyFailure: Bool = false,
-         atomicWrite: ((Data, URL) throws -> Void)? = nil, config: Config = Config(), directory: URL? = nil) throws {
+         atomicWrite: (@Sendable (Data, URL) throws -> Void)? = nil, config: Config = Config(), directory: URL? = nil) throws {
         self.directory = directory ?? FileManager.default.temporaryDirectory.appendingPathComponent("sp-audio-loss-\(UUID())")
         history = HistoryStore(baseDir: self.directory) { data, url in
             if historyFailure { throw NSError(domain: "LossTest", code: 2, userInfo: [NSLocalizedDescriptionKey: "Künstlicher Verlaufsfehler"]) }
@@ -629,7 +629,7 @@ private final class LossFixture {
             transcriber: transcriber, server: LossServer(), cleanup: cleanup,
             makeRecorder: { _ in recorder }, makeSegmenter: { _ in segmenter },
             makeWavWriter: { url in
-                urlBox.url = url
+                urlBox.update { $0 = url }
                 return try LossWriter(url: url, failure: writerFailure)
             }, requestMicrophoneAccess: { true }
         ))
@@ -637,10 +637,9 @@ private final class LossFixture {
     }
     func removeFiles() { try? FileManager.default.removeItem(at: directory) }
 }
-private final class LossURLBox { var url: URL? }
 private final class LossRecorder: DictationRecorder {
-    var onSamples: (([Float]) -> Void)?
-    var onFailure: ((Error) -> Void)?
+    var onSamples: (@Sendable ([Float]) -> Void)?
+    var onFailure: (@Sendable (Error) -> Void)?
     var stopCount = 0
     var failStartAfterSamples = false
     var failWhileStopping = false
@@ -665,7 +664,7 @@ private final class LossRecorder: DictationRecorder {
         }
     }
 }
-private final class LossSegmenter: DictationSegmenter {
+private final class LossSegmenter: DictationSegmenter, @unchecked Sendable {
     var onSegment: ((VadSegmenter.Segment) -> Void)?
     var onAutoStop: (() -> Void)?
     var currentLevelDb: Double { -20 }
@@ -673,12 +672,12 @@ private final class LossSegmenter: DictationSegmenter {
     func process(_ samples: [Float]) {}
     func flush() { flushCount += 1 }
 }
-private final class LossTranscriber: DictationTranscriber {
+private final class LossTranscriber: DictationTranscriber, @unchecked Sendable {
     var text = "Testtext"
     var waitForCancellation = false
     var failNegativeSamples = false
-    var onStart: (() -> Void)?
-    var onCancel: (() -> Void)?
+    var onStart: (@Sendable () -> Void)?
+    var onCancel: (@Sendable () -> Void)?
     func transcribe(samples: [Float]) async throws -> String {
         onStart?()
         if failNegativeSamples, samples.first.map({ $0 < 0 }) == true {
@@ -697,11 +696,11 @@ private final class LossServer: DictationServer {
     func ensureRunning(reachability: any DictationTranscriber) async throws {}
     func stop() {}
 }
-private final class LossCleanup: DictationCleanup {
-    var onFallbackEndpoint: ((String) -> Void)?
-    var onPrimaryRetry: (() -> Void)?
+private final class LossCleanup: DictationCleanup, @unchecked Sendable {
+    var onFallbackEndpoint: (@Sendable (String) -> Void)?
+    var onPrimaryRetry: (@Sendable () -> Void)?
     var calls = 0
-    var onClean: (() -> Void)?
+    var onClean: (@Sendable () -> Void)?
     func clean(_ rawText: String) async -> CleanupService.Result {
         calls += 1
         onClean?()

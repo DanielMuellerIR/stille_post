@@ -68,12 +68,12 @@ public enum WavCodec {
 /// schreiben wir zuerst einen Platzhalter-Header und tragen die echten Längen beim
 /// `finish()` nach. So ist die Datei nach jedem Diktat sofort gültig, und bei einem
 /// Absturz mitten in der Aufnahme sind die Audio-Daten trotzdem noch da.
-public final class WavFileWriter {
+public final class WavFileWriter: @unchecked Sendable {
     private let handle: FileHandle
     private let lock = NSLock()
     /// Testgrenze für reproduzierbare Schreibfehler. Der Zähler ist 0 für den
     /// Platzhalter-Header, 1 für den ersten Sample-Block usw.
-    private let beforeWrite: ((Int) throws -> Void)?
+    private let beforeWrite: (@Sendable (Int) throws -> Void)?
     private var writeCount = 0
     private var dataBytes = 0
     private var firstError: Error?
@@ -84,7 +84,7 @@ public final class WavFileWriter {
         try self.init(url: url, beforeWrite: nil)
     }
 
-    init(url: URL, beforeWrite: ((Int) throws -> Void)?) throws {
+    init(url: URL, beforeWrite: (@Sendable (Int) throws -> Void)?) throws {
         self.url = url
         self.beforeWrite = beforeWrite
         FileManager.default.createFile(atPath: url.path, contents: nil)

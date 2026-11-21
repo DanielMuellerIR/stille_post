@@ -2,6 +2,7 @@ import Foundation
 
 /// Die App nutzt ihre vorhandene Engine, aber eine eigene Ausgabezuordnung.
 /// Methoden und Engine-Callbacks gehören auf den Hauptthread.
+@MainActor
 public final class AudioImportSession {
     public enum State: Equatable {
         case ready, processing(AudioImportStage), cancelling, completed, silence, cancelled, failed(String)
@@ -29,14 +30,14 @@ public final class AudioImportSession {
         guard allowed, !engine.hasInFlightRequests else { fail("test_dictation.busy"); return }
         guard reviewed == currentConfiguration else { fail("test_dictation.changed"); return }
         guard beforeStart() else { fail("test_dictation.busy"); return }
-        configuration = reviewed.resolvedForRequest(); result = nil
+        let requestConfiguration = reviewed.resolvedForRequest()
+        configuration = requestConfiguration; result = nil
         progress = nil
         cancelling = false; closed = false
         ownsCurrentSession = true; isActive = true; state = .processing(.decoding)
         onChange?()
-        engine.configure(configuration!)
-        engine.importAudioFile(file)
         engine.configure(nextRequestConfiguration)
+        engine.importAudioFile(file, configuration: requestConfiguration)
         if isActive, !engine.hasInFlightRequests { fail("audio_import.cannot_start") }
     }
 

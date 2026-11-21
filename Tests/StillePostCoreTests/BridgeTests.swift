@@ -17,12 +17,12 @@ final class BridgeTests: XCTestCase {
         sec_protocol_options_set_verify_block(tls.securityProtocolOptions, { _, trust, complete in
             guard let pinned = try? Self.identity.get() else { complete(false); return }
             let checked = sec_trust_copy_ref(trust).takeRetainedValue()
-            guard let leaf = SecTrustGetCertificateAtIndex(checked, 0),
-                  SecCertificateCopyData(leaf) as Data == SecCertificateCopyData(pinned.certificate) as Data else { complete(false); return }
             SecTrustSetPolicies(checked, SecPolicyCreateSSL(true, nil))
             SecTrustSetAnchorCertificates(checked, [pinned.certificate] as CFArray)
             SecTrustSetAnchorCertificatesOnly(checked, true)
             SecTrustSetNetworkFetchAllowed(checked, false)
+            guard let leaf = (SecTrustCopyCertificateChain(checked) as? [SecCertificate])?.first,
+                  SecCertificateCopyData(leaf) as Data == SecCertificateCopyData(pinned.certificate) as Data else { complete(false); return }
             complete(SecTrustEvaluateWithError(checked, nil))
         }, DispatchQueue(label: "bridge-test.verify"))
         return NWParameters(tls: tls)
@@ -658,11 +658,9 @@ final class BridgeTests: XCTestCase {
         // Puffer wieder freigegeben werden.
         let deallocated = expectation(description: "Session freigegeben")
         deallocated.assertForOverFulfill = false
-        BridgeServer.sessionDeinitHook = { deallocated.fulfill() }
-        defer { BridgeServer.sessionDeinitHook = nil }
-
         let (server, port) = try startServer(router: makeRouter())
         defer { server.stop() }
+        server.onSessionDeinitializedForTesting = { deallocated.fulfill() }
         let request = "GET /v1/health HTTP/1.1\r\n"
             + "Authorization: Bearer richtig\r\n"
             + "Content-Length: 0\r\n\r\n"

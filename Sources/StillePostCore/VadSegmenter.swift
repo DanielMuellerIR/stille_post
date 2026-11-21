@@ -12,10 +12,10 @@ import Foundation
 /// Standard ist die RMS-Pegelschwelle in 30-ms-Frames. Optional klassifiziert
 /// Silero 256-ms-Fenster; Segmentierung und Stillekürzung bleiben gemeinsam.
 /// Ein Modellfehler schaltet für diese Aufnahmephase dauerhaft auf RMS zurück.
-public final class VadSegmenter {
+public final class VadSegmenter: @unchecked Sendable {
 
     /// Ein abgeschlossenes Audio-Segment.
-    public struct Segment {
+    public struct Segment: Sendable {
         /// Die Samples (16 kHz mono Float) inklusive Vor-/Nachlauf-Polsterung.
         public let samples: [Float]
         /// Enthielt das Segment überhaupt Sprache? Reine Stille-Segmente werden
@@ -25,13 +25,25 @@ public final class VadSegmenter {
         public let reason: CloseReason
     }
 
-    public enum CloseReason { case pause, maxLength, flush }
+    public enum CloseReason: Sendable { case pause, maxLength, flush }
+
+    private let stateLock = NSRecursiveLock()
+    private var segmentCallback: ((Segment) -> Void)?
+    private var autoStopCallback: (() -> Void)?
+    private var fallbackCallback: ((String) -> Void)?
+    private var detectorFailure: String?
 
     /// Callback: Ein Segment ist fertig (wird auf dem Audio-Thread aufgerufen!).
-    public var onSegment: ((Segment) -> Void)?
+    public var onSegment: ((Segment) -> Void)? {
+        get { stateLock.withLock { segmentCallback } }
+        set { stateLock.withLock { segmentCallback = newValue } }
+    }
     /// Callback: Abwesenheitserkennung hat zugeschlagen (so lange Stille, dass die
     /// Aufnahme beendet werden soll). Wird höchstens einmal pro Aufnahme gefeuert.
-    public var onAutoStop: (() -> Void)?
+    public var onAutoStop: (() -> Void)? {
+        get { stateLock.withLock { autoStopCallback } }
+        set { stateLock.withLock { autoStopCallback = newValue } }
+    }
     /// Aktueller Pegel in dBFS (für die Live-Anzeige im Overlay). Der Audio-Thread
     /// schreibt, der Main-Thread liest; ein Lock bildet die nötige Speichergrenze.
     public var currentLevelDb: Double { levelLock.withLock { levelDbSnapshot } }
@@ -44,8 +56,11 @@ public final class VadSegmenter {
     private var meterPending: [Float] = []
     private var detector: (any SpeechActivityDetector)?
     private var frameSize: Int { detector?.frameSize ?? meterFrameSize }
-    public private(set) var fallbackReason: String?
-    public var onFallback: ((String) -> Void)?
+    public var fallbackReason: String? { stateLock.withLock { detectorFailure } }
+    public var onFallback: ((String) -> Void)? {
+        get { stateLock.withLock { fallbackCallback } }
+        set { stateLock.withLock { fallbackCallback = newValue } }
+    }
 
     // Zustand des laufenden Segments:
     private var buffer: [Float] = []          // Samples des aktuellen Segments
@@ -80,11 +95,15 @@ public final class VadSegmenter {
         // insbesondere negative/überlaufende Array.suffix-Werte).
         self.config = config.runtimeSafe
         self.detector = detector
-        self.fallbackReason = fallbackReason
+        self.detectorFailure = fallbackReason
     }
 
     /// Nimmt neue Samples vom Aufnahme-Gerät entgegen (16 kHz mono Float).
     public func process(_ samples: [Float]) {
+        stateLock.withLock { processLocked(samples) }
+    }
+
+    private func processLocked(_ samples: [Float]) {
         // Die Pegelanzeige bleibt unabhängig vom gewählten Detektor bei 30 ms.
         meterPending.append(contentsOf: samples)
         while meterPending.count >= meterFrameSize {
@@ -120,8 +139,8 @@ public final class VadSegmenter {
                 // ein einzelner Klick plötzlich als 256 ms Sprache zählt.
                 self.detector = nil
                 let reason = L10n.text("vad.fallback.inference")
-                fallbackReason = reason
-                onFallback?(reason)
+                detectorFailure = reason
+                fallbackCallback?(reason)
                 pendingFrame.insert(contentsOf: frame, at: 0)
                 return
             }
@@ -150,7 +169,7 @@ public final class VadSegmenter {
                totalSilenceRunSec >= config.autoStopAfterSilenceSec,
                !autoStopFired {
                 autoStopFired = true
-                onAutoStop?()
+                autoStopCallback?()
             }
         }
 
@@ -208,11 +227,15 @@ public final class VadSegmenter {
         silenceRunSec = 0
         leadingSilenceSec = 0
 
-        onSegment?(segment)
+        segmentCallback?(segment)
     }
 
     /// Aufnahme-Ende: Das angefangene Segment abschließen und ausliefern.
     public func flush() {
+        stateLock.withLock { flushLocked() }
+    }
+
+    private func flushLocked() {
         drainFrames()
         if !pendingFrame.isEmpty {
             let tail = pendingFrame

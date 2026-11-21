@@ -45,14 +45,14 @@ public struct DiagnosticContext: Sendable {
     public init() {}
 }
 
-public final class DiagnosticsService {
-    struct Dependencies {
-        var whisper: (Config.Whisper) async -> WhisperClient.Health
-        var executable: (String) -> Bool
-        var model: (String) -> ModelInstaller.InstallState
-        var cleanup: (Config.Cleanup, Config.Cleanup.Endpoint) async -> CleanupService.EndpointCheck
-        var hasRemoteKey: (String) -> Bool
-        var bridgeToken: () -> TokenState
+public final class DiagnosticsService: Sendable {
+    struct Dependencies: Sendable {
+        var whisper: @Sendable (Config.Whisper) async -> WhisperClient.Health
+        var executable: @Sendable (String) -> Bool
+        var model: @Sendable (String) -> ModelInstaller.InstallState
+        var cleanup: @Sendable (Config.Cleanup, Config.Cleanup.Endpoint) async -> CleanupService.EndpointCheck
+        var hasRemoteKey: @Sendable (String) -> Bool
+        var bridgeToken: @Sendable () -> TokenState
         static let live = Self(
             whisper: { await WhisperClient(config: $0).health() },
             executable: { FileManager.default.isExecutableFile(atPath: Config.expandPath($0)) },

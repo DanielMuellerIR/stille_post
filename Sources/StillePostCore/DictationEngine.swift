@@ -1,7 +1,7 @@
 import Foundation
 
 /// Zustand der Diktier-Maschine (für Menüleiste + Overlay).
-public enum DictationState: Equatable {
+public enum DictationState: Equatable, Sendable {
     case idle                    // wartet auf den Hotkey
     case starting                // Dienste hochfahren / Mikro öffnen
     case recording               // Aufnahme läuft
@@ -12,7 +12,7 @@ public enum DictationState: Equatable {
 }
 
 /// Das Ergebnis eines abgeschlossenen Diktats.
-public struct DictationResult {
+public struct DictationResult: Sendable {
     /// Der fertige Text (bereinigt, oder roh bei Cleanup-Fallback). Leer = nur Stille.
     public let text: String
     /// Der zugehörige Verlaufs-Eintrag (nil, wenn nur Stille aufgenommen wurde).
@@ -37,6 +37,7 @@ public struct DictationResult {
 /// jedes Fragment isoliert zu einem "ganzen Satz" geputzt wurde.) Das Bereinigungs-
 /// Modell wird beim Aufnahme-START vorgewärmt, damit kein Kaltstart in die
 /// Wartezeit nach dem Stopp fällt.
+@MainActor
 public final class DictationEngine {
 
     // MARK: - Öffentliche Schnittstelle
@@ -67,7 +68,7 @@ public final class DictationEngine {
 
     private func clearTranscriptPreview() {
         transcriptPreview = nil
-        Self.onMain { self.onTranscriptPreview?(nil) }
+        onTranscriptPreview?(nil)
     }
     /// Private Wiederholung: Ergebnis nur flüchtig anzeigen, niemals automatisch einfügen.
     public var onPrivateRetryResult: ((HistoryStore.Entry) -> Void)?
@@ -86,7 +87,7 @@ public final class DictationEngine {
     /// noch da — die Bereinigung wartet ein paar Sekunden auf ihn (Blip-Toleranz).
     /// Auch das gehört ins Overlay. Auf Main-Thread.
     public var onCleanupPrimaryRetry: (() -> Void)?
-    /// Live-Pegel in dBFS für die Anzeige (aufgerufen vom Audio-Thread!).
+    /// Live-Pegel in dBFS für die Anzeige, aus dem synchronisierten VAD-Pegelwert.
     public var currentLevelDb: Double { segmenter?.currentLevelDb ?? -120 }
     /// Erfasste Audiozeit; Pause und Fortsetzungsvorbereitung zählen nicht mit.
     public var recordingDuration: TimeInterval { audioSession?.duration ?? 0 }
@@ -103,9 +104,9 @@ public final class DictationEngine {
     private var sessionRequest: DictationRequestStore.Snapshot
     public var sessionConfiguration: Config { sessionRequest.config }
 
-    public func configure(_ config: Config) { requests.configure(config) }
-    public func configureHistory(_ policy: Config.History) { requests.configureHistory(policy) }
-    public func configureVocabulary(_ vocabulary: Config.Cleanup) { requests.configureVocabulary(vocabulary) }
+    public nonisolated func configure(_ config: Config) { requests.configure(config) }
+    public nonisolated func configureHistory(_ policy: Config.History) { requests.configureHistory(policy) }
+    public nonisolated func configureVocabulary(_ vocabulary: Config.Cleanup) { requests.configureVocabulary(vocabulary) }
 
     private func sessionEntry(_ entry: HistoryStore.Entry) -> HistoryStore.Entry {
         var result = sessionRequest.config.history.applying(to: entry)
@@ -113,16 +114,16 @@ public final class DictationEngine {
         return result
     }
     private let serverManager: any DictationServer
-    private let makeRecorder: (Config.Audio) -> any DictationRecorder
-    private let makeSegmenter: (Config.Vad) async -> any DictationSegmenter
-    private let makeWavWriter: (URL) throws -> any DictationWavWriter
-    private let requestMicrophoneAccess: () async -> Bool
-    private let monotonicTime: () -> TimeInterval
-    private let beforeFileDecodeChunk: ((Int) async -> Void)?
+    private let makeRecorder: @MainActor (Config.Audio) -> any DictationRecorder
+    private let makeSegmenter: @Sendable (Config.Vad) async -> any DictationSegmenter
+    private let makeWavWriter: @Sendable (URL) throws -> any DictationWavWriter
+    private let requestMicrophoneAccess: @Sendable () async -> Bool
+    private let monotonicTime: @Sendable () -> TimeInterval
+    private let beforeFileDecodeChunk: (@Sendable (Int) async -> Void)?
     private var timingStore: DictationTimingStore?
     /// Enge Testgrenze für die einzige asynchrone Nachverarbeitung nach Whisper.
     /// Produktiv zeigt sie immer direkt auf `CleanupService.clean`.
-    private let cleanupText: ((String) async -> CleanupService.Result)?
+    private let cleanupText: (@Sendable (String) async -> CleanupService.Result)?
 
     // Zustand einer laufenden Aufnahme:
     private var recorder: (any DictationRecorder)?
@@ -139,11 +140,10 @@ public final class DictationEngine {
     private var importProgressStage: AudioImportStage?
     private var importCancellationRequested = false
     private var processingAudioIsComplete: Bool?
-    private let retryLock = NSLock()
     private var retryTasks: [UUID: Task<HistoryStore.Entry, Error>] = [:]
     private var shuttingDown = false
     public var hasInFlightRequests: Bool {
-        importingAudio || state == .starting || state == .recording || state == .paused || state == .resuming || state == .processing || retryLock.withLock { !retryTasks.isEmpty }
+        importingAudio || state == .starting || state == .recording || state == .paused || state == .resuming || state == .processing || !retryTasks.isEmpty
     }
     private var historyTasks: [UUID: Task<Void, Never>] = [:]
     /// Jede Start-/Abbruchfolge bekommt eine neue Generation. Ein alter Task darf
@@ -164,7 +164,7 @@ public final class DictationEngine {
     }
 
     convenience init(config: Config, history: HistoryStore? = nil,
-                     cleanupText: ((String) async -> CleanupService.Result)?) {
+                     cleanupText: (@Sendable (String) async -> CleanupService.Result)?) {
         self.init(
             config: config, history: history, dependencies: .live(config: config.resolvedForRequest()),
             cleanupText: cleanupText
@@ -173,11 +173,11 @@ public final class DictationEngine {
 
     init(config: Config, history: HistoryStore? = nil,
          dependencies: DictationDependencies,
-         cleanupText: ((String) async -> CleanupService.Result)? = nil) {
+         cleanupText: (@Sendable (String) async -> CleanupService.Result)? = nil) {
         let requests = DictationRequestStore(config: config, transcriber: dependencies.transcriber,
             cleanup: dependencies.cleanup, makeTranscriber: dependencies.makeTranscriber)
         self.requests = requests
-        self.sessionRequest = requests.snapshot(appBundleID: requestAppBundleID?())
+        self.sessionRequest = requests.snapshot()
         self.history = history ?? HistoryStore()
         self.serverManager = dependencies.server
         let cleanup = dependencies.cleanup
@@ -191,10 +191,10 @@ public final class DictationEngine {
         // Fallback-Wechsel der Bereinigung an die Oberfläche durchreichen
         // (CleanupService meldet von beliebigem Thread -> auf Main-Thread heben).
         cleanup.onFallbackEndpoint = { [weak self] label in
-            DispatchQueue.main.async { self?.onCleanupFallback?(label) }
+            Task { @MainActor [weak self] in self?.onCleanupFallback?(label) }
         }
         cleanup.onPrimaryRetry = { [weak self] in
-            DispatchQueue.main.async { self?.onCleanupPrimaryRetry?() }
+            Task { @MainActor [weak self] in self?.onCleanupPrimaryRetry?() }
         }
     }
 
@@ -214,11 +214,11 @@ public final class DictationEngine {
 
     /// Import teilt Auftrags-Snapshot, Dienste und Endverarbeitung mit Diktaten.
     /// Die Quelldatei wird ausschließlich gelesen; nur die eigene WAV gehört uns.
-    public func importAudioFile(_ source: URL, limits: AudioImportLimits = .file) {
+    public func importAudioFile(_ source: URL, limits: AudioImportLimits = .file, configuration: Config? = nil) {
         guard !shuttingDown, !hasInFlightRequests, state == .idle || { if case .error = state { return true }; return false }() else { return }
         sessionGeneration &+= 1
         let generation = sessionGeneration
-        sessionRequest = requests.snapshot(appBundleID: requestAppBundleID?())
+        sessionRequest = requests.snapshot(appBundleID: requestAppBundleID?(), overriding: configuration)
         let request = sessionRequest
         timingStore = DictationTimingStore(clock: monotonicTime)
         let timings = timingStore
@@ -302,7 +302,7 @@ public final class DictationEngine {
 
     /// Die optionale Haltbedingung wird mehrfach gelesen und muss eine reine
     /// Zustandsabfrage sein. false bricht den noch laufenden Start ab.
-    public func start(onlyWhile shouldContinue: @escaping () -> Bool = { true }) {
+    public func start(configuration: Config? = nil, onlyWhile shouldContinue: @escaping () -> Bool = { true }) {
         guard !importingAudio else { return }
         guard state == .idle || {
             if case .error = state { return true } else { return false }
@@ -313,7 +313,7 @@ public final class DictationEngine {
         processingAudioIsComplete = nil
         sessionGeneration &+= 1
         let generation = sessionGeneration
-        sessionRequest = requests.snapshot(appBundleID: requestAppBundleID?())
+        sessionRequest = requests.snapshot(appBundleID: requestAppBundleID?(), overriding: configuration)
         vadFallbackReason = nil
         previewSuppressed = false
         previewRevision = 0
@@ -406,7 +406,7 @@ public final class DictationEngine {
         guard canContinueStart(generation: generation, attempt: attempt, resuming: resuming),
               let audioSession else { return }
         vadFallbackReason = segmenter.fallbackReason
-        segmenter.onFallback = { [weak self] reason in
+        segmenter.onFallback = { @Sendable [weak self] reason in
             DispatchQueue.main.async {
                 guard let self, self.isCurrentSession(generation),
                       self.startAttemptGeneration == attempt, self.state == .recording else { return }
@@ -416,17 +416,22 @@ public final class DictationEngine {
         }
         let recorder = makeRecorder(sessionRequest.config.audio)
         let previewEnabled = sessionRequest.config.ui.liveTranscriptPreview
-        let reportPreview: ((Int, DictationTranscriptPreview) -> Void)? = previewEnabled ? { [weak self] revision, preview in
-            Task { @MainActor [weak self] in
-                guard let self, self.isCurrentSession(generation), !self.previewSuppressed,
-                      self.sessionRequest.config.ui.liveTranscriptPreview,
-                      self.state == .recording || self.state == .paused || self.state == .resuming,
-                      revision > self.previewRevision else { return }
-                self.previewRevision = revision
-                self.transcriptPreview = preview
-                self.onTranscriptPreview?(preview)
+        let reportPreview: (@Sendable (Int, DictationTranscriptPreview) -> Void)?
+        if previewEnabled {
+            reportPreview = { [weak self] revision, preview in
+                Task { @MainActor [weak self] in
+                    guard let self, self.isCurrentSession(generation), !self.previewSuppressed,
+                          self.sessionRequest.config.ui.liveTranscriptPreview,
+                          self.state == .recording || self.state == .paused || self.state == .resuming,
+                          revision > self.previewRevision else { return }
+                    self.previewRevision = revision
+                    self.transcriptPreview = preview
+                    self.onTranscriptPreview?(preview)
+                }
             }
-        } : nil
+        } else {
+            reportPreview = nil
+        }
         let collector = segmentResults ?? SegmentCollector(onPreview: reportPreview)
         let segmentTasks = self.segmentTasks ?? RecordingSegmentTasks()
         segmentResults = collector
@@ -452,7 +457,7 @@ public final class DictationEngine {
         let transcriber = sessionRequest.transcriber
         let timings = timingStore
         let clock = monotonicTime
-        segmenter.onSegment = { segment in
+        segmenter.onSegment = { @Sendable segment in
             guard segment.hadSpeech else { return }
             segmentTasks.start(collector: collector) {
                 let started = clock()
@@ -460,7 +465,7 @@ public final class DictationEngine {
                 return try await transcriber.transcribe(samples: segment.samples)
             }
         }
-        segmenter.onAutoStop = { [weak self] in
+        segmenter.onAutoStop = { @Sendable [weak self] in
             DispatchQueue.main.async {
                 guard let self, self.isCurrentSession(generation),
                       self.recordingPhaseID == phase, self.state == .recording else { return }
@@ -488,15 +493,15 @@ public final class DictationEngine {
         }
         recorder.onFailure = { [weak self] error in
             guard recordingFailure.record(error) else { return }
-            if Thread.isMainThread {
+            let deliver: @MainActor @Sendable () -> Void = { [weak self] in
                 guard let self, self.recordingPhaseID == phase, !self.closingAudioPhase,
                       self.state == .recording else { return }
                 self.failRecording(error, generation: generation)
+            }
+            if Thread.isMainThread {
+                MainActor.assumeIsolated(deliver)
             } else {
-                DispatchQueue.main.async {
-                    guard let self, self.recordingPhaseID == phase, self.state == .recording else { return }
-                    self.failRecording(error, generation: generation)
-                }
+                DispatchQueue.main.async(execute: deliver)
             }
         }
         guard canContinueStart(generation: generation, attempt: attempt, resuming: resuming) else { return }
@@ -831,7 +836,7 @@ public final class DictationEngine {
     /// Speichert einen Erfolg zunächst mit Audio-Verweis, löscht danach die
     /// WAV und entfernt den Verweis erst nach bestätigtem Löschen. So kann kein
     /// zweiter Schreibfehler eine vorhandene Aufnahme verwaisen lassen.
-    private static func persistSuccessfulEntry(
+    private nonisolated static func persistSuccessfulEntry(
         _ entry: HistoryStore.Entry,
         wavURL: URL?,
         replacingExisting: Bool,
@@ -854,7 +859,7 @@ public final class DictationEngine {
         }
     }
 
-    private static func persistSuccessfulEntryUnchecked(
+    private nonisolated static func persistSuccessfulEntryUnchecked(
         _ entry: HistoryStore.Entry, wavURL: URL?, replacingExisting: Bool,
         history: HistoryStore
     ) async throws -> PersistedEntryResult {
@@ -912,7 +917,7 @@ public final class DictationEngine {
     }
 
     /// Dateisystemarbeit darf `finishSession` nicht auf dem MainActor festhalten.
-    private static func removeFileAsync(at url: URL) async throws {
+    private nonisolated static func removeFileAsync(at url: URL) async throws {
         try await Task.detached(priority: .utility) {
             guard FileManager.default.fileExists(atPath: url.path) else { return }
             try FileManager.default.removeItem(at: url)
@@ -944,8 +949,6 @@ public final class DictationEngine {
         segmentTasks?.cancel()
         segmentTasks = nil
         recordingFailure = nil
-        recorder?.stop()
-        recorder = nil
         segmenter = nil
         segmentResults = nil
         var deletionFailure: Error?
@@ -1024,19 +1027,16 @@ public final class DictationEngine {
     /// Transkribiert die zurückbehaltene Aufnahme eines fehlgeschlagenen Eintrags neu.
     /// Bei Erfolg wird der Eintrag aktualisiert und die Audio-Datei gelöscht.
     public func retry(entry: HistoryStore.Entry) async throws -> HistoryStore.Entry {
+        guard !shuttingDown else { throw CancellationError() }
         let id = UUID()
         let request = requests.snapshot(appBundleID: requestAppBundleID?())
-        let task: Task<HistoryStore.Entry, Error> = try retryLock.withLock {
-            guard !shuttingDown else { throw CancellationError() }
-            let task = Task { try await self.performRetry(entry: entry, request: request) }
-            retryTasks[id] = task
-            return task
-        }
-        defer { _ = retryLock.withLock { retryTasks.removeValue(forKey: id) } }
+        let task = Task { try await self.performRetry(entry: entry, request: request) }
+        retryTasks[id] = task
+        defer { retryTasks.removeValue(forKey: id) }
         return try await withTaskCancellationHandler(operation: { try await task.value }, onCancel: { task.cancel() })
     }
 
-    private func performRetry(entry: HistoryStore.Entry, request: DictationRequestStore.Snapshot) async throws -> HistoryStore.Entry {
+    private nonisolated func performRetry(entry: HistoryStore.Entry, request: DictationRequestStore.Snapshot) async throws -> HistoryStore.Entry {
         try Task.checkCancellation()
         let policy = request.config.history
         let requestCleanup = request.cleanup
@@ -1144,8 +1144,12 @@ public final class DictationEngine {
     /// Rechnern, die denselben Ollama-Endpoint als Bereinigungs-Server nutzen);
     /// ist der nicht erreichbar, wird stattdessen der Fallback vorgewärmt, damit
     /// sein Kaltstart nicht ins nächste Diktat fällt.
-    public func keepCleanupModelWarm() {
-        requests.snapshot(appBundleID: requestAppBundleID?()).cleanup.warmUp()
+    public func keepCleanupModelWarm(pinnedOnly: Bool = false) {
+        keepCleanupModelWarm(appBundleID: requestAppBundleID?(), pinnedOnly: pinnedOnly)
+    }
+
+    public func keepCleanupModelWarm(appBundleID: String?, pinnedOnly: Bool = false) {
+        requests.snapshot(appBundleID: appBundleID).cleanup.warmUp(pinnedOnly: pinnedOnly)
     }
 
     private func trackHistoryWork(_ work: @escaping @MainActor () async -> Void) {
@@ -1160,12 +1164,9 @@ public final class DictationEngine {
     /// Die App muss ihn vor dem geregelten Prozessende abwarten.
     @discardableResult
     public func shutdown() -> Task<Void, Never> {
-        let retries = retryLock.withLock {
-            shuttingDown = true
-            let tasks = Array(retryTasks.values)
-            tasks.forEach { $0.cancel() }
-            return tasks
-        }
+        shuttingDown = true
+        let retries = Array(retryTasks.values)
+        retries.forEach { $0.cancel() }
         let processing = sessionTask
         cancel()
         serverManager.stop()
@@ -1185,7 +1186,7 @@ public final class DictationEngine {
     /// Fügt Segment-Texte zu einem Gesamttext zusammen. Whisper-Zeilenumbruch-
     /// Artefakte werden dabei schon deterministisch entfernt — so ist der Rohtext
     /// im Verlauf (und jeder Fallback) frei davon, unabhängig vom LLM.
-    static func joinSegments(_ texts: [String]) -> String {
+    nonisolated static func joinSegments(_ texts: [String]) -> String {
         texts
             .map { TranscriptPolish.flattenLineBreaks($0).trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -1201,30 +1202,12 @@ public final class DictationEngine {
             clearTranscriptPreview()
         }
         state = newState
-        Self.onMain { self.onStateChange?(newState) }
+        onStateChange?(newState)
     }
 
     /// Liefert das fertige Diktat garantiert auf dem Main-Thread aus.
     private func deliverResult(_ result: DictationResult) {
-        Self.onMain { self.onResult?(result) }
-    }
-
-    /// Ruft `work` auf dem Main-Thread auf — sofort, wenn wir schon dort sind.
-    ///
-    /// Warum jede Rückmeldung der Engine hier durchmuss: `onStateChange` und
-    /// `onResult` fassen AppKit an (Statusicon, Overlay-Panel); AppKit bricht ab
-    /// macOS 26 hart ab („Must only be used from the main thread“), wenn das
-    /// off-main geschieht. Die Nachverarbeitung läuft seit dem `@MainActor` an
-    /// `finishSession` selbst auf dem Hauptthread — diese Weiche bleibt als
-    /// Sicherung für jeden künftigen Aufrufer, der es nicht ist.
-    ///
-    /// Die Weiche stand vorher zweimal wortgleich da — einmal je Rückmeldung.
-    private static func onMain(_ work: @escaping @Sendable () -> Void) {
-        if Thread.isMainThread {
-            work()
-        } else {
-            DispatchQueue.main.async(execute: work)
-        }
+        onResult?(result)
     }
 
     private func isCurrentSession(_ generation: UInt64) -> Bool {
@@ -1258,9 +1241,9 @@ public final class DictationEngine {
 /// Sammelt die Ergebnisse der parallel laufenden Segment-Transkriptionen in der
 /// richtigen Reihenfolge ein. Als Actor thread-sicher ohne manuelle Locks.
 actor SegmentCollector {
-    private let onPreview: ((Int, DictationTranscriptPreview) -> Void)?
+    private let onPreview: (@Sendable (Int, DictationTranscriptPreview) -> Void)?
     private var completedSlots = Set<Int>()
-    init(onPreview: ((Int, DictationTranscriptPreview) -> Void)? = nil) { self.onPreview = onPreview }
+    init(onPreview: (@Sendable (Int, DictationTranscriptPreview) -> Void)? = nil) { self.onPreview = onPreview }
     /// Ergebnis-Plätze (Rohtext je Segment) in Aufnahme-Reihenfolge.
     /// nil nach finish() = Segment gescheitert.
     private var slots: [String?] = []
@@ -1284,7 +1267,7 @@ actor SegmentCollector {
     private nonisolated let reservationQueue = DispatchQueue(label: "stillepost.collector.reserve")
 
     /// Führt die Transkription eines Segments aus und legt das Ergebnis im Slot ab.
-    func run(index: Int, _ work: () async throws -> String) async {
+    func run(index: Int, _ work: @Sendable () async throws -> String) async {
         while slots.count <= index { slots.append(nil) }
         do {
             slots[index] = try await work()
@@ -1328,12 +1311,12 @@ actor SegmentCollector {
 /// Der Audio-Thread kann noch einen Segment-Callback liefern, während der
 /// Hauptthread bereits abbricht. Das Lock verhindert neue Tasks nach dem Abbruch
 /// und storniert auch die schon laufenden Whisper-Anfragen.
-private final class RecordingSegmentTasks {
+private final class RecordingSegmentTasks: @unchecked Sendable {
     private let lock = NSLock()
     private var cancelled = false
     private var tasks: [Task<Void, Never>] = []
 
-    func start(collector: SegmentCollector, _ work: @escaping () async throws -> String) {
+    func start(collector: SegmentCollector, _ work: @escaping @Sendable () async throws -> String) {
         lock.withLock {
             guard !cancelled else { return }
             // Reservierung und Task gehören zusammen: Auch ein sofort stornierter
@@ -1359,12 +1342,11 @@ private final class RecordingSegmentTasks {
 
 /// Recorder dürfen Fehler aus einem Audio-Callback melden. Das kurze Lock sichert
 /// nur das Signal; Geräte-Stopp und UI-Zustand bleiben auf dem Hauptthread.
-private final class RecordingFailure {
+private final class RecordingFailure: @unchecked Sendable {
     private let lock = NSLock()
     private var storedError: Error?
     var error: Error? { lock.withLock { storedError } }
 
-    @discardableResult
     func record(_ error: Error) -> Bool {
         lock.withLock {
             guard storedError == nil else { return false }

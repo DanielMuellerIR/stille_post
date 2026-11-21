@@ -160,7 +160,7 @@ public final class HistoryStore: @unchecked Sendable {
     private let historyFile: URL
     private let audioDir: URL
     private let lockFile: URL
-    private let atomicWrite: (Data, URL) throws -> Void
+    private let atomicWrite: @Sendable (Data, URL) throws -> Void
     /// Serielle Queue: Alle Zugriffe laufen hierüber, damit App-Thread und
     /// Pipeline-Tasks sich nicht in die Quere kommen.
     private let queue = DispatchQueue(label: "stillepost.history")
@@ -173,7 +173,7 @@ public final class HistoryStore: @unchecked Sendable {
 
     /// Austauschbarer atomarer Schreiber ausschließlich für deterministische
     /// Fehlerpfad-Tests. Produktcode verwendet immer den Convenience-Initializer.
-    init(baseDir: URL, atomicWrite: @escaping (Data, URL) throws -> Void) {
+    init(baseDir: URL, atomicWrite: @escaping @Sendable (Data, URL) throws -> Void) {
         historyFile = baseDir.appendingPathComponent("history.json")
         audioDir = baseDir.appendingPathComponent("recordings")
         lockFile = baseDir.appendingPathComponent("history.lock")

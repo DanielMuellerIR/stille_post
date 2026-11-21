@@ -7,7 +7,7 @@ import Foundation
 /// beim ersten Start mit den Defaults angelegt — so kann man sie direkt editieren.
 /// Jedes Feld ist optional dekodierbar: Eine alte Config-Datei mit fehlenden Feldern
 /// bekommt automatisch die Defaults für die neuen Felder (kein Crash nach Updates).
-public struct Config: Codable, Equatable {
+public struct Config: Codable, Equatable, Sendable {
 
     // Die aufgelöste Auswahl ist flüchtig; optimistische Speicherung vergleicht
     // ausschließlich den dauerhaft gespeicherten Konfigurationsstand.
@@ -21,7 +21,7 @@ public struct Config: Codable, Equatable {
 
     /// Linux-Desktopdaten bleiben von den macOS-Keycodes getrennt. Die übrigen
     /// Profile und Verarbeitungsoptionen verwenden weiterhin dieselben Typen.
-    public struct LinuxOptions: Codable, Equatable {
+    public struct LinuxOptions: Codable, Equatable, Sendable {
         public var dictationShortcut = "CTRL+ALT+space"
         public var recallShortcut = "CTRL+ALT+r"
         public var automaticPaste = true
@@ -54,7 +54,7 @@ public struct Config: Codable, Equatable {
     // MARK: - Unterbereiche
 
     /// Einstellungen für die Spracherkennung (whisper.cpp-Server).
-    public struct Whisper: Codable, Equatable {
+    public struct Whisper: Codable, Equatable, Sendable {
         /// URL des whisper-server (whisper.cpp). Läuft normalerweise lokal.
         public var serverURL: String = "http://127.0.0.1:8181"
         /// Soll die App den whisper-server selbst starten, falls er nicht läuft?
@@ -95,7 +95,7 @@ public struct Config: Codable, Equatable {
     /// weitere Endpoints auflisten, die der Reihe nach probiert werden, wenn der
     /// primäre nicht erreichbar ist oder einen Fehler liefert (z. B. Laptop unterwegs
     /// -> Desktop-Mac nicht im Netz -> lokales Ollama übernimmt).
-    public struct Cleanup: Codable, Equatable {
+    public struct Cleanup: Codable, Equatable, Sendable {
         public var spokenFormatting: Bool = false
         /// Textbereinigung überhaupt durchführen? (false = nur rohe Transkription)
         public var enabled: Bool = true
@@ -149,7 +149,7 @@ public struct Config: Codable, Equatable {
         ]
 
         /// Ein einzelner Bereinigungs-Endpoint (gleiche Bedeutung der Felder wie oben).
-        public struct Endpoint: Codable, Equatable {
+        public struct Endpoint: Codable, Equatable, Sendable {
             public var provider: String = "ollama"
             public var ollamaURL: String = "http://127.0.0.1:11434"
             public var model: String = "gemma4:e4b-it-qat"
@@ -184,7 +184,7 @@ public struct Config: Codable, Equatable {
             return [primary] + fallbacks
         }
 
-        public struct Remote: Codable, Equatable {
+        public struct Remote: Codable, Equatable, Sendable {
             /// Basis-URL des Anbieters inkl. /v1 (Beispiel: "https://api.example.com/v1").
             public var baseURL: String = ""
             /// Modellname beim Anbieter.
@@ -209,7 +209,7 @@ public struct Config: Codable, Equatable {
     ///
     /// Standardmäßig AUS. Wer sie einschaltet, öffnet einen Port im eigenen Netz;
     /// das ist eine bewusste Entscheidung und keine stille Voreinstellung.
-    public struct Bridge: Codable, Equatable {
+    public struct Bridge: Codable, Equatable, Sendable {
         /// Lauscht die Brücke? (false = kein Port offen, nichts erreichbar)
         public var enabled: Bool = false
         /// TCP-Port der Brücke. 8188 liegt neben dem whisper-server (8181), ohne
@@ -224,8 +224,8 @@ public struct Config: Codable, Equatable {
     }
 
     /// Einstellungen für die Stille-Erkennung (VAD = Voice Activity Detection).
-    public struct Vad: Codable, Equatable {
-        public enum Detector: String, Codable, CaseIterable { case rms, silero }
+    public struct Vad: Codable, Equatable, Sendable {
+        public enum Detector: String, Codable, CaseIterable, Sendable { case rms, silero }
         /// Silero ist ausdrücklich optional; alte Konfigurationen bleiben bei RMS.
         public var detector: Detector = .rms
         /// Pegel-Schwelle in dBFS, unterhalb derer ein Frame als "still" gilt.
@@ -260,7 +260,7 @@ public struct Config: Codable, Equatable {
     }
 
     /// Auswahl des Aufnahmegeräts. Eine leere UID bedeutet „Systemstandard“.
-    public struct Audio: Codable, Equatable {
+    public struct Audio: Codable, Equatable, Sendable {
         /// Stabile CoreAudio-UID des ausgewählten Eingabegeräts.
         public var inputDeviceUID: String = ""
         /// Letzter bekannter Anzeigename für eine verständliche Fehlermeldung, falls
@@ -271,7 +271,7 @@ public struct Config: Codable, Equatable {
     }
 
     /// Einstellungen für die Bedienoberfläche.
-    public struct UI: Codable, Equatable {
+    public struct UI: Codable, Equatable, Sendable {
         /// Wo das Aufnahme-Overlay erscheint: "mouse" (an der Mausposition — auch bei
         /// aktivierter Bildschirm-Zoom-Funktion sichtbar, weil der Zoom dem Cursor folgt)
         /// oder "bottomCenter" (unten mittig auf dem Hauptbildschirm).
@@ -285,10 +285,10 @@ public struct Config: Codable, Equatable {
         public init() {}
     }
 
-    public enum HotkeyMode: String, Codable, CaseIterable { case toggle, hold }
+    public enum HotkeyMode: String, Codable, CaseIterable, Sendable { case toggle, hold }
 
     /// Einstellungen für eine globale Tastenkombination.
-    public struct Hotkey: Codable, Equatable {
+    public struct Hotkey: Codable, Equatable, Sendable {
         /// Virtueller Keycode (Carbon). 2 = Taste "D" auf ANSI-Tastaturen.
         public var keyCode: Int = 2
         /// Modifier als Liste von Strings: "cmd", "opt", "ctrl", "shift".

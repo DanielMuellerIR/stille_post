@@ -11,14 +11,15 @@ import CoreAudio
 ///
 /// Das Roh-Audio des Geräts (z. B. 48 kHz) wird live per AVAudioConverter auf
 /// 16 kHz mono heruntergerechnet — das Format, das Whisper erwartet.
+@MainActor
 public final class AudioRecorder {
 
     /// Callback mit neuen Samples (16 kHz mono). Läuft auf dem Audio-Thread!
-    public var onSamples: (([Float]) -> Void)?
+    public var onSamples: (@Sendable ([Float]) -> Void)?
 
     private var engine: AVAudioEngine?
     /// Laufzeitfehler werden genau einmal pro Aufnahme auf dem Hauptthread gemeldet.
-    public var onFailure: ((Error) -> Void)?
+    public var onFailure: (@Sendable (Error) -> Void)?
 
     private var configurationObserver: NSObjectProtocol?
     private var deviceListeners: [(AudioObjectID, AudioObjectPropertyAddress, AudioObjectPropertyListenerBlock)] = []
@@ -31,7 +32,7 @@ public final class AudioRecorder {
     }
 
     /// Fragt die Mikrofon-Berechtigung ab (macOS zeigt beim ersten Mal den System-Dialog).
-    public static func requestMicrophoneAccess() async -> Bool {
+    public nonisolated static func requestMicrophoneAccess() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized:
             return true
@@ -70,35 +71,8 @@ public final class AudioRecorder {
         ), let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
             throw RecorderError.formatSetupFailed
         }
-        let samplesCallback = onSamples
-
-        // Tap: bekommt regelmäßig Puffer mit Roh-Audio vom Mikrofon.
-        input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { buffer, _ in
-
-            // Puffer fürs Zielformat anlegen (Größe proportional zur Rate + Reserve).
-            let ratio = targetFormat.sampleRate / inputFormat.sampleRate
-            let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 64
-            guard let out = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else { return }
-
-            // Der Converter zieht sich die Eingabe über diesen Block. Wir geben genau
-            // einen Puffer und melden danach "keine Daten mehr" (sonst Endlosschleife).
-            var provided = false
-            var conversionError: NSError?
-            converter.convert(to: out, error: &conversionError) { _, status in
-                if provided {
-                    status.pointee = .noDataNow
-                    return nil
-                }
-                provided = true
-                status.pointee = .haveData
-                return buffer
-            }
-            guard conversionError == nil, out.frameLength > 0,
-                  let channel = out.floatChannelData?[0] else { return }
-
-            let samples = Array(UnsafeBufferPointer(start: channel, count: Int(out.frameLength)))
-            samplesCallback?(samples)
-        }
+        Self.installTap(on: input, inputFormat: inputFormat, targetFormat: targetFormat,
+                        converter: converter, onSamples: onSamples)
 
         engine.prepare()
         do {
@@ -130,7 +104,34 @@ public final class AudioRecorder {
         engine = nil
     }
 
-    deinit { stop() }
+    isolated deinit { stop() }
+
+    // Der Callback des Taps gehört dem Audiothread und erbt keine MainActor-Isolation.
+    private nonisolated static func installTap(on input: AVAudioInputNode, inputFormat: AVAudioFormat,
+                                             targetFormat: AVAudioFormat, converter: AVAudioConverter,
+                                             onSamples: (@Sendable ([Float]) -> Void)?) {
+        let ratio = targetFormat.sampleRate / inputFormat.sampleRate
+        input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { buffer, _ in
+            let capacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 64
+            guard let out = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: capacity) else { return }
+
+            // Der Converter zieht genau einen Eingabepuffer pro Aufruf.
+            var provided = false
+            var conversionError: NSError?
+            converter.convert(to: out, error: &conversionError) { _, status in
+                if provided {
+                    status.pointee = .noDataNow
+                    return nil
+                }
+                provided = true
+                status.pointee = .haveData
+                return buffer
+            }
+            guard conversionError == nil, out.frameLength > 0,
+                  let channel = out.floatChannelData?[0] else { return }
+            onSamples?(Array(UnsafeBufferPointer(start: channel, count: Int(out.frameLength))))
+        }
+    }
 
     private func observeChanges(engine: AVAudioEngine, recordingID: UUID, selectedUID: String?) throws {
         guard let selectedUID,
@@ -140,7 +141,7 @@ public final class AudioRecorder {
         configurationObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
         ) { [weak self] _ in
-            self?.reportFailure(recordingID: recordingID)
+            MainActor.assumeIsolated { self?.reportFailure(recordingID: recordingID) }
         }
 
         let system = AudioObjectID(kAudioObjectSystemObject)
@@ -154,15 +155,17 @@ public final class AudioRecorder {
                 mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal,
                 mElement: kAudioObjectPropertyElementMain
             )
-            let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
-                guard let self, self.recordingID == recordingID else { return }
-                // Ein Wechsel des Standards betrifft nur „Systemstandard“.
-                // Eine explizite Auswahl bleibt bei Änderungen anderer Geräte aktiv.
-                let disappeared = AudioInputDeviceCatalog.deviceID(forUID: selectedUID) == nil
-                    || !AudioInputDeviceCatalog.isAlive(deviceID)
-                let defaultChanged = self.config.inputDeviceUID.isEmpty
-                    && AudioInputDeviceCatalog.defaultDevice()?.uid != selectedUID
-                if disappeared || defaultChanged { self.reportFailure(recordingID: recordingID) }
+            let listener: AudioObjectPropertyListenerBlock = { @Sendable [weak self] _, _ in
+                MainActor.assumeIsolated {
+                    guard let self, self.recordingID == recordingID else { return }
+                    // Ein Wechsel des Standards betrifft nur „Systemstandard“.
+                    // Eine explizite Auswahl bleibt bei Änderungen anderer Geräte aktiv.
+                    let disappeared = AudioInputDeviceCatalog.deviceID(forUID: selectedUID) == nil
+                        || !AudioInputDeviceCatalog.isAlive(deviceID)
+                    let defaultChanged = self.config.inputDeviceUID.isEmpty
+                        && AudioInputDeviceCatalog.defaultDevice()?.uid != selectedUID
+                    if disappeared || defaultChanged { self.reportFailure(recordingID: recordingID) }
+                }
             }
             let status = AudioObjectAddPropertyListenerBlock(object, &address, .main, listener)
             guard status == noErr else {

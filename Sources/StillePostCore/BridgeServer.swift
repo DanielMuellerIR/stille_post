@@ -81,15 +81,42 @@ public final class BridgeServer: @unchecked Sendable {
     /// schließen darf, bevor die Brücke sie selbst abbricht.
     private let closeGraceSeconds: TimeInterval = 10
 
+    private struct Observers {
+        var log: (@Sendable (String) -> Void)?
+        var requestAccepted: (@Sendable () -> Void)?
+        var budgetRejected: (@Sendable () -> Void)?
+        var sessionDeinitialized: (@Sendable () -> Void)?
+    }
+    private var observers = Observers()
+
     /// Protokollzeilen für stderr oder die App. Enthalten nie Diktattext und nie
     /// das Token — nur Methode, Pfad, Status, Größe und Dauer.
-    public var onLog: (@Sendable (String) -> Void)?
+    public var onLog: (@Sendable (String) -> Void)? {
+        get { onQueue { observers.log } }
+        set { onQueue { observers.log = newValue } }
+    }
     /// Nur für Regressionstests: meldet, dass eine vollständige Anfrage samt
     /// reserviertem Byte-Budget an den Router übergeben wurde.
-    var onRequestAcceptedForTesting: (@Sendable () -> Void)?
+    var onRequestAcceptedForTesting: (@Sendable () -> Void)? {
+        get { onQueue { observers.requestAccepted } }
+        set { onQueue { observers.requestAccepted = newValue } }
+    }
     /// Nur für den Grenzwerttest: meldet die konkrete Ablehnung am gemeinsamen
     /// Byte-Budget, unabhängig von TCP-Paketgrenzen der Antwort.
-    var onBufferBudgetRejectedForTesting: (@Sendable () -> Void)?
+    var onBufferBudgetRejectedForTesting: (@Sendable () -> Void)? {
+        get { onQueue { observers.budgetRejected } }
+        set { onQueue { observers.budgetRejected = newValue } }
+    }
+
+    var onSessionDeinitializedForTesting: (@Sendable () -> Void)? {
+        get { onQueue { observers.sessionDeinitialized } }
+        set { onQueue { observers.sessionDeinitialized = newValue } }
+    }
+
+    private func onQueue<T>(_ work: () -> T) -> T {
+        if DispatchQueue.getSpecific(key: queueKey) != nil { return work() }
+        return queue.sync(execute: work)
+    }
 
     /// Woher der Grund kommt, wenn kein gültiges Token vorliegt. Nur für Tests
     /// einspeisbar; produktiv liest es denselben Schlüsselbund wie der Router.
@@ -335,7 +362,7 @@ public final class BridgeServer: @unchecked Sendable {
         }
         openConnections += 1
 
-        let session = Session(connection: connection, address: address)
+        let session = Session(connection: connection, address: address, onDeinit: observers.sessionDeinitialized)
         sessions[ObjectIdentifier(session)] = session
         // Wer eine Verbindung öffnet und dann schweigt, belegt sie nicht endlos.
         let timeout = DispatchWorkItem { [weak self] in
@@ -568,12 +595,9 @@ public final class BridgeServer: @unchecked Sendable {
                     return
                 }
                 // Die Antwort ist bereits draußen; jetzt beide Richtungen freigeben.
-                if session.responseSent {
-                    // Den bereits geplanten Transport-Timeout weiterlaufen
-                    // lassen, ohne die logische Session dafür festzuhalten.
-                    session.timeout = nil
-                    self.finish(session)
-                }
+                // Den Transport-Timeout weiterlaufen lassen, ohne die Session festzuhalten.
+                session.timeout = nil
+                self.finish(session)
                 return
             }
             // Zusätzliche Bytes sind für `Connection: close` bedeutungslos; bis
@@ -631,7 +655,7 @@ public final class BridgeServer: @unchecked Sendable {
         maxBodyBytes + BridgeHTTP.maxHeaderBytes + BridgeHTTP.headerSeparatorBytes
     }
     /// Synchroner Schnappschuss nur für Byte-Budget-Regressionstests.
-    func bufferedBytesForTesting() -> Int { queue.sync { bufferedBytes } }
+    func bufferedBytesForTesting() -> Int { onQueue { bufferedBytes } }
 
     private func log(_ message: String) {
         onLog?(message)
@@ -662,16 +686,12 @@ public final class BridgeServer: @unchecked Sendable {
         }
     }
 
-    /// Nur für Tests: meldet die Deallokation einer Session — der Beweis, dass
-    /// der frühere Referenzzyklus (Handler → Session → Verbindung → Handler)
-    /// gelöst ist und beendete Verbindungen wirklich freigegeben werden.
-    static var sessionDeinitHook: (@Sendable () -> Void)?
-
     /// Zustand einer einzelnen Verbindung. Wie beim Server gilt: alles wird nur
     /// auf `queue` gelesen und geschrieben.
     private final class Session: @unchecked Sendable {
         let connection: NWConnection
         let address: String
+        private let onDeinit: (@Sendable () -> Void)?
         var buffer = Data()
         /// Bytes des bereits geparsten Requests, die dessen Task noch festhält.
         var requestReservationBytes = 0
@@ -687,13 +707,14 @@ public final class BridgeServer: @unchecked Sendable {
         var receivedEOF = false
         var responseSent = false
 
-        init(connection: NWConnection, address: String) {
+        init(connection: NWConnection, address: String, onDeinit: (@Sendable () -> Void)?) {
             self.connection = connection
             self.address = address
+            self.onDeinit = onDeinit
         }
 
         deinit {
-            BridgeServer.sessionDeinitHook?()
+            onDeinit?()
         }
     }
 

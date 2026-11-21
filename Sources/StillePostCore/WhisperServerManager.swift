@@ -5,9 +5,10 @@ import Foundation
 /// Die App ist damit selbstversorgend: Läuft auf dem konfigurierten Port schon ein
 /// Server (z. B. von Hand oder per launchd gestartet), wird der benutzt. Sonst
 /// startet die App den Server selbst und beendet ihn beim eigenen Ende wieder.
-public final class WhisperServerManager: DictationServer {
+public final class WhisperServerManager: DictationServer, @unchecked Sendable {
 
     private let config: Config.Whisper
+    private let processLock = NSLock()
     private var process: Process?
 
     public convenience init(config: Config.Whisper) {
@@ -85,8 +86,13 @@ public final class WhisperServerManager: DictationServer {
         // Server-Logs nicht in unser Terminal mischen.
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
-        try process.run()
-        self.process = process
+        let ownedProcess = try processLock.withLock {
+            try Task.checkCancellation()
+            if let current = self.process, current.isRunning { return current }
+            try process.run()
+            self.process = process
+            return process
+        }
 
         // Warten, bis der Server das Modell geladen hat und antwortet (max. ~30 s —
         // das Modell ist ~1,6 GB groß, das Laden dauert beim ersten Mal ein paar Sekunden).
@@ -95,7 +101,7 @@ public final class WhisperServerManager: DictationServer {
             let reachable = await client.isReachable()
             try Task.checkCancellation()
             if reachable { return }
-            if !process.isRunning {
+            if !processLock.withLock({ self.process === ownedProcess && ownedProcess.isRunning }) {
                 throw ServerError.startFailed(binary)
             }
         }
@@ -119,13 +125,15 @@ public final class WhisperServerManager: DictationServer {
 
     /// Beendet den selbst gestarteten Server (fremde Server bleiben unangetastet).
     public func stop() {
-        let ownedProcess = process
-        process = nil
+        processLock.withLock {
+            guard let ownedProcess = process else { return }
+            process = nil
 #if os(Linux)
-        LinuxChildProcess.stop(ownedProcess)
+            LinuxChildProcess.stop(ownedProcess)
 #else
-        if ownedProcess?.isRunning == true { ownedProcess?.terminate() }
+            if ownedProcess.isRunning { ownedProcess.terminate() }
 #endif
+        }
     }
 
     public enum ServerError: Error, LocalizedError {

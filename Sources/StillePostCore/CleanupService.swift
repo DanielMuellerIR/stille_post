@@ -16,7 +16,7 @@ import Security
 ///     Wörter aus dem Rohtext in unveränderter Reihenfolge enthalten. Sie darf also
 ///     Füllwörter löschen und Satzzeichen korrigieren, aber keine Wörter ersetzen,
 ///     ergänzen oder umstellen. Bei einem Verstoß wird der Rohtext verwendet.
-public final class CleanupService {
+public final class CleanupService: @unchecked Sendable {
 
     /// Ergebnis einer Bereinigung.
     public struct Result: Sendable {
@@ -42,11 +42,17 @@ public final class CleanupService {
     /// primäre war nicht erreichbar oder lieferte einen Fehler). Die App zeigt das
     /// im Overlay an — Transparenz: "warum dauert das gerade länger?".
     /// Achtung: Aufruf kann auf beliebigem Thread erfolgen.
-    public var onFallbackEndpoint: ((String) -> Void)?
+    public var onFallbackEndpoint: (@Sendable (String) -> Void)? {
+        get { stateLock.withLock { fallbackObserver } }
+        set { stateLock.withLock { fallbackObserver = newValue } }
+    }
     /// Wird gemeldet, wenn die Direktanfrage an den primären Endpoint scheiterte
     /// und sofort ein zweiter Versuch über eine frische Verbindung läuft
     /// (s. clean()). Ebenfalls von beliebigem Thread.
-    public var onPrimaryRetry: (() -> Void)?
+    public var onPrimaryRetry: (@Sendable () -> Void)? {
+        get { stateLock.withLock { retryObserver } }
+        set { stateLock.withLock { retryObserver = newValue } }
+    }
 
     /// Wann hat der primäre Endpoint zuletzt nachweislich geantwortet? Wird von
     /// der Minuten-Warmhaltung und von erfolgreichen Bereinigungen gepflegt und
@@ -54,12 +60,12 @@ public final class CleanupService {
     /// Probe-vorweg (vermutlich unterwegs). NSLock, weil Warm-up-Tasks und
     /// Bereinigung aus verschiedenen Threads schreiben.
     private var lastPrimarySuccess: Date?
+    private var fallbackObserver: (@Sendable (String) -> Void)?
+    private var retryObserver: (@Sendable () -> Void)?
     private let stateLock = NSLock()
 
     func notePrimarySuccess() {
-        stateLock.lock()
-        lastPrimarySuccess = Date()
-        stateLock.unlock()
+        stateLock.withLock { lastPrimarySuccess = Date() }
     }
 
     /// War der primäre Endpoint vor höchstens 3 Minuten erreichbar? Dann darf die
@@ -102,12 +108,12 @@ public final class CleanupService {
         let nextTransport: CleanupTransport = transport is URLSessionCleanupTransport && next.localOnly != config.localOnly
             ? URLSessionCleanupTransport(localOnly: next.localOnly) : transport
         let service = CleanupService(config: next, transport: nextTransport)
-        service.onFallbackEndpoint = onFallbackEndpoint
-        service.onPrimaryRetry = onPrimaryRetry
-        if next.chain == config.chain && next.localOnly == config.localOnly {
-            stateLock.lock()
-            service.lastPrimarySuccess = lastPrimarySuccess
-            stateLock.unlock()
+        stateLock.withLock {
+            service.fallbackObserver = fallbackObserver
+            service.retryObserver = retryObserver
+            if next.chain == config.chain && next.localOnly == config.localOnly {
+                service.lastPrimarySuccess = lastPrimarySuccess
+            }
         }
         return service
     }
@@ -332,11 +338,14 @@ public final class CleanupService {
     /// (z. B. WLAN weg, unterwegs) das Fallback-Modell schon beim Aufnahme-Start
     /// geladen — der teure Kaltstart (real gemessen: ~35 s für ein 6,6-GB-Modell auf
     /// einem RAM-knappen Laptop) fällt sonst mitten in die Wartezeit nach dem Diktat.
-    public func warmUp() {
+    public func warmUp() { warmUp(pinnedOnly: false) }
+
+    public func warmUp(pinnedOnly: Bool) {
         guard config.enabled else { return }
         let chain = config.chain
         Task {
             for (index, endpoint) in chain.enumerated() where endpoint.provider != "openai" {
+                if pinnedOnly, (Self.keepAliveValue(endpoint.keepAlive) as? Int) != -1 { continue }
                 guard Self.endpointAllowed(endpoint, localOnly: config.localOnly) else { continue }
                 guard (try? await isReachable(ollamaURL: endpoint.ollamaURL)) == true else {
                     if Task.isCancelled { return }

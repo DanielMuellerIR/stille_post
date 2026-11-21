@@ -11,16 +11,16 @@ public struct DictationPhaseTimings: Equatable, Sendable {
 
 /// Jeder Auftrag besitzt einen eigenen Speicher. Späte Segmenttasks erfassen
 /// diesen Wert direkt und können damit keine neue Aufnahmezeit verändern.
-final class DictationTimingStore {
+final class DictationTimingStore: @unchecked Sendable {
     private let lock = NSLock()
-    private let clock: () -> TimeInterval
+    private let clock: @Sendable () -> TimeInterval
     private let started: TimeInterval
     private var preparation: TimeInterval?
     private var recording: TimeInterval?
     private var transcription: TimeInterval = 0
     private var cleanup: TimeInterval?
     private var count = 0
-    init(clock: @escaping () -> TimeInterval) { self.clock = clock; started = clock() }
+    init(clock: @escaping @Sendable () -> TimeInterval) { self.clock = clock; started = clock() }
     func finishPreparation() {
         lock.withLock { if preparation == nil { preparation = max(0, clock() - started) } }
     }

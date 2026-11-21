@@ -75,7 +75,7 @@ import AppKit
 }
 private enum ControlsError: Error { case device }
 private final class ControlsRecorder: DictationRecorder {
-    var onSamples: (([Float]) -> Void)?, onFailure: ((Error) -> Void)?
+    var onSamples: (@Sendable ([Float]) -> Void)?, onFailure: (@Sendable (Error) -> Void)?
     let number: Int
     var timer: Timer?, samples = 0, stops = 0, fail = false
     init(number: Int) { self.number = number }
@@ -110,7 +110,7 @@ private final class ControlsTranscriber: DictationTranscriber {
     func isReachable() async -> Bool { true }
 }
 private final class ControlsCleanup: DictationCleanup {
-    var onFallbackEndpoint: ((String) -> Void)?, onPrimaryRetry: (() -> Void)?
+    var onFallbackEndpoint: (@Sendable (String) -> Void)?, onPrimaryRetry: (@Sendable () -> Void)?
     var inputs: [String] = [], warmups = 0
     func warmUp() { warmups += 1 }
     func clean(_ rawText: String) async -> CleanupService.Result {

@@ -1027,18 +1027,14 @@ final class CoreTests: XCTestCase {
             .appendingPathComponent("sp-disk-first-\(UUID())")
         defer { try? FileManager.default.removeItem(at: baseDir) }
 
-        let lock = NSLock()
-        var firstWrittenEntry: HistoryStore.Entry?
-        var writerRanOnMainThread: Bool?
+        let firstWrite = LockedTestValue<(HistoryStore.Entry?, Bool?)>((nil, nil))
         let history = HistoryStore(baseDir: baseDir) { data, url in
-            lock.withLock {
-                if firstWrittenEntry == nil {
+            firstWrite.update { write in
+                if write.0 == nil {
                     let decoder = JSONDecoder()
                     decoder.dateDecodingStrategy = .iso8601
-                    firstWrittenEntry = try? decoder.decode(
-                        [HistoryStore.Entry].self, from: data
-                    ).first
-                    writerRanOnMainThread = Thread.isMainThread
+                    let entry = try? decoder.decode([HistoryStore.Entry].self, from: data).first
+                    write = (entry, Thread.isMainThread)
                 }
             }
             try data.write(to: url, options: .atomic)
@@ -1055,9 +1051,7 @@ final class CoreTests: XCTestCase {
         engine.processForTesting(rawText: "disk first", wavURL: wavURL)
         await fulfillment(of: [delivered], timeout: 5)
 
-        let (first, wasMain) = lock.withLock {
-            (firstWrittenEntry, writerRanOnMainThread)
-        }
+        let (first, wasMain) = firstWrite.snapshot
         XCTAssertEqual(first?.audioFileName, wavURL.lastPathComponent,
                        "der erste bestätigte Plattenstand muss die WAV kennen")
         XCTAssertEqual(wasMain, false, "JSON/Lock/Write dürfen den MainActor nicht blockieren")
@@ -1101,13 +1095,9 @@ final class CoreTests: XCTestCase {
         let baseDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("sp-final-write-\(UUID())")
         defer { try? FileManager.default.removeItem(at: baseDir) }
-        let lock = NSLock()
-        var writes = 0
+        let writes = LockedTestValue(0)
         let history = HistoryStore(baseDir: baseDir) { data, url in
-            let attempt = lock.withLock { () -> Int in
-                writes += 1
-                return writes
-            }
+            let attempt = writes.update { count in count += 1; return count }
             if attempt == 2 { throw Expected.secondWriteFailure }
             try data.write(to: url, options: .atomic)
         }
@@ -1142,6 +1132,7 @@ final class CoreTests: XCTestCase {
                        "der erste sichere Stand bleibt beim zweiten Write-Fehler lesbar")
     }
 
+    @MainActor
     func testRetryKeepsAudioReferenceWhenDeletionFails() async throws {
         let baseDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("sp-retry-disk-first-\(UUID())")
@@ -1367,7 +1358,7 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(chain[2].label, "cloud-modell @ https://api.example.com/v1")
     }
 
-    func testPrimaryDirectRequestRetriesOnFreshConnection() throws {
+    func testPrimaryDirectRequestRetriesOnFreshConnection() async throws {
         // Kürzlich erreichbarer Primär-Endpoint: clean() schickt die Anfrage DIREKT
         // (keine Probe); scheitert sie, folgt sofort ein zweiter Versuch über eine
         // frische Verbindung (onPrimaryRetry wird gemeldet). Hier ist der Endpoint
@@ -1377,17 +1368,11 @@ final class CoreTests: XCTestCase {
         cleanup.ollamaURL = "http://127.0.0.1:1"
         let service = CleanupService(config: cleanup)
         service.notePrimarySuccess()
-        var retryReported = false
-        service.onPrimaryRetry = { retryReported = true }
+        let retryReported = LockedTestValue(false)
+        service.onPrimaryRetry = { retryReported.update { $0 = true } }
 
-        let expectation = expectation(description: "clean")
-        var result: CleanupService.Result?
-        Task {
-            result = await service.clean("roher text der bereinigt werden soll")
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 15)
-        XCTAssertTrue(retryReported, "Zweitversuch muss gemeldet werden (Overlay-Transparenz)")
+        let result: CleanupService.Result? = await service.clean("roher text der bereinigt werden soll")
+        XCTAssertTrue(retryReported.snapshot, "Zweitversuch muss gemeldet werden (Overlay-Transparenz)")
         XCTAssertEqual(result?.usedFallback, true)
     }
 
@@ -1397,8 +1382,8 @@ final class CoreTests: XCTestCase {
         var cleanup = Config.Cleanup()
         cleanup.ollamaURL = "http://127.0.0.1:1"
         let service = CleanupService(config: cleanup)
-        var retryReported = false
-        service.onPrimaryRetry = { retryReported = true }
+        let retryReported = LockedTestValue(false)
+        service.onPrimaryRetry = { retryReported.update { $0 = true } }
 
         let started = Date()
         let expectation = expectation(description: "clean")
@@ -1408,7 +1393,7 @@ final class CoreTests: XCTestCase {
         }
         wait(for: [expectation], timeout: 15)
         XCTAssertLessThan(Date().timeIntervalSince(started), 5, "Probe-Pfad muss schnell aufgeben")
-        XCTAssertFalse(retryReported, "ohne Recency-Marker kein Direkt-Zweitversuch")
+        XCTAssertFalse(retryReported.snapshot, "ohne Recency-Marker kein Direkt-Zweitversuch")
     }
 
     func testStreamChunkParsing() throws {
@@ -1479,14 +1464,14 @@ final class CoreTests: XCTestCase {
         ])
         let service = CleanupService(config: Config.Cleanup(), transport: transport)
         service.notePrimarySuccess()
-        var retryReported = false
-        service.onPrimaryRetry = { retryReported = true }
+        let retryReported = LockedTestValue(false)
+        service.onPrimaryRetry = { retryReported.update { $0 = true } }
 
         let result = await service.clean(raw)
 
         XCTAssertEqual(result.text, cleaned)
         XCTAssertFalse(result.usedFallback)
-        XCTAssertTrue(retryReported)
+        XCTAssertTrue(retryReported.snapshot)
         XCTAssertEqual(transport.streamCallCount, 2)
     }
 
@@ -1500,13 +1485,13 @@ final class CoreTests: XCTestCase {
             config.fallbacks = [fallback]
             let service = CleanupService(config: config, transport: transport)
             service.notePrimarySuccess()
-            var retryReported = false
-            service.onPrimaryRetry = { retryReported = true }
+            let retryReported = LockedTestValue(false)
+            service.onPrimaryRetry = { retryReported.update { $0 = true } }
             _ = await service.clean("Dieser Text ist ein künstlicher Abbruchtest.")
             XCTAssertEqual(transport.streamCallCount, 1)
             XCTAssertEqual(transport.probeCallCount, 0)
             XCTAssertEqual(transport.normalCallCount, 0)
-            XCTAssertFalse(retryReported)
+            XCTAssertFalse(retryReported.snapshot)
         }
     }
 
@@ -1549,14 +1534,14 @@ final class CoreTests: XCTestCase {
         )
         let service = CleanupService(config: config, transport: transport)
         service.notePrimarySuccess()
-        var fallbackLabel: String?
-        service.onFallbackEndpoint = { fallbackLabel = $0 }
+        let fallbackLabel = LockedTestValue<String?>(nil)
+        service.onFallbackEndpoint = { label in fallbackLabel.update { $0 = label } }
 
         let result = await service.clean(raw)
 
         XCTAssertEqual(result.text, cleaned)
         XCTAssertEqual(result.endpoint, config.fallbacks[0].label)
-        XCTAssertEqual(fallbackLabel, config.fallbacks[0].label)
+        XCTAssertEqual(fallbackLabel.snapshot, config.fallbacks[0].label)
         XCTAssertEqual(transport.probeCallCount, 1)
         XCTAssertEqual(transport.normalCallCount, 1)
     }
@@ -1575,15 +1560,15 @@ final class CoreTests: XCTestCase {
         )
         let service = CleanupService(config: Config.Cleanup(), transport: transport)
         service.notePrimarySuccess()
-        var retryReported = false
-        service.onPrimaryRetry = { retryReported = true }
+        let retryReported = LockedTestValue(false)
+        service.onPrimaryRetry = { retryReported.update { $0 = true } }
 
         let result = await service.clean(raw)
 
         XCTAssertEqual(result.text, cleaned)
         XCTAssertFalse(result.usedFallback)
         XCTAssertEqual(result.endpoint, Config.Cleanup().chain[0].label)
-        XCTAssertTrue(retryReported)
+        XCTAssertTrue(retryReported.snapshot)
         XCTAssertEqual(transport.streamCallCount, 1,
                        "kein zweiter Stream mit derselben kurzen Geduld")
         XCTAssertEqual(transport.probeCallCount, 1, "eine Probe klaert: lebt der Server?")
@@ -1727,7 +1712,7 @@ final class CoreTests: XCTestCase {
         }
     }
 
-    func testStreamingCleanAgainstLocalOllamaIfAvailable() throws {
+    func testStreamingCleanAgainstLocalOllamaIfAvailable() async throws {
         // Integrationstest des Streaming-Pfads gegen ein ECHTES lokales Ollama —
         // wird übersprungen, wenn keins läuft oder das Default-Modell fehlt
         // (Entwickler-Maschinen-Test, kein harter Bestandteil der Suite).
@@ -1740,13 +1725,7 @@ final class CoreTests: XCTestCase {
         }
         let service = CleanupService(config: cleanup)
         service.notePrimarySuccess()  // erzwingt den Streaming-Direktpfad
-        let expectation = expectation(description: "clean")
-        var result: CleanupService.Result?
-        Task {
-            result = await service.clean("also ähm das ist ist ein streaming test")
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 60)
+        let result: CleanupService.Result? = await service.clean("also ähm das ist ist ein streaming test")
         // Der Live-Test prüft den Transport, nicht die schwankende Modellqualität:
         // Ändert das echte Modell ein Wort, muss die Worttreue-Sicherung ausdrücklich
         // auf Rohtext fallen. Ein gesetzter Endpoint beweist, dass der Stream mit
@@ -1756,7 +1735,7 @@ final class CoreTests: XCTestCase {
         XCTAssertFalse(result?.text.isEmpty ?? true)
     }
 
-    func testCleanFallsBackToRawWhenAllEndpointsDead() throws {
+    func testCleanFallsBackToRawWhenAllEndpointsDead() async throws {
         // Zwei bewusst tote Endpoints (geschlossene lokale Ports): clean() darf
         // nicht hängen oder werfen, sondern muss den Rohtext zurückgeben und
         // beide Ausfälle im Fallback-Grund benennen.
@@ -1767,13 +1746,7 @@ final class CoreTests: XCTestCase {
         cleanup.fallbacks = [fallback]
 
         let raw = "das ist der rohe text"
-        let expectation = expectation(description: "clean")
-        var result: CleanupService.Result?
-        Task {
-            result = await CleanupService(config: cleanup).clean(raw)
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 15)
+        let result: CleanupService.Result? = await CleanupService(config: cleanup).clean(raw)
         // Auch ohne erreichbaren Endpoint greift die deterministische Nachstufe.
         XCTAssertEqual(result?.text, "Das" + raw.dropFirst(3))
         XCTAssertEqual(result?.usedFallback, true)
@@ -1945,13 +1918,9 @@ final class CoreTests: XCTestCase {
         try working.append(.init(rawText: "geheim", cleanText: "geheim", status: "failed",
                                  audioFileName: audioURL.lastPathComponent, durationSec: 1))
 
-        let lock = NSLock()
-        var writes = 0
+        let writes = LockedTestValue(0)
         let failing = HistoryStore(baseDir: baseDir) { data, url in
-            lock.lock()
-            writes += 1
-            let attempt = writes
-            lock.unlock()
+            let attempt = writes.update { count in count += 1; return count }
             if attempt == 2 { throw Expected.secondWriteFailure }
             try data.write(to: url, options: .atomic)
         }
@@ -1977,9 +1946,9 @@ private final class RetryServer: DictationServer {
     func stop() {}
 }
 
-private final class RetryCleanup: DictationCleanup {
-    var onFallbackEndpoint: ((String) -> Void)?
-    var onPrimaryRetry: (() -> Void)?
+private final class RetryCleanup: DictationCleanup, @unchecked Sendable {
+    var onFallbackEndpoint: (@Sendable (String) -> Void)?
+    var onPrimaryRetry: (@Sendable () -> Void)?
     func clean(_ rawText: String) async -> CleanupService.Result {
         CleanupService.Result(text: rawText, usedFallback: false,
                               fallbackReason: nil, endpoint: "test")
@@ -2046,7 +2015,7 @@ private func wavSamples(_ data: Data) -> [Float] {
     }
 }
 
-private final class StubCleanupTransport: CleanupTransport {
+private final class StubCleanupTransport: CleanupTransport, @unchecked Sendable {
     /// Was der naechste Streaming-Aufruf liefern soll: die geplanten NDJSON-Zeilen
     /// oder einen Transportfehler (etwa das Leerlauf-Timeout des Primaerpfads).
     enum StreamOutcome {

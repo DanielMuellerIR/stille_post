@@ -1,7 +1,7 @@
 import Foundation
 
 public extension Config {
-    struct Profile: Codable, Equatable, Identifiable {
+    struct Profile: Codable, Equatable, Identifiable, Sendable {
         public let id: UUID
         public var name: String
         public var language: String?
@@ -28,7 +28,7 @@ public extension Config {
         }
     }
 
-    struct Vocabulary: Codable, Equatable {
+    struct Vocabulary: Codable, Equatable, Sendable {
         public var dictionary: [String]
         public var dictionaryVariants: [DictionaryVariant]
 
@@ -53,7 +53,7 @@ public extension Config {
     }
 
     /// Wörterbuch und Dienstwahl vererben unabhängig voneinander.
-    struct CleanupOptions: Codable, Equatable {
+    struct CleanupOptions: Codable, Equatable, Sendable {
         public var enabled: Bool
         public var localOnly: Bool?
         public var primary: Cleanup.Endpoint

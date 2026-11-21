@@ -57,10 +57,10 @@ final class HistoryManagementTests: XCTestCase {
                 try Data("artificial audio".utf8).write(to: audio)
                 let entry = HistoryStore.Entry(rawText: "Text", cleanText: "Text", status: "failed", audioFileName: audio.lastPathComponent, durationSec: 1)
                 try working.append(entry)
-                var writes = 0
+                let writes = LockedTestValue(0)
                 let failing = HistoryStore(baseDir: base) { data, url in
-                    writes += 1
-                    if writes == failingWrite { throw Expected.write }
+                    let attempt = writes.update { count in count += 1; return count }
+                    if attempt == failingWrite { throw Expected.write }
                     try data.write(to: url, options: .atomic)
                 }
                 XCTAssertThrowsError(try failing.delete(id: entry.id))
@@ -164,17 +164,16 @@ final class HistoryManagementTests: XCTestCase {
         try withStore { app, base in
             let selected = HistoryStore.Entry(rawText: "löschen", cleanText: "löschen", status: "ok", durationSec: 1)
             try app.append(selected)
-            let lock = NSLock()
-            var errors: [Error] = []
+            let errors = LockedTestValue<[Error]>([])
             DispatchQueue.concurrentPerform(iterations: 25) { index in
                 do {
                     if index == 0 { try app.delete(id: selected.id) }
                     else {
                         try HistoryStore(baseDir: base).append(.init(rawText: "\(index)", cleanText: "\(index)", status: "ok", durationSec: 1))
                     }
-                } catch { lock.lock(); errors.append(error); lock.unlock() }
+                } catch { errors.update { $0.append(error) } }
             }
-            XCTAssertTrue(errors.isEmpty)
+            XCTAssertTrue(errors.snapshot.isEmpty)
             let fresh = try HistoryStore(baseDir: base).list()
             XCTAssertEqual(fresh.count, 24)
             XCTAssertFalse(fresh.contains(where: { $0.id == selected.id }))
@@ -208,6 +207,7 @@ final class HistoryManagementTests: XCTestCase {
         let failed = HistoryStore.Entry(date: now, rawText: "", cleanText: "", status: "failed", durationSec: 1)
         XCTAssertEqual(query.filter(entries + [failed], now: now, calendar: calendar).map(\.id), [failed.id])
     }
+    @MainActor
     func testRetryRejectsMissingAndDeletionPendingEntriesBeforeTranscribing() async throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent("sp-retry-guard-\(UUID())")
         let history = HistoryStore(baseDir: base)
@@ -228,6 +228,7 @@ final class HistoryManagementTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: base.appendingPathComponent("history.json")), before)
     }
 
+    @MainActor
     func testDeletionDuringRetryCannotReturnOrRestoreText() async throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent("sp-retry-delete-\(UUID())")
         let history = HistoryStore(baseDir: base)
@@ -238,8 +239,9 @@ final class HistoryManagementTests: XCTestCase {
             audioFileName: audio.lastPathComponent, durationSec: 1)
         try history.append(entry)
         let cleanup = HistoryRetryCleanup()
+        let entryID = entry.id
         cleanup.beforeResult = {
-            do { try HistoryStore(baseDir: base).delete(id: entry.id) }
+            do { try HistoryStore(baseDir: base).delete(id: entryID) }
             catch { XCTFail("Die parallele Löschung muss gelingen: \(error)") }
         }
         let engine = retryEngine(history: history, transcriber: HistoryRetryTranscriber(), cleanup: cleanup)
@@ -251,7 +253,7 @@ final class HistoryManagementTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: audio.path))
     }
 
-    private func retryEngine(history: HistoryStore, transcriber: HistoryRetryTranscriber,
+    @MainActor private func retryEngine(history: HistoryStore, transcriber: HistoryRetryTranscriber,
                              cleanup: HistoryRetryCleanup = HistoryRetryCleanup()) -> DictationEngine {
         let dependencies = DictationDependencies(transcriber: transcriber, server: HistoryRetryServer(), cleanup: cleanup,
             makeRecorder: { _ in fatalError("im Retry unbenutzt") },
@@ -263,7 +265,7 @@ final class HistoryManagementTests: XCTestCase {
 }
 
 
-private final class HistoryRetryTranscriber: DictationTranscriber {
+private final class HistoryRetryTranscriber: DictationTranscriber, @unchecked Sendable {
     var calls = 0
     func transcribe(samples: [Float]) async throws -> String { calls += 1; return "Neuer Ergebnistext" }
     func transcribe(wavFile: URL) async throws -> String { calls += 1; return "Neuer Ergebnistext" }
@@ -275,10 +277,10 @@ private final class HistoryRetryServer: DictationServer {
     func stop() {}
 }
 
-private final class HistoryRetryCleanup: DictationCleanup {
-    var onFallbackEndpoint: ((String) -> Void)?
-    var onPrimaryRetry: (() -> Void)?
-    var beforeResult: (() -> Void)?
+private final class HistoryRetryCleanup: DictationCleanup, @unchecked Sendable {
+    var onFallbackEndpoint: (@Sendable (String) -> Void)?
+    var onPrimaryRetry: (@Sendable () -> Void)?
+    var beforeResult: (@Sendable () -> Void)?
     func clean(_ rawText: String) async -> CleanupService.Result {
         beforeResult?()
         return CleanupService.Result(text: rawText, usedFallback: false, fallbackReason: nil, endpoint: "test")

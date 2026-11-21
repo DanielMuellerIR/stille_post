@@ -29,7 +29,7 @@ public enum ByteSize {
 ///    Fremdwörter und Fachbegriffe besser getroffen werden müssen.
 /// Kleinere Modelle gibt es absichtlich nicht — schlechtere Erkennung will niemand,
 /// und so groß ist Turbo nicht.
-public struct WhisperModel: Equatable {
+public struct WhisperModel: Equatable, Sendable {
     /// Modellname, wie ihn whisper.cpp kennt (z. B. "large-v3-turbo").
     public let name: String
     /// Ungefähre Größe, nur für die Anzeige VOR dem Download ("Lade 1,6 GB?").
@@ -71,10 +71,10 @@ public enum ModelCatalog {
 }
 
 /// Lädt Modelle und sagt, ob am Zielpfad überhaupt eines liegt.
-public final class ModelInstaller {
+public final class ModelInstaller: Sendable {
 
     /// Was liegt am konfigurierten Modellpfad?
-    public enum InstallState: Equatable {
+    public enum InstallState: Equatable, Sendable {
         /// Eine echte eigene Kopie — alles gut.
         case installed(path: String, bytes: Int64)
         /// Nur ein Verweis auf einen fremden Ort. Funktioniert HEUTE, aber das Modell

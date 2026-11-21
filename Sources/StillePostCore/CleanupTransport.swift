@@ -2,14 +2,11 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
-#if canImport(CFNetwork)
-import CFNetwork
-#endif
 
 /// Schmale HTTP-Grenze der Textbereinigung. Sie hält Netzwerkdetails aus der
 /// Fallback-Logik heraus und erlaubt vollständige Stream-Fehlerpfade ohne echten
 /// Ollama-Prozess deterministisch zu testen.
-protocol CleanupTransport: AnyObject {
+protocol CleanupTransport: AnyObject, Sendable {
     func data(for request: URLRequest, probing: Bool) async throws -> (Data, URLResponse)
     func streamLines(for request: URLRequest, freshConnection: Bool) async throws
         -> (AsyncThrowingStream<String, Error>, URLResponse)
@@ -31,13 +28,13 @@ final class URLSessionCleanupTransport: CleanupTransport {
 #endif
         let sessionConfig = URLSessionConfiguration.ephemeral
         sessionConfig.timeoutIntervalForRequest = 120
-        Self.configure(sessionConfig, localOnly: localOnly)
+        if localOnly { CleanupNetworkPolicy.configureLocalSession(sessionConfig) }
         session = URLSession(configuration: sessionConfig, delegate: redirectGuard, delegateQueue: nil)
 
         let probeConfig = URLSessionConfiguration.ephemeral
         probeConfig.timeoutIntervalForRequest = 2
         probeConfig.timeoutIntervalForResource = 2
-        Self.configure(probeConfig, localOnly: localOnly)
+        if localOnly { CleanupNetworkPolicy.configureLocalSession(probeConfig) }
         probeSession = URLSession(configuration: probeConfig, delegate: redirectGuard, delegateQueue: nil)
         streamSession = Self.makeStreamSession(localOnly: localOnly)
     }
@@ -53,7 +50,7 @@ final class URLSessionCleanupTransport: CleanupTransport {
         // Leerlauf-Timeout: Solange Häppchen fließen, darf die Antwort weiterlaufen.
         config.timeoutIntervalForRequest = 10
         config.timeoutIntervalForResource = 600
-        configure(config, localOnly: localOnly)
+        if localOnly { CleanupNetworkPolicy.configureLocalSession(config) }
         return URLSession(configuration: config, delegate: CleanupRedirectGuard(localOnly: localOnly), delegateQueue: nil)
     }
 
@@ -95,22 +92,6 @@ final class URLSessionCleanupTransport: CleanupTransport {
 
     private func check(_ request: URLRequest) throws {
         if localOnly && !CleanupNetworkPolicy.allows(request.url) { throw CleanupNetworkPolicy.Denied() }
-    }
-
-    private static func configure(_ config: URLSessionConfiguration, localOnly: Bool) {
-        guard localOnly else { return }
-        // Auch ein Systemproxy/PAC darf lokale Diktate nicht ausleiten.
-#if canImport(CFNetwork)
-        config.connectionProxyDictionary = [
-            kCFNetworkProxiesHTTPEnable as String: 0, kCFNetworkProxiesHTTPSEnable as String: 0,
-            kCFNetworkProxiesSOCKSEnable as String: 0, kCFNetworkProxiesProxyAutoConfigEnable as String: 0,
-            kCFNetworkProxiesProxyAutoDiscoveryEnable as String: 0,
-        ]
-#else
-        config.connectionProxyDictionary = [:]
-#endif
-        config.urlCredentialStorage = nil
-        config.httpShouldSetCookies = false
     }
 
     func sendWarmUp(_ request: URLRequest) {

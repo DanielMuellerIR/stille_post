@@ -184,7 +184,7 @@ final class SpokenFormattingPipelineTests: XCTestCase {
     }
 }
 
-private final class FormattingTransport: CleanupTransport {
+private final class FormattingTransport: CleanupTransport, @unchecked Sendable {
     private let change: (String) -> String
     private(set) var posts = 0
     private(set) var lastBody: [String: Any]?

@@ -478,12 +478,12 @@ final class PauseResumeTests: XCTestCase {
             try await f.start()
             f.feed(0.1, count: 1_600); f.engine.pause()
             let gate = PauseGate()
-            var entered = false
-            if boundary == "permission" { f.beforePermission = { entered = true; await gate.wait() } }
-            if boundary == "server" { f.server.beforeEnsure = { entered = true; await gate.wait() } }
-            if boundary == "sound" { f.engine.onBeforeRecordingStart = { entered = true; await gate.wait() } }
+            let entered = LockedTestValue(false)
+            if boundary == "permission" { f.beforePermission = { entered.update { $0 = true }; await gate.wait() } }
+            if boundary == "server" { f.server.beforeEnsure = { entered.update { $0 = true }; await gate.wait() } }
+            if boundary == "sound" { f.engine.onBeforeRecordingStart = { entered.update { $0 = true }; await gate.wait() } }
             f.engine.resume()
-            try await waitUntil { entered }
+            try await waitUntil { entered.snapshot }
             f.engine.stop()
             await gate.open()
             try await waitUntil { f.results.count == 1 }
@@ -626,8 +626,9 @@ private final class PauseFixture {
     var engine: DictationEngine!
     var recorders: [PauseRecorder] = []
     var segmenters: [PauseSegmenter] = []
-    var wavURL: URL?
-    var writer: PauseWriter?
+    private let written = LockedTestValue<PauseWriter?>(nil)
+    var wavURL: URL? { writer?.url }
+    var writer: PauseWriter? { written.snapshot }
     var realVAD = false
     var permission = true
     var beforePermission: (() async -> Void)?
@@ -637,7 +638,7 @@ private final class PauseFixture {
     var nextRecorderStart: ((PauseRecorder) -> Void)?
     var results: [DictationResult] = []
 
-    init(privateText: Bool = false, clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) throws {
+    init(privateText: Bool = false, clock: @escaping @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) throws {
         history = HistoryStore(baseDir: directory)
         config.whisper.language = "de"
         config.history.storeText = !privateText
@@ -653,42 +654,50 @@ private final class PauseFixture {
                 return recorder
             },
             makeSegmenter: { [weak self] config in
-                await self?.beforeSegmenter?()
-                self?.segmenterConfigurations.append(config)
-                if self!.realVAD { return VadSegmenter(config: config) }
-                let segmenter = PauseSegmenter()
-                self!.segmenters.append(segmenter)
-                return segmenter
+                guard let self else { return VadSegmenter(config: config) }
+                return await self.makeSegmenter(config)
             },
-            makeWavWriter: { [weak self] url in
-                self!.wavURL = url
+            makeWavWriter: { [written] url in
                 let writer = try PauseWriter(url: url)
-                self!.writer = writer
+                written.update { $0 = writer }
                 return writer
             },
-            makeTranscriber: { [weak self] _ in self!.transcriber },
+            makeTranscriber: { [transcriber] _ in transcriber },
             monotonicTime: clock,
             requestMicrophoneAccess: { [weak self] in
-                await self?.beforePermission?()
-                return self?.permission == true
+                await self?.requestPermission() ?? false
             }
         ))
         engine.onResult = { [weak self] in self?.results.append($0) }
     }
+    private func makeSegmenter(_ config: Config.Vad) async -> any DictationSegmenter {
+        await beforeSegmenter?()
+        segmenterConfigurations.append(config)
+        if realVAD { return VadSegmenter(config: config) }
+        let segmenter = PauseSegmenter()
+        segmenters.append(segmenter)
+        return segmenter
+    }
+
+    private func requestPermission() async -> Bool {
+        await beforePermission?()
+        return permission
+    }
+
     func start() async throws { engine.start(); try await waitUntil { engine.state == .recording } }
     func feed(_ sample: Float, count: Int) { recorders.last!.onSamples?(Array(repeating: sample, count: count)) }
     func dispose() { engine.cancel(); try? FileManager.default.removeItem(at: directory) }
 }
 
 private final class PauseRecorder: DictationRecorder {
-    var onSamples: (([Float]) -> Void)?, onFailure: ((Error) -> Void)?
+    var onSamples: (@Sendable ([Float]) -> Void)?, onFailure: (@Sendable (Error) -> Void)?
     var onStart: (() -> Void)?
     var failStart = false
     var stops = 0
     func start() throws { onStart?(); if failStart { throw PauseError.device } }
     func stop() { stops += 1 }
 }
-private final class PauseSegmenter: DictationSegmenter {
+private final class PauseSegmenter: DictationSegmenter, @unchecked Sendable {
     var onSegment: ((VadSegmenter.Segment) -> Void)?, onAutoStop: (() -> Void)?
     var currentLevelDb: Double { -20 }
     var samples: [Float] = []
@@ -699,20 +708,20 @@ private final class PauseSegmenter: DictationSegmenter {
         samples = []
     }
 }
-private final class PauseServer: DictationServer {
+private final class PauseServer: DictationServer, @unchecked Sendable {
     var stops = 0, fail = false
-    var beforeEnsure: (() async -> Void)?
+    var beforeEnsure: (@Sendable () async -> Void)?
     func ensureRunning(reachability: any DictationTranscriber) async throws {
         await beforeEnsure?()
         if fail { throw PauseError.device }
     }
     func stop() { stops += 1 }
 }
-private final class PauseCleanup: DictationCleanup {
-    var onFallbackEndpoint: ((String) -> Void)?, onPrimaryRetry: (() -> Void)?
+private final class PauseCleanup: DictationCleanup, @unchecked Sendable {
+    var onFallbackEndpoint: (@Sendable (String) -> Void)?, onPrimaryRetry: (@Sendable () -> Void)?
     var warmups = 0, usedFallback = false
     var inputs: [String] = []
-    var onClean: (() -> Void)?
+    var onClean: (@Sendable () -> Void)?
     func warmUp() { warmups += 1 }
     func clean(_ rawText: String) async -> CleanupService.Result {
         onClean?()
@@ -720,7 +729,7 @@ private final class PauseCleanup: DictationCleanup {
         return .init(text: rawText, usedFallback: usedFallback, fallbackReason: usedFallback ? "Synthetischer Rückfall" : nil, endpoint: nil)
     }
 }
-private final class PauseTranscriber: DictationTranscriber {
+private final class PauseTranscriber: DictationTranscriber, @unchecked Sendable {
     private let lock = NSLock()
     private var completedCount = 0
     var completed: Int { lock.withLock { completedCount } }
@@ -737,7 +746,7 @@ private final class PauseTranscriber: DictationTranscriber {
     func isReachable() async -> Bool { true }
 }
 
-private final class PauseWriter: DictationWavWriter {
+private final class PauseWriter: DictationWavWriter, @unchecked Sendable {
     let writer: WavFileWriter
     var failFinish = false
     var url: URL { writer.url }

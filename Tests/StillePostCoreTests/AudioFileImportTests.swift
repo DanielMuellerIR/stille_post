@@ -388,7 +388,7 @@ final class AudioFileImportTests: XCTestCase {
         XCTAssertFalse(f.engine.hasInFlightRequests)
     }
 
-    func testNonFiniteFloatAudioNeverEscapesDecoder() throws {
+    @MainActor func testNonFiniteFloatAudioNeverEscapesDecoder() async throws {
         let f = try FileImportFixture(); defer { f.dispose() }
         let file = f.directory.appendingPathComponent("non-finite.wav")
         var bytes = WavCodec.wavHeader(dataByteCount: 64)
@@ -406,7 +406,7 @@ final class AudioFileImportTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: file), bytes)
     }
 
-    func testAtomicSourceReplacementIsDetectedBeforeAnyTranscription() async throws {
+    @MainActor func testAtomicSourceReplacementIsDetectedBeforeAnyTranscription() async throws {
         let f = try FileImportFixture(); defer { f.dispose() }
         let source = f.source, replacement = f.original + Data("foreign change".utf8)
         let working = f.history.newRecordingURL()
@@ -446,7 +446,7 @@ final class AudioFileImportTests: XCTestCase {
         }
     }
 
-    func testReaderEnforcesActualSampleLimitAndLegacyHistoryKeepsRetry() throws {
+    @MainActor func testReaderEnforcesActualSampleLimitAndLegacyHistoryKeepsRetry() async throws {
         let f = try FileImportFixture(); defer { f.dispose() }
         let reader = try AudioDecoder.FileReader(url: f.source, maxSampleCount: 20_000)
         XCTAssertLessThanOrEqual(try XCTUnwrap(reader.read()).count, 16384)
@@ -498,6 +498,7 @@ private final class FileImportProbe: @unchecked Sendable {
     func decodeEntered() { lock.withLock { decoded = true } }
     func segmenter(_ config: Config.Vad) { lock.withLock { autoStop = config.autoStopAfterSilenceSec } }
 }
+@MainActor
 private final class FileImportFixture {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     let source: URL
@@ -510,7 +511,7 @@ private final class FileImportFixture {
     var results: [DictationResult] = []
     var waves: [URL] { (try? FileManager.default.contentsOfDirectory(at: history.recordingsDir, includingPropertiesForKeys: nil).filter { $0.pathExtension == "wav" }) ?? [] }
     init(privateText: Bool = false, failingWriter: Bool = false, probe: FileImportProbe = FileImportProbe(),
-         beforeChunk: ((Int) async -> Void)? = nil) throws {
+         beforeChunk: (@Sendable (Int) async -> Void)? = nil) throws {
         self.probe = probe
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         source = directory.appendingPathComponent("original.wav")
@@ -534,7 +535,7 @@ private final class FileImportFixture {
     func dispose() { engine.cancel(); try? FileManager.default.removeItem(at: directory) }
 }
 private final class FileImportNoRecorder: DictationRecorder {
-    var onSamples: (([Float]) -> Void)?, onFailure: ((Error) -> Void)?
+    var onSamples: (@Sendable ([Float]) -> Void)?, onFailure: (@Sendable (Error) -> Void)?
     func start() throws { throw FileImportTestFailure.device }
     func stop() {}
 }
@@ -557,7 +558,7 @@ private final class FileImportBoundedWriter: DictationWavWriter {
     func append(_ samples: [Float]) throws { probe.write(samples.count); try actual.append(samples) }
     func finish() throws { try actual.finish() }
 }
-private final class FileImportTestServer: DictationServer {
+private final class FileImportTestServer: DictationServer, @unchecked Sendable {
     private let lock = NSLock()
     private var didEnter = false, stopCount = 0
     var gate: FileImportGate?
@@ -570,7 +571,7 @@ private final class FileImportTestServer: DictationServer {
     }
     func stop() { lock.withLock { stopCount += 1 } }
 }
-private final class FileImportTestTranscriber: DictationTranscriber {
+private final class FileImportTestTranscriber: DictationTranscriber, @unchecked Sendable {
     let language: String
     private let lock = NSLock()
     private var values: [String] = []
@@ -593,13 +594,13 @@ private final class FileImportTestTranscriber: DictationTranscriber {
         lock.withLock { fileCalls += 1 }; return try await transcribe(samples: [])
     }
 }
-private final class FileImportTestCleanup: DictationCleanup {
+private final class FileImportTestCleanup: DictationCleanup, @unchecked Sendable {
     private let lock = NSLock()
     private var values: [String] = [], warms = 0
     var inputs: [String] { lock.withLock { values } }
     var warmups: Int { lock.withLock { warms } }
     var gate: FileImportGate?
-    var onFallbackEndpoint: ((String) -> Void)?, onPrimaryRetry: (() -> Void)?
+    var onFallbackEndpoint: (@Sendable (String) -> Void)?, onPrimaryRetry: (@Sendable () -> Void)?
     func warmUp() { lock.withLock { warms += 1 } }
     func clean(_ rawText: String) async -> CleanupService.Result {
         lock.withLock { values.append(rawText) }

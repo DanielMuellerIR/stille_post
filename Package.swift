@@ -15,11 +15,11 @@ let linuxExcluded = ["AudioRecorder.swift", "AudioInputDevice.swift", "AudioDeco
 let package = Package(name: "StillePost", defaultLocalization: "de", targets: [
     .target(name: "LinuxNative", path: "Sources/LinuxNative", linkerSettings: [.linkedLibrary("ssl"), .linkedLibrary("crypto"), .linkedLibrary("dl")]),
     .target(name: "StillePostCore", dependencies: ["LinuxNative"], exclude: linuxExcluded, resources: [.process("Resources")],
-            swiftSettings: [.swiftLanguageMode(.v5)]),
+            swiftSettings: [.swiftLanguageMode(.v6)]),
     .executableTarget(name: "stillepost-linux", dependencies: ["StillePostCore"],
-            swiftSettings: [.swiftLanguageMode(.v5)]),
-    .testTarget(name: "LinuxCoreTests", dependencies: ["StillePostCore"], path: "Tests", sources: ["LinuxCoreTests", "StillePostCoreTests/ProfileTests.swift", "StillePostCoreTests/DiagnosticsTests.swift", "StillePostCoreTests/AudioFailureLifecycleTests.swift", "StillePostCoreTests/HistoryCorrectionTests.swift", "StillePostCoreTests/HistoryManagementTests.swift", "StillePostCoreTests/HistoryPrivacyTests.swift", "StillePostCoreTests/HotkeyStateTests.swift", "StillePostCoreTests/PasteTargetPolicyTests.swift", "StillePostCoreTests/SelectionCleanupTests.swift", "StillePostCoreTests/TextDifferenceTests.swift", "StillePostCoreTests/VadSegmenterTests.swift", "StillePostCoreTests/WhisperHealthTests.swift", "StillePostCoreTests/ResultDeliveryTests.swift", "StillePostCoreTests/TranscriptPreviewTests.swift"],
-            swiftSettings: [.swiftLanguageMode(.v5)])
+            swiftSettings: [.swiftLanguageMode(.v6)]),
+    .testTarget(name: "LinuxCoreTests", dependencies: ["StillePostCore"], path: "Tests", sources: ["LinuxCoreTests", "StillePostCoreTests/LockedTestValue.swift", "StillePostCoreTests/ProfileTests.swift", "StillePostCoreTests/DiagnosticsTests.swift", "StillePostCoreTests/AudioFailureLifecycleTests.swift", "StillePostCoreTests/HistoryCorrectionTests.swift", "StillePostCoreTests/HistoryManagementTests.swift", "StillePostCoreTests/HistoryPrivacyTests.swift", "StillePostCoreTests/HotkeyStateTests.swift", "StillePostCoreTests/PasteTargetPolicyTests.swift", "StillePostCoreTests/SelectionCleanupTests.swift", "StillePostCoreTests/TextDifferenceTests.swift", "StillePostCoreTests/VadSegmenterTests.swift", "StillePostCoreTests/WhisperHealthTests.swift", "StillePostCoreTests/ResultDeliveryTests.swift", "StillePostCoreTests/TranscriptPreviewTests.swift"],
+            swiftSettings: [.swiftLanguageMode(.v6)])
 ])
 #else
 let package = Package(
@@ -39,7 +39,7 @@ let package = Package(
         .target(
             name: "StillePostCore",
             resources: [.process("Resources")],
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .executableTarget(
             name: "StillePost",
@@ -47,7 +47,7 @@ let package = Package(
                 "StillePostCore",
                 .product(name: "Sparkle", package: "Sparkle")
             ],
-            swiftSettings: [.swiftLanguageMode(.v5)],
+            swiftSettings: [.swiftLanguageMode(.v6)],
             linkerSettings: [
                 // Das Release-Skript legt Sparkle im üblichen App-Bundle-Ordner ab.
                 // SwiftPM ergänzt für Binär-Targets nur @loader_path (neben dem
@@ -64,7 +64,7 @@ let package = Package(
         .testTarget(
             name: "StillePostCoreTests",
             dependencies: ["StillePostCore"],
-            swiftSettings: [.swiftLanguageMode(.v5)]
+            swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]
 )

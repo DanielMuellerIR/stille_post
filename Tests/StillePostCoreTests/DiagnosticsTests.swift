@@ -120,7 +120,7 @@ final class DiagnosticsTests: XCTestCase {
     }
 }
 
-private final class DiagnosticFixture {
+private final class DiagnosticFixture: @unchecked Sendable {
     var config = Config()
     var health: WhisperClient.Health = .ready
     var filesPresent = true, borrowedModel = false

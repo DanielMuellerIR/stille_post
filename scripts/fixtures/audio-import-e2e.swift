@@ -92,7 +92,7 @@ import CryptoKit
 }
 private enum ImportE2EFailure: Error { case contract, content, privacy, microphone, syntheticTranscription }
 private final class ImportE2ENoRecorder: DictationRecorder {
-    var onSamples: (([Float]) -> Void)?, onFailure: ((Error) -> Void)?
+    var onSamples: (@Sendable ([Float]) -> Void)?, onFailure: (@Sendable (Error) -> Void)?
     func start() throws { throw ImportE2EFailure.microphone }
     func stop() {}
 }
@@ -136,7 +136,7 @@ private final class ImportE2ECleanup: DictationCleanup {
     private var total = 0, warmed = 0
     var calls: Int { lock.withLock { total } }
     var warmups: Int { lock.withLock { warmed } }
-    var onFallbackEndpoint: ((String) -> Void)?, onPrimaryRetry: (() -> Void)?
+    var onFallbackEndpoint: (@Sendable (String) -> Void)?, onPrimaryRetry: (@Sendable () -> Void)?
     init(config: Config.Cleanup) { service = CleanupService(config: config) }
     func warmUp() { lock.withLock { warmed += 1 }; service.warmUp() }
     func clean(_ rawText: String) async -> CleanupService.Result { lock.withLock { total += 1 }; return await service.clean(rawText) }

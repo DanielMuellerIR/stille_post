@@ -4,7 +4,7 @@ import Foundation
 /// Dienste im Snapshot bleiben unveränderlich, auch wenn der nächste Auftrag
 /// inzwischen ein anderes Profil verwendet. Der Server gehört zum App-Lifecycle.
 final class DictationRequestStore: @unchecked Sendable {
-    struct Snapshot {
+    struct Snapshot: Sendable {
         let config: Config
         let transcriber: any DictationTranscriber
         let cleanup: any DictationCleanup
@@ -14,19 +14,22 @@ final class DictationRequestStore: @unchecked Sendable {
     private var value: Snapshot
     private var configuration: Config
     private var lastAppBundleID: String?
-    private let makeTranscriber: ((Config.Whisper) -> any DictationTranscriber)?
+    private let makeTranscriber: (@Sendable (Config.Whisper) -> any DictationTranscriber)?
 
     init(config: Config, transcriber: any DictationTranscriber, cleanup: any DictationCleanup,
-         makeTranscriber: ((Config.Whisper) -> any DictationTranscriber)? = nil) {
+         makeTranscriber: (@Sendable (Config.Whisper) -> any DictationTranscriber)? = nil) {
         configuration = config
         value = Snapshot(config: config.resolvedForRequest(), transcriber: transcriber, cleanup: cleanup)
         self.makeTranscriber = makeTranscriber
     }
 
-    func snapshot(appBundleID: String? = nil) -> Snapshot {
+    func snapshot(appBundleID: String? = nil, overriding configurationOverride: Config? = nil) -> Snapshot {
         lock.withLock {
+            if let configurationOverride {
+                return makeSnapshot(configurationOverride.resolvedForRequest(appBundleID: appBundleID))
+            }
             lastAppBundleID = appBundleID
-            replace(configuration.resolvedForRequest(appBundleID: appBundleID))
+            value = makeSnapshot(configuration.resolvedForRequest(appBundleID: appBundleID))
             return value
         }
     }
@@ -34,7 +37,7 @@ final class DictationRequestStore: @unchecked Sendable {
     func configure(_ config: Config) {
         lock.withLock {
             configuration = config
-            replace(config.resolvedForRequest(appBundleID: lastAppBundleID))
+            value = makeSnapshot(config.resolvedForRequest(appBundleID: lastAppBundleID))
         }
     }
 
@@ -43,7 +46,7 @@ final class DictationRequestStore: @unchecked Sendable {
             var config = configuration
             config.history = history
             configuration = config
-            replace(config.resolvedForRequest(appBundleID: lastAppBundleID))
+            value = makeSnapshot(config.resolvedForRequest(appBundleID: lastAppBundleID))
         }
     }
 
@@ -53,17 +56,17 @@ final class DictationRequestStore: @unchecked Sendable {
             config.cleanup.dictionary = vocabulary.dictionary
             config.cleanup.dictionaryVariants = vocabulary.dictionaryVariants
             configuration = config
-            replace(config.resolvedForRequest(appBundleID: lastAppBundleID))
+            value = makeSnapshot(config.resolvedForRequest(appBundleID: lastAppBundleID))
         }
     }
 
-    private func replace(_ config: Config) {
+    private func makeSnapshot(_ config: Config) -> Snapshot {
         var transcriber = value.transcriber
         if config.whisper != value.config.whisper {
             if let makeTranscriber { transcriber = makeTranscriber(config.whisper) }
             else if transcriber is WhisperClient { transcriber = WhisperClient(config: config.whisper) }
         }
         let cleanup = (value.cleanup as? CleanupService)?.replacingConfiguration(with: config.cleanup) ?? value.cleanup
-        value = Snapshot(config: config, transcriber: transcriber, cleanup: cleanup)
+        return Snapshot(config: config, transcriber: transcriber, cleanup: cleanup)
     }
 }

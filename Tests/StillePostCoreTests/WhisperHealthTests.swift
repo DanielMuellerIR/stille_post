@@ -46,9 +46,49 @@ final class WhisperHealthTests: XCTestCase {
         do { try await task.value; XCTFail("Abgebrochener Modellstart läuft weiter") }
         catch is CancellationError {}
     }
+
+    func testConcurrentRequestsShareOneAutostartProcess() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        let program = directory.appendingPathComponent("whisper-fixture")
+        let markers = program.appendingPathExtension("pid")
+        var config = Config.Whisper()
+        config.binaryPath = program.path
+        config.modelPath = program.path
+        config.autostart = true
+        let manager = WhisperServerManager(config: config)
+        defer {
+            manager.stop()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        try Data("#!/bin/sh\nprintf '%s\\n' \"$$\" >> \"$0.pid\"\nwhile [ -f \"$0\" ]; do /bin/sleep 0.05; done\n".utf8).write(to: program)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: program.path)
+
+        let transcriber = ConcurrentStartupTranscriber()
+        async let first: Void = manager.ensureRunning(reachability: transcriber)
+        async let second: Void = manager.ensureRunning(reachability: transcriber)
+        _ = try await (first, second)
+
+        let launches = try String(contentsOf: markers, encoding: .utf8).split(separator: "\n")
+        XCTAssertEqual(launches.count, 1)
+    }
 }
 
-private final class HealthTranscriber: DictationTranscriber {
+private actor ConcurrentStartupTranscriber: DictationTranscriber {
+    private var firstProbe: CheckedContinuation<Void, Never>?
+
+    func health() async -> WhisperClient.Health {
+        if let firstProbe { firstProbe.resume(); self.firstProbe = nil }
+        else { await withCheckedContinuation { firstProbe = $0 } }
+        return .unavailable
+    }
+
+    func isReachable() async -> Bool { true }
+    func transcribe(samples: [Float]) async throws -> String { "unused" }
+    func transcribe(wavFile: URL) async throws -> String { "unused" }
+}
+
+private final class HealthTranscriber: DictationTranscriber, @unchecked Sendable {
     private let lock = NSLock()
     private var statuses: [WhisperClient.Health]
     private var callCount = 0

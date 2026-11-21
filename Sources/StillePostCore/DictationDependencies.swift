@@ -3,14 +3,15 @@ import Foundation
 /// Kleine interne Grenzen für den zustandsreichen Diktat-Lifecycle. Produktiv
 /// stehen dahinter unverändert die bestehenden Klassen; Tests können einzelne
 /// Await-/I/O-Punkte ersetzen, ohne Mikrofon, Server oder Dateisystem zu starten.
+@MainActor
 protocol DictationRecorder: AnyObject {
-    var onSamples: (([Float]) -> Void)? { get set }
-    var onFailure: ((Error) -> Void)? { get set }
+    var onSamples: (@Sendable ([Float]) -> Void)? { get set }
+    var onFailure: (@Sendable (Error) -> Void)? { get set }
     func start() throws
     func stop()
 }
 
-protocol DictationSegmenter: AnyObject {
+protocol DictationSegmenter: AnyObject, Sendable {
     var onSegment: ((VadSegmenter.Segment) -> Void)? { get set }
     var onAutoStop: (() -> Void)? { get set }
     var currentLevelDb: Double { get }
@@ -25,7 +26,7 @@ extension DictationSegmenter {
     var onFallback: ((String) -> Void)? { get { nil } set {} }
 }
 
-protocol DictationTranscriber: AnyObject {
+protocol DictationTranscriber: AnyObject, Sendable {
     func transcribe(samples: [Float]) async throws -> String
     func transcribe(wavFile: URL) async throws -> String
     func isReachable() async -> Bool
@@ -36,19 +37,26 @@ extension DictationTranscriber {
     func health() async -> WhisperClient.Health { await isReachable() ? .ready : .unavailable }
 }
 
-protocol DictationServer: AnyObject {
+protocol DictationServer: AnyObject, Sendable {
     func ensureRunning(reachability: any DictationTranscriber) async throws
     func stop()
 }
 
-protocol DictationCleanup: AnyObject {
-    var onFallbackEndpoint: ((String) -> Void)? { get set }
-    var onPrimaryRetry: (() -> Void)? { get set }
+protocol DictationCleanup: AnyObject, Sendable {
+    var onFallbackEndpoint: (@Sendable (String) -> Void)? { get set }
+    var onPrimaryRetry: (@Sendable () -> Void)? { get set }
     func clean(_ rawText: String) async -> CleanupService.Result
     func warmUp()
+    func warmUp(pinnedOnly: Bool)
 }
 
-protocol DictationWavWriter: AnyObject {
+extension DictationCleanup {
+    func warmUp(pinnedOnly: Bool) {
+        if !pinnedOnly { warmUp() }
+    }
+}
+
+protocol DictationWavWriter: AnyObject, Sendable {
     var url: URL { get }
     func append(_ samples: [Float]) throws
     func finish() throws
@@ -64,13 +72,13 @@ struct DictationDependencies {
     let transcriber: any DictationTranscriber
     let server: any DictationServer
     let cleanup: any DictationCleanup
-    let makeRecorder: (Config.Audio) -> any DictationRecorder
-    let makeSegmenter: (Config.Vad) async -> any DictationSegmenter
-    let makeWavWriter: (URL) throws -> any DictationWavWriter
-    var makeTranscriber: ((Config.Whisper) -> any DictationTranscriber)? = nil
-    var monotonicTime: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
-    var beforeFileDecodeChunk: ((Int) async -> Void)? = nil
-    var requestMicrophoneAccess: () async -> Bool = { await AudioRecorder.requestMicrophoneAccess() }
+    let makeRecorder: @MainActor (Config.Audio) -> any DictationRecorder
+    let makeSegmenter: @Sendable (Config.Vad) async -> any DictationSegmenter
+    let makeWavWriter: @Sendable (URL) throws -> any DictationWavWriter
+    var makeTranscriber: (@Sendable (Config.Whisper) -> any DictationTranscriber)? = nil
+    var monotonicTime: @Sendable () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    var beforeFileDecodeChunk: (@Sendable (Int) async -> Void)? = nil
+    var requestMicrophoneAccess: @Sendable () async -> Bool = { await AudioRecorder.requestMicrophoneAccess() }
 
     static func live(config: Config) -> Self {
         Self(

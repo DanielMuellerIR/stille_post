@@ -126,7 +126,7 @@ private actor SelectionTestGate {
     func wait() async { entered = true; await withCheckedContinuation { continuation = $0 } }
     func open() { continuation?.resume(); continuation = nil }
 }
-private func selectionWait(_ condition: () async -> Bool) async throws {
+@MainActor private func selectionWait(_ condition: @MainActor () async -> Bool) async throws {
     for _ in 0..<200 {
         if await condition() { return }
         try await Task.sleep(nanoseconds: 5_000_000)

@@ -37,13 +37,13 @@ enum AudioImportFailure: Error, LocalizedError {
 
 /// Besitzt ausschließlich die eigene Arbeitskopie. Der Main-Thread löscht sie
 /// erst, wenn prepare()/transcribe() beendet und alle Writer geschlossen sind.
-final class AudioFileImportWork {
+final class AudioFileImportWork: @unchecked Sendable {
     let source: URL
     let workingURL: URL
     let limits: AudioImportLimits
-    private let makeWriter: (URL) throws -> any DictationWavWriter
-    private let beforeChunk: ((Int) async -> Void)?
-    private let onProgress: ((AudioImportProgress) -> Void)?
+    private let makeWriter: @Sendable (URL) throws -> any DictationWavWriter
+    private let beforeChunk: (@Sendable (Int) async -> Void)?
+    private let onProgress: (@Sendable (AudioImportProgress) -> Void)?
     private var lastProgressTime: TimeInterval = 0
     private let lock = NSLock()
     private var complete = false
@@ -54,8 +54,8 @@ final class AudioFileImportWork {
     var partialTexts: [String] { lock.withLock { capturedTexts } }
 
     init(source: URL, workingURL: URL, limits: AudioImportLimits,
-         makeWriter: @escaping (URL) throws -> any DictationWavWriter,
-         beforeChunk: ((Int) async -> Void)?, onProgress: ((AudioImportProgress) -> Void)? = nil) {
+         makeWriter: @escaping @Sendable (URL) throws -> any DictationWavWriter,
+         beforeChunk: (@Sendable (Int) async -> Void)?, onProgress: (@Sendable (AudioImportProgress) -> Void)? = nil) {
         self.source = source; self.workingURL = workingURL; self.limits = limits
         self.makeWriter = makeWriter; self.beforeChunk = beforeChunk
         self.onProgress = onProgress
@@ -129,8 +129,8 @@ final class AudioFileImportWork {
     }
 
     func transcribe(request: DictationRequestStore.Snapshot, server: any DictationServer,
-                    makeSegmenter: (Config.Vad) async -> any DictationSegmenter,
-                    timings: DictationTimingStore?, clock: () -> TimeInterval) async throws -> [String?] {
+                    makeSegmenter: @Sendable (Config.Vad) async -> any DictationSegmenter,
+                    timings: DictationTimingStore?, clock: @Sendable () -> TimeInterval) async throws -> [String?] {
         try Task.checkCancellation()
         let reader: AudioDecoder.FileReader
         do { reader = try AudioDecoder.FileReader(url: workingURL, maxSampleCount: limits.maximumSeconds * 16000) }
@@ -202,8 +202,12 @@ final class AudioFileImportWork {
                         segments: Int = 0, complete: Bool = false, force: Bool = false) {
         guard let onProgress else { return }
         let now = ProcessInfo.processInfo.systemUptime
-        guard force || now - lastProgressTime >= 0.1 else { return }
-        lastProgressTime = now
+        let shouldReport = lock.withLock {
+            guard force || now - lastProgressTime >= 0.1 else { return false }
+            lastProgressTime = now
+            return true
+        }
+        guard shouldReport else { return }
         onProgress(.init(stage: stage, audioSeconds: seconds, totalSeconds: total,
                          completedSegments: segments, stageComplete: complete))
     }

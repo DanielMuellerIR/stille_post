@@ -90,7 +90,7 @@ import Foundation
 }
 private enum AudioTestFailure: Error { case failed, timeout, content, privacy }
 private final class FileTestRecorder: DictationRecorder {
-    var onSamples: (([Float]) -> Void)?, onFailure: ((Error) -> Void)?
+    var onSamples: (@Sendable ([Float]) -> Void)?, onFailure: (@Sendable (Error) -> Void)?
     func start() throws {}
     func stop() {}
 }
@@ -100,7 +100,7 @@ private final class AudioCleanupSpy: DictationCleanup {
     private var callCount = 0, warmCount = 0
     var calls: Int { lock.withLock { callCount } }
     var warmups: Int { lock.withLock { warmCount } }
-    var onFallbackEndpoint: ((String) -> Void)?, onPrimaryRetry: (() -> Void)?
+    var onFallbackEndpoint: (@Sendable (String) -> Void)?, onPrimaryRetry: (@Sendable () -> Void)?
     init(config: Config.Cleanup) { service = CleanupService(config: config) }
     func warmUp() { lock.withLock { warmCount += 1 }; service.warmUp() }
     func clean(_ rawText: String) async -> CleanupService.Result { lock.withLock { callCount += 1 }; return await service.clean(rawText) }

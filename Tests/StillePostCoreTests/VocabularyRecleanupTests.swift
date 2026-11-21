@@ -155,10 +155,10 @@ final class VocabularyRecleanupTests: XCTestCase {
             let file = ConfigFile(url: base.appendingPathComponent("config.json"))
             var config = Config(); config.cleanup.enabled = scenario != "disabled"
             try file.save(config)
-            var calls = 0
+            let calls = LockedTestValue(0)
             let task = Task {
                 try await HistoryRecleanup.run(expected: snapshot, history: store, configFile: file) { _, _ in
-                    calls += 1
+                    calls.update { $0 += 1 }
                     if scenario == "deleted" { try? store.delete(id: snapshot.id) }
                     if scenario == "changed" { _ = try? await store.saveCorrectionAsync("Andere Fassung", expected: snapshot) }
                     if scenario == "cancel" { try? await Task.sleep(nanoseconds: 100_000_000) }
@@ -170,7 +170,7 @@ final class VocabularyRecleanupTests: XCTestCase {
                 task.cancel()
             }
             do { _ = try await task.value; XCTFail(scenario) } catch { }
-            XCTAssertEqual(calls, scenario == "disabled" ? 0 : 1)
+            XCTAssertEqual(calls.snapshot, scenario == "disabled" ? 0 : 1)
             XCTAssertNotEqual(try store.list().first?.cleanText, "Neue Fassung")
         }
     }
@@ -266,7 +266,8 @@ private actor BridgeTranscriptionGate {
 private final class VocabularyTransport: CleanupTransport {
     let output: String?
     let fails: Bool
-    var inputs: [String] = []
+    private let inputLog = LockedTestValue<[String]>([])
+    var inputs: [String] { inputLog.snapshot }
     init(output: String?, fails: Bool = false) { self.output = output; self.fails = fails }
     func data(for request: URLRequest, probing: Bool) async throws -> (Data, URLResponse) {
         if fails { throw URLError(.cannotConnectToHost) }
@@ -276,7 +277,7 @@ private final class VocabularyTransport: CleanupTransport {
             let object = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
             let messages = object["messages"] as! [[String: Any]]
             let input = messages.last!["content"] as! String
-            inputs.append(input)
+            inputLog.update { $0.append(input) }
             body = try JSONSerialization.data(withJSONObject: ["message": ["content": output ?? input]])
         }
         return (body, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
@@ -286,7 +287,7 @@ private final class VocabularyTransport: CleanupTransport {
         let object = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
         let messages = object["messages"] as! [[String: Any]]
         let input = messages.last!["content"] as! String
-        inputs.append(input)
+        inputLog.update { $0.append(input) }
         let frame = try JSONSerialization.data(withJSONObject: ["message": ["content": output ?? input], "done": true])
         let stream = AsyncThrowingStream<String, Error> { continuation in
             continuation.yield(String(decoding: frame, as: UTF8.self))

@@ -133,7 +133,7 @@ private final class FixtureCounts {
     }
 }
 private final class FixtureRecorder: DictationRecorder {
-    var onSamples: (([Float]) -> Void)?, onFailure: ((Error) -> Void)?
+    var onSamples: (@Sendable ([Float]) -> Void)?, onFailure: (@Sendable (Error) -> Void)?
     private let counts: FixtureCounts
     private let fails: Bool
     private let automatic: Bool
@@ -190,7 +190,7 @@ private final class FixtureServer: DictationServer {
 private final class FixtureCleanup: DictationCleanup {
     let counts: FixtureCounts
     let fallback: Bool
-    var onFallbackEndpoint: ((String) -> Void)?, onPrimaryRetry: (() -> Void)?
+    var onFallbackEndpoint: (@Sendable (String) -> Void)?, onPrimaryRetry: (@Sendable () -> Void)?
     init(counts: FixtureCounts, fallback: Bool) { self.counts = counts; self.fallback = fallback }
     func warmUp() { counts.warmed() }
     func clean(_ rawText: String) async -> CleanupService.Result {

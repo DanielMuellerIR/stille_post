@@ -23,7 +23,7 @@ public struct WhisperEndpoint: Equatable, Sendable {
               components.query == nil,
               components.fragment == nil,
               let host = components.host,
-              Self.isExplicitLoopback(host),
+              CleanupNetworkPolicy.loopbackHost(host),
               let port = components.port,
               (1...65_535).contains(port),
               (components.path.isEmpty || components.path == "/") else {
@@ -38,23 +38,6 @@ public struct WhisperEndpoint: Equatable, Sendable {
         self.inferenceURL = baseURL.appendingPathComponent("inference")
         self.host = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]")).lowercased()
         self.port = port
-    }
-
-    private static func isExplicitLoopback(_ host: String) -> Bool {
-        let normalized = host
-            .trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-            .lowercased()
-        if normalized == "::1" { return true }
-
-        let octets = normalized.split(separator: ".", omittingEmptySubsequences: false)
-        guard octets.count == 4,
-              let first = Int(octets[0]), first == 127,
-              octets.allSatisfy({ part in
-                  guard !part.isEmpty, part.allSatisfy(\.isNumber),
-                        let value = Int(part) else { return false }
-                  return (0...255).contains(value)
-              }) else { return false }
-        return true
     }
 
     public enum ValidationError: Error, LocalizedError, Equatable {

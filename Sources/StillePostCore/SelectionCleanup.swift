@@ -40,7 +40,7 @@ public struct TextSelectionSnapshot: Equatable, Sendable {
 /// letzten Diktattext. Schließen entwertet auch eine verspätete Modellantwort.
 @MainActor public final class SelectionCleanupSession {
     public enum State: Equatable { case idle, processing, preview, cancelled, failed(String) }
-    public typealias Cleaner = (Config.Cleanup, String) async -> CleanupService.Result
+    public typealias Cleaner = @MainActor (Config.Cleanup, String) async -> CleanupService.Result
     public var onChange: (() -> Void)?
     public private(set) var state = State.idle
     public private(set) var input: String?

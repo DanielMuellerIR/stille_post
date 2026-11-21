@@ -138,9 +138,9 @@ final class ProfileTests: XCTestCase {
         let transport = ProfileTransport()
         let whisper = ProfileTranscriber(language: "de")
         let cleanup = CleanupService(config: config.cleanup, transport: transport)
-        var clients = 0
+        let clients = LockedTestValue(0)
         let requests = DictationRequestStore(config: config, transcriber: whisper, cleanup: cleanup,
-            makeTranscriber: { value in clients += 1; return ProfileTranscriber(language: value.language) })
+            makeTranscriber: { value in clients.update { $0 += 1 }; return ProfileTranscriber(language: value.language) })
         let first = requests.snapshot()
         requests.configure(config)
         XCTAssertTrue(first.transcriber === requests.snapshot().transcriber)
@@ -156,9 +156,9 @@ final class ProfileTests: XCTestCase {
         XCTAssertEqual(next.config.whisper.language, "en")
         XCTAssertFalse(next.config.history.storeText)
         XCTAssertFalse(next.config.cleanup.enabled)
-        XCTAssertEqual(clients, 1)
+        XCTAssertEqual(clients.snapshot, 1)
         requests.configure(config)
-        XCTAssertEqual(clients, 1)
+        XCTAssertEqual(clients.snapshot, 1)
         config.removeProfile(id: try XCTUnwrap(first.config.activeProfile?.id))
         requests.configure(config)
         XCTAssertEqual(first.config.activeProfile?.name, "Deutsch", "Gelöschtes Profil bleibt im gestarteten Auftrag erhalten")
@@ -375,7 +375,7 @@ private actor ProfileGate {
     func wait() async { if !released { await withCheckedContinuation { continuation = $0 } } }
     func release() { released = true; continuation?.resume(); continuation = nil }
 }
-private final class ProfileLanguageLog {
+private final class ProfileLanguageLog: @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [String] = []
     var values: [String] { lock.withLock { storage } }
@@ -390,15 +390,15 @@ private final class ProfileTranscriber: DictationTranscriber {
     func isReachable() async -> Bool { true }
 }
 private final class ProfileRecorder: DictationRecorder {
-    var onSamples: (([Float]) -> Void)?
-    var onFailure: ((Error) -> Void)?
+    var onSamples: (@Sendable ([Float]) -> Void)?
+    var onFailure: (@Sendable (Error) -> Void)?
     var starts = 0
     var stops = 0
     var onStart: (() -> Void)?
     func start() throws { starts += 1; onStart?(); onSamples?([0.1]) }
     func stop() { stops += 1 }
 }
-private final class ProfileSegmenter: DictationSegmenter {
+private final class ProfileSegmenter: DictationSegmenter, @unchecked Sendable {
     var onSegment: ((VadSegmenter.Segment) -> Void)?
     var onAutoStop: (() -> Void)?
     var currentLevelDb: Double { -20 }
@@ -406,16 +406,16 @@ private final class ProfileSegmenter: DictationSegmenter {
     func flush() {}
     func emit() { onSegment?(.init(samples: [1], hadSpeech: true, reason: .pause)) }
 }
-private final class ProfileServer: DictationServer {
+private final class ProfileServer: DictationServer, @unchecked Sendable {
     var stops = 0
     func ensureRunning(reachability: any DictationTranscriber) async throws {}
     func stop() { stops += 1 }
 }
-private final class ProfileTransport: CleanupTransport {
+private final class ProfileTransport: CleanupTransport, @unchecked Sendable {
     private let lock = NSLock()
     private var storage: [String] = []
     var inputs: [String] { lock.withLock { storage } }
-    var beforeClean: (() async -> Void)?
+    var beforeClean: (@Sendable () async -> Void)?
     func sendWarmUp(_ request: URLRequest) {}
     private func response(_ request: URLRequest) -> HTTPURLResponse {
         HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
@@ -542,8 +542,8 @@ final class HoldEngineTests: XCTestCase {
     }
 }
 
-private final class HoldServer: DictationServer {
-    var beforeEnsure: (() async -> Void)?
+private final class HoldServer: DictationServer, @unchecked Sendable {
+    var beforeEnsure: (@Sendable () async -> Void)?
     func ensureRunning(reachability: any DictationTranscriber) async throws { await beforeEnsure?() }
     func stop() {}
 }
@@ -554,8 +554,9 @@ extension HoldEngineTests {
         for boundary in ["scheduled", "permission", "server", "sound", "writer", "hardware"] {
             let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             defer { try? FileManager.default.removeItem(at: directory) }
-            var held = true, permissions = 0
-            var writerURL: URL?
+            let held = LockedTestValue(true)
+            let permissions = LockedTestValue(0)
+            let writtenURL = LockedTestValue<URL?>(nil)
             let gate = ProfileGate(), recorder = ProfileRecorder(), server = HoldServer()
             let entered = ["permission", "server", "sound"].contains(boundary) ? expectation(description: boundary) : nil
             var config = Config(); config.cleanup.enabled = false
@@ -563,34 +564,34 @@ extension HoldEngineTests {
                 transcriber: ProfileTranscriber(language: "en"), server: server, cleanup: CleanupService(config: config.cleanup),
                 makeRecorder: { _ in recorder }, makeSegmenter: { _ in ProfileSegmenter() },
                 makeWavWriter: { url in
-                    writerURL = url
+                    writtenURL.update { $0 = url }
                     let writer = try WavFileWriter(url: url)
-                    if boundary == "writer" { held = false }
+                    if boundary == "writer" { held.update { $0 = false } }
                     return writer
                 }, requestMicrophoneAccess: {
-                    permissions += 1
+                    permissions.update { $0 += 1 }
                     if boundary == "permission" { entered?.fulfill(); await gate.wait() }
                     return true
                 }))
             if boundary == "server" { server.beforeEnsure = { entered?.fulfill(); await gate.wait() } }
             if boundary == "sound" { engine.onBeforeRecordingStart = { entered?.fulfill(); await gate.wait() } }
-            if boundary == "hardware" { recorder.onStart = { held = false } }
+            if boundary == "hardware" { recorder.onStart = { held.update { $0 = false } } }
             var states: [DictationState] = []
             engine.onStateChange = { states.append($0) }
             engine.onResult = { _ in XCTFail("Abbruch darf kein Ergebnis liefern") }
-            engine.start(onlyWhile: { held })
+            engine.start(onlyWhile: { held.snapshot })
             if ["permission", "server", "sound"].contains(boundary) {
                 await fulfillment(of: [entered!], timeout: 2)
-                held = false; await gate.release()
-            } else if boundary == "scheduled" { held = false }
+                held.update { $0 = false }; await gate.release()
+            } else if boundary == "scheduled" { held.update { $0 = false } }
             for _ in 0..<200 where engine.state != .idle { try await Task.sleep(nanoseconds: 10_000_000) }
             XCTAssertEqual(engine.state, .idle, boundary)
             XCTAssertFalse(states.contains(.recording), boundary)
             XCTAssertEqual(recorder.starts, boundary == "hardware" ? 1 : 0, boundary)
             XCTAssertEqual(recorder.stops, boundary == "hardware" ? 1 : 0, boundary)
-            if boundary == "scheduled" { XCTAssertEqual(permissions, 0) }
+            if boundary == "scheduled" { XCTAssertEqual(permissions.snapshot, 0) }
             XCTAssertTrue(try engine.history.list().isEmpty)
-            if let writerURL { XCTAssertFalse(FileManager.default.fileExists(atPath: writerURL.path), boundary) }
+            if let writerURL = writtenURL.snapshot { XCTAssertFalse(FileManager.default.fileExists(atPath: writerURL.path), boundary) }
             await engine.shutdown().value
         }
     }

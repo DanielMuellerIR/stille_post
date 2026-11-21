@@ -210,7 +210,7 @@ final class AppProfilePolicyTests: XCTestCase {
     }
 }
 
-private final class PolicyTransport: CleanupTransport {
+private final class PolicyTransport: CleanupTransport, @unchecked Sendable {
     let lock = NSLock()
     private var values:[URLRequest] = []
     private var freshValues:[Bool] = []
