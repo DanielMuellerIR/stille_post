@@ -53,11 +53,7 @@ import XCTest
         XCTAssertTrue(app.buttons["dictation.cancelUpload"].waitForExistence(timeout: 5))
         shot(app, "sending-de")
         app.buttons["dictation.cancelUpload"].tap(); waitForPhase(app, "Aufnahme bereit")
-        app.buttons["dictation.discard"].tap()
-        let confirm = app.buttons.matching(NSPredicate(
-            format: "label == %@ AND identifier != %@", "Aufnahme verwerfen", "dictation.discard")).firstMatch
-        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
-        confirm.tap()
+        discardRecording(in: app)
         waitForPhase(app, "Bereit für dein Diktat")
     }
 
@@ -132,7 +128,7 @@ import XCTest
         defer { showHome() }
         XCTAssertTrue(app.buttons["dictation.primary"].waitForExistence(timeout: 10))
         if app.buttons["dictation.discard"].exists {
-            app.buttons["dictation.discard"].tap(); app.sheets.buttons["Aufnahme verwerfen"].tap()
+            discardRecording(in: app)
         }
         finishDeviceInterruptionAndConnectionChecks(app)
     }
@@ -190,19 +186,31 @@ import XCTest
         app.activate()
         waitForPhase(app, "Diktat unterbrochen")
         shot(app, "device-interrupted-de")
-        app.buttons["dictation.discard"].tap(); app.sheets.buttons["Aufnahme verwerfen"].tap()
+        discardRecording(in: app)
         waitForPhase(app, "Bereit für dein Diktat")
         app.buttons["connection.open"].tap()
         let address = app.textFields["connection.address"]
         let original = address.value as? String ?? ""
         address.tap(); address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: original.count))
-        address.typeText("http://unreachable-stillepost.local:8188")
-        app.buttons["connection.save"].tap(); app.buttons["connection.check"].tap()
+        address.typeText("https://127.0.0.1:1")
+        app.buttons["connection.save"].tap()
+        let check = app.buttons["connection.check"]
+        let saved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: check)
+        XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 5), .completed)
+        check.tap()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "Der Mac ist nicht erreichbar")).firstMatch.waitForExistence(timeout: 15))
         // Nur die eigene kurzlebige Testverbindung entfernen; kein Alltags-Token wird gelesen.
         reveal(app.buttons["Verbindung und Token entfernen"], in: app)
         app.buttons["Verbindung und Token entfernen"].tap()
         app.buttons["Fertig"].tap()
+    }
+
+    private func discardRecording(in app: XCUIApplication) {
+        app.buttons["dictation.discard"].tap()
+        let confirm = app.buttons.matching(NSPredicate(
+            format: "label == %@ AND identifier != %@", "Aufnahme verwerfen", "dictation.discard")).firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
     }
 
     private func showHome() { XCUIApplication(bundleIdentifier: "com.apple.springboard").activate() }
