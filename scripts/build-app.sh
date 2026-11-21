@@ -169,7 +169,7 @@ done
 # (strip macht eine vorhandene Signatur ungültig). `swift build -c release` legt
 # eine Debug-Map in jede Binärdatei: für jede übersetzte Quelldatei einen Eintrag
 # mit dem vollen Pfad ihrer .o-Datei auf DIESEM Mac. Die App braucht das nicht,
-# es verrät nur Benutzernamen und Projektaufbau (gefunden am 2026-08-04).
+# die Map enthält lokale Benutzernamen und den Verzeichnisaufbau.
 # `strip -S` nimmt genau diese Debug-Symbole und lässt die normale Symboltabelle
 # stehen, damit Absturzberichte lesbar bleiben. Xcode tut das bei Release-Builds
 # von sich aus (STRIP_STYLE=debugging), SwiftPM nicht.

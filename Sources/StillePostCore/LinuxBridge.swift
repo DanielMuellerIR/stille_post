@@ -116,7 +116,7 @@ final class LinuxBridgeService: @unchecked Sendable {
         },
         tokenProvider: @escaping @Sendable () -> String? = { BridgeToken.load() },
         handlersProvider: @escaping @Sendable (Config) -> BridgeHandlers = {
-            BridgeHandlers.live(config: $0, version: LinuxInstallation.version)
+            BridgeHandlers.live(config: $0, version: AppVersion.current)
         }
     ) {
         self.identityProvider = identityProvider

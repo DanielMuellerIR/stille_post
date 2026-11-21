@@ -3,14 +3,6 @@ import Network
 import Security
 import SystemConfiguration
 
-/// Produktversion zur Anzeige. Im App-Bundle steht sie in der Info.plist; die
-/// eingebettete CLI hat keine und meldet deshalb „dev“.
-public enum AppVersion {
-    public static var current: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
-    }
-}
-
 /// Adresse, unter der die Brücke im Heimnetz erreichbar ist.
 public enum BridgeAddress {
     /// Genau das, was auf dem iPhone in den Kurzbefehl gehört. Bewusst der

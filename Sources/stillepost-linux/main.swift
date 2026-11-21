@@ -14,7 +14,7 @@ if CommandLine.arguments.contains("--cleanup") {
     }
     dispatchMain()
 } else if CommandLine.arguments.contains("--version") {
-    print("Stille Post Linux \(LinuxWorker.version) (protocol 1)")
+    print("Stille Post Linux \(AppVersion.current) (protocol 1)")
 } else {
     Task { @MainActor in
         do {

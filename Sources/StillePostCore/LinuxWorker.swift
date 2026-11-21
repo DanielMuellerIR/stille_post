@@ -7,7 +7,6 @@ import Glibc
 @MainActor
 public final class LinuxWorker {
     nonisolated private static let maximumMessageBytes = 4 * 1024 * 1024
-    public nonisolated static var version: String { LinuxInstallation.version }
     private var config: Config
     private let startupWhisper: Config.Whisper
     private let engine: DictationEngine
