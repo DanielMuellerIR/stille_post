@@ -5,7 +5,7 @@ import StillePostCore
 /// Verdrahtet alle Bausteine: Menüleisten-Symbol, Hotkey, Overlay, Sounds,
 /// Diktier-Maschine, Verlaufsfenster.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenuItemValidation {
 
     /// Sparkle verwaltet Suche, Download, Signaturprüfung, Austausch der App und
     /// Neustart. Als langlebiges Feld bleibt der Controller während der gesamten
@@ -29,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
     private var config = Config.load()
     private var engine: DictationEngine!
-    private var retiredEngineShutdowns: [Task<Void, Never>] = []
+    private var retiredWork: [UUID: Task<Void, Never>] = [:]
     private var terminationPending = false
     private var statusItem: NSStatusItem!
     private var hotkey: HotkeyManager!
@@ -63,6 +63,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let bridgeLog = BridgeLogFile()
     /// Pinnt das primäre Bereinigungs-Modell jede Minute neu — läuft nur im Modus
     /// "dauerhaft geladen" (siehe buildComponents); bei befristetem keep_alive nil.
+    private struct WarmUpTarget: Equatable, Sendable {
+        let url: String
+        let model: String
+        let contextSize: Int
+    }
+    private var warmUpTarget: WarmUpTarget?
     private var warmUpTimer: Timer?
     private var selectionCleanupActions: SelectionCleanupActions?
     private var temporaryPrivateHistory = false
@@ -352,7 +358,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         engine.onStateChange = nil
         engine.onResult = nil
         let shutdown = engine.shutdown()
-        let retired = retiredEngineShutdowns
+        let retired = Array(retiredWork.values)
         let editSave = historyWindow?.pendingSaveTask
         historyWindow?.close()
         resultPreview.dismiss()
@@ -414,9 +420,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if config.appProfiles.isEmpty || config.selectedProfileID != nil || targetAppBundleID != nil {
             engine.keepCleanupModelWarm()
         }
-        warmUpTimer?.invalidate()
-        warmUpTimer = nil
-
         // Jede Minute NEU anpinnen darf die App nur im Modus "dauerhaft geladen":
         // Der Tick (ein Ping + ein leerer Generate-Request, <1 s) übersteht
         // Ollama-Neustarts und fremde keep_alive-Resets. Bei einer BEFRISTETEN Frist
@@ -584,12 +587,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         updateRequestConfiguration()
     }
 
-    private func updatePrivateHistoryMenu() {
-        let item = statusItem.menu?.items.first { $0.action == #selector(togglePrivateHistory) }
-        item?.state = effectiveHistoryPolicy.storeText ? .off : .on
-        item?.isEnabled = config.resolvedForRequest().history.storeText
-    }
-
     private func startHistoryMaintenance() {
         historyGeneration &+= 1
         historyMaintenanceTask?.cancel()
@@ -641,23 +638,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.lastExternalAppBundleID = id
-                self.statusItem.menu = self.buildMenu()
                 self.updateStatusIcon(for: self.engine.state)
                 self.refreshWarmUpTimer()
             }
         }
     }
 
-    private func refreshWarmUpTimer() {
-        warmUpTimer?.invalidate()
-        warmUpTimer = nil
+    private var pinnedWarmUpTarget: WarmUpTarget? {
         let cleanup = prospectiveConfiguration.cleanup
         guard cleanup.enabled,
               let endpoint = cleanup.chain.first(where: { CleanupService.endpointAllowed($0, localOnly: cleanup.localOnly) }),
-              CleanupService.pinsForever(endpoint.keepAlive) else { return }
-        warmUpTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.engine.keepCleanupModelWarm() }
+              endpoint.provider != "openai", CleanupService.pinsForever(endpoint.keepAlive) else { return nil }
+        return WarmUpTarget(url: endpoint.ollamaURL, model: endpoint.model, contextSize: endpoint.numCtx)
+    }
+
+    private func refreshWarmUpTimer() {
+        let target = pinnedWarmUpTarget
+        guard warmUpTarget != target else { return }
+        warmUpTimer?.invalidate()
+        warmUpTimer = nil
+        warmUpTarget = target
+        guard let target else { return }
+        let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.terminationPending, self.pinnedWarmUpTarget == target else { return }
+                self.engine.keepCleanupModelWarm()
+            }
         }
+        warmUpTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     private var requestConfiguration: Config {
@@ -695,7 +704,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func updateRequestConfiguration() {
         engine.configure(requestConfiguration)
         bridge?.configure(requestConfiguration)
-        statusItem.menu = buildMenu()
         updateStatusIcon(for: engine.state)
         refreshWarmUpTimer()
     }
@@ -731,12 +739,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return
         }
         overlay.hide()
-        if let save = historyWindow.pendingSaveTask { retiredEngineShutdowns.append(save) }
+        if let save = historyWindow.pendingSaveTask { trackRetiredWork(save) }
         historyWindow.close()
-        retiredEngineShutdowns.append(engine.shutdown())
+        trackRetiredWork(engine.shutdown())
         config = newConfig
         buildComponents()
-        statusItem.menu = buildMenu()
+    }
+
+    private func trackRetiredWork(_ work: Task<Void, Never>) {
+        let id = UUID()
+        retiredWork[id] = Task { [weak self] in
+            await work.value
+            self?.retiredWork[id] = nil
+        }
     }
 
     @objc private func selectProfile(_ item: NSMenuItem) {
@@ -756,13 +771,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // Neuaufbau eindeutig diesem Symbol zu, statt AppKits „Item-0“ zu verwenden.
         statusItem.autosaveName = "StillePost"
         updateStatusIcon(for: .idle)
-        statusItem.menu = buildMenu()
+        let menu = NSMenu()
+        menu.delegate = self
+        populateStatusMenu(menu)
+        statusItem.menu = menu
     }
 
-    /// Baut das Menüleisten-Menü (nach Einstellungs-Änderungen erneut aufgerufen,
-    /// damit die Hotkey-Anzeige aktuell bleibt).
-    private func buildMenu() -> NSMenu {
-        let menu = NSMenu()
+    // Das offene Menü zeigt das Profil für die aktuelle Ziel-App. App-Wechsel
+    // außerhalb des Menüs müssen dafür keine AppKit-Objekte neu anlegen.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        guard menu === statusItem?.menu, !terminationPending else { return }
+        menu.removeAllItems()
+        populateStatusMenu(menu)
+    }
+
+    private func populateStatusMenu(_ menu: NSMenu) {
+        let prospective = prospectiveConfiguration
         let toggleItem = NSMenuItem(title: L10n.format(
                                         "menu.toggle_dictation",
                                         HotkeyManager.describe(config.hotkey)
@@ -782,8 +806,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         cancelItem.target = self
         menu.addItem(cancelItem)
         menu.addItem(.separator())
-        let profileItem = NSMenuItem(title: L10n.format("profiles.active", prospectiveConfiguration.profileLabel,
-            prospectiveConfiguration.whisper.language), action: nil, keyEquivalent: "")
+        let profileItem = NSMenuItem(title: L10n.format("profiles.active", prospective.profileLabel,
+            prospective.whisper.language), action: nil, keyEquivalent: "")
         let profileMenu = NSMenu()
         let standard = NSMenuItem(title: L10n.text("profiles.use_default"), action: #selector(selectProfile(_:)), keyEquivalent: "")
         standard.target = self
@@ -796,9 +820,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             item.state = config.selectedProfileID == profile.id ? .on : .off
             profileMenu.addItem(item)
         }
-        let reason = NSMenuItem(title: prospectiveConfiguration.requestProfileSelection?.label ?? "", action: nil, keyEquivalent: "")
+        let reason = NSMenuItem(title: prospective.requestProfileSelection?.label ?? "", action: nil, keyEquivalent: "")
         profileMenu.insertItem(reason, at: 0)
-        if prospectiveConfiguration.cleanup.localOnly {
+        if prospective.cleanup.localOnly {
             profileMenu.insertItem(NSMenuItem(title: L10n.text("profiles.local_only"), action: nil, keyEquivalent: ""), at: 1)
         }
         profileItem.submenu = profileMenu
@@ -851,7 +875,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: L10n.text("menu.quit"),
                                 action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
-        return menu
     }
 
     private func updateStatusIcon(for state: DictationState) {
@@ -871,6 +894,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         case .processing: (symbol, description) = ("waveform.circle", L10n.text("status.transcribing"))
         case .error: (symbol, description) = ("exclamationmark.triangle.fill", L10n.text("status.error"))
         }
+        let effective = (state == .starting || state == .recording || state == .paused || state == .resuming || state == .processing)
+            ? (engine?.sessionConfiguration ?? prospectiveConfiguration) : prospectiveConfiguration
+        let tooltip = description + " · " + effective.profileLabel + " · " + effective.whisper.language
+            + " · " + (effective.requestProfileSelection?.label ?? "")
+        guard button.toolTip != tooltip || button.image == nil else { return }
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: description)
         // Aufnahme-Zustand zusätzlich einfärben (rot), damit auch die Menüleiste
         // unmissverständlich ist.
@@ -882,10 +910,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             button.contentTintColor = nil
         }
         button.image = image
-        let effective = (state == .starting || state == .recording || state == .paused || state == .resuming || state == .processing)
-            ? (engine?.sessionConfiguration ?? prospectiveConfiguration) : prospectiveConfiguration
-        button.toolTip = description + " · " + effective.profileLabel + " · " + effective.whisper.language
-            + " · " + (effective.requestProfileSelection?.label ?? "")
+        button.toolTip = tooltip
     }
 
     // MARK: - Engine-Callbacks (Zustand -> Oberfläche)

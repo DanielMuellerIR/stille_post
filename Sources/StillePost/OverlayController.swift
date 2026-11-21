@@ -81,47 +81,28 @@ final class OverlayController {
         hideTimer?.invalidate()
         hideTimer = nil
 
+        model.mode = display
+        stopLevelUpdates()
+        let hideDelay: TimeInterval?
         switch display {
-        case .starting(let hold, let resuming):
-            model.mode = .starting(hold: hold, resuming: resuming)
-            stopLevelUpdates()
-            presentPanel()
+        case .starting, .processing:
+            hideDelay = nil
         case .paused:
-            stopLevelUpdates()
             model.duration = levelProvider?().duration ?? model.duration
-            model.mode = .paused
-            presentPanel()
+            hideDelay = nil
         case .recording:
-            model.mode = .recording
             startLevelUpdates()
-            presentPanel()
-        case .processing(let detail):
-            model.mode = .processing(detail: detail)
-            stopLevelUpdates()
-            presentPanel()
+            hideDelay = nil
         case .success(let note):
-            model.mode = .success(note: note)
-            stopLevelUpdates()
-            presentPanel()
-            // Mit Hinweis (z. B. "Rohtext eingefügt") länger stehen lassen — der
-            // Nutzer soll die Abweichung vom Normalfall wirklich mitbekommen.
-            scheduleHide(after: note == nil ? 0.9 : 3)
-        case .clipboard(let note):
-            model.mode = .clipboard(note: note)
-            stopLevelUpdates()
-            presentPanel()
-            scheduleHide(after: 4)
+            // Hinweise sollen länger lesbar bleiben als die Erfolgsbestätigung.
+            hideDelay = note == nil ? 0.9 : 3
+        case .clipboard, .failure:
+            hideDelay = 4
         case .silence:
-            model.mode = .silence
-            stopLevelUpdates()
-            presentPanel()
-            scheduleHide(after: 1.6)
-        case .failure(let message):
-            model.mode = .failure(message)
-            stopLevelUpdates()
-            presentPanel()
-            scheduleHide(after: 4)
+            hideDelay = 1.6
         }
+        presentPanel()
+        if let hideDelay { scheduleHide(after: hideDelay) }
     }
 
     func hide() {
@@ -137,9 +118,11 @@ final class OverlayController {
     }
 
     private func scheduleHide(after seconds: TimeInterval) {
-        hideTimer = Timer.scheduledTimer(withTimeInterval: seconds, repeats: false) { [weak self] _ in
+        let timer = Timer(timeInterval: seconds, repeats: false) { [weak self] _ in
             MainActor.assumeIsolated { self?.hide() }
         }
+        hideTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     // MARK: - Panel-Aufbau
@@ -171,7 +154,6 @@ final class OverlayController {
         // Über allem schweben, auch über Vollbild-Apps und auf jedem Space.
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        panel.isMovableByWindowBackground = true
         panel.onClick = { [weak self] in self?.onClickStop?() }
 
         let view = OverlayHostingView(rootView: OverlayView(model: model,
@@ -207,9 +189,8 @@ final class OverlayController {
     // MARK: - Live-Pegel
 
     private func startLevelUpdates() {
-        stopLevelUpdates()
-        // 20 Hz reichen für eine flüssige Pegel-Anzeige und kosten praktisch nichts.
-        levelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+        // Der Pegel muss auch beim Öffnen des Menüleisten-Menüs weiterlaufen.
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, let provider = self.levelProvider else { return }
                 let (levelDb, duration) = provider()
@@ -217,6 +198,8 @@ final class OverlayController {
                 self.model.duration = duration
             }
         }
+        levelTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
     }
 
     private func stopLevelUpdates() {
@@ -245,15 +228,7 @@ final class OverlayHostingView<Content: View>: NSHostingView<Content> {
 /// Beobachtbares Modell, das der Controller mit Live-Daten füttert.
 @MainActor
 final class OverlayModel: ObservableObject {
-    enum Mode {
-        case starting(hold: Bool, resuming: Bool = false)
-        case recording, paused, silence
-        case processing(detail: String?)
-        case success(note: String?)
-        case clipboard(note: String)
-        case failure(String)
-    }
-    @Published var mode: Mode = .recording
+    @Published var mode: OverlayController.Display = .recording
     @Published var levelDb: Double = -120
     @Published var recordingContext = ""
     @Published var recordingVad = ""
