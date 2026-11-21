@@ -115,4 +115,24 @@ fi
 [[ ! -e "$TEST_CURL_MARKER" ]]
 grep -Fxq 'nicht veraendern' "$foreign_file"
 
+locked_home="$TEST_ROOT/locked-home"
+locked_models="$locked_home/Library/Application Support/StillePost/models"
+mkdir -p "$locked_models"
+TEST_CURL_MARKER="$TEST_ROOT/locked-curl"
+HOME="$locked_home" PATH="$FAKE_BIN:/usr/bin:/bin" /usr/bin/python3 - "$locked_models" <<'PYTHON'
+import fcntl
+import pathlib
+import subprocess
+import sys
+
+model = pathlib.Path(sys.argv[1]) / 'ggml-large-v3-turbo.bin'
+with model.with_suffix('.bin.lock').open('w') as lock:
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    result = subprocess.run(['/bin/bash', 'scripts/install-model.sh'], capture_output=True, timeout=5)
+    assert result.returncode != 0 and 'Modellinstallation läuft bereits'.encode() in result.stderr
+    assert not model.exists()
+PYTHON
+[[ ! -e "$TEST_CURL_MARKER" ]]
+run_installer "$locked_home" "$TEST_ROOT/unlocked.log"
+
 echo "✓ Modellinstallation verändert nur reguläre Ziel- und Teildateien"

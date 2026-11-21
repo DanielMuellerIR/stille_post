@@ -34,6 +34,26 @@ case "$MODEL" in
         ;;
 esac
 URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/$REVISION/ggml-$MODEL.bin"
+mkdir -p "$DEST_DIR"
+
+# App und CLI verwenden denselben flock neben dem Ziel. Der Dateideskriptor
+# bleibt nach exec im Download-Skript offen, auch während dessen Kindprozessen.
+exec /usr/bin/perl -Mstrict -MFcntl=O_CREAT,O_RDWR,O_NOFOLLOW,O_NONBLOCK,LOCK_EX,LOCK_NB -e '
+    my ($path, @command) = @ARGV;
+    my $lock;
+    local $^F = 1024;
+    sub fail { print STDERR "Fehler: $_[0]\n"; exit 1; }
+    sysopen($lock, $path, O_CREAT | O_RDWR | O_NOFOLLOW | O_NONBLOCK, 0600)
+        && -f $lock or fail("Keine reguläre Modellsperre: $path");
+    flock($lock, LOCK_EX | LOCK_NB) or fail("Modellinstallation läuft bereits: $path");
+    exec @command or fail("Modellinstallation kann nicht gestartet werden: $!");
+' "$DEST.lock" /bin/bash -s -- "$MODEL" "$DEST" "$FORCE" "$URL" "$SHA256" <<'INSTALL'
+set -euo pipefail
+MODEL=$1
+DEST=$2
+FORCE=$3
+URL=$4
+SHA256=$5
 
 # Reguläre Dateien und Verweise sind ersetzbar. Ein Verzeichnis oder eine
 # Spezialdatei am Modellpfad gehört dem Installer dagegen nicht. Diese Prüfung
@@ -62,8 +82,6 @@ elif [ -f "$DEST" ] && [ "$FORCE" -eq 0 ]; then
     echo "Modell ist schon da: $DEST"
     exit 0
 fi
-
-mkdir -p "$DEST_DIR"
 
 # curl folgt beim Schreiben einem Symlink. Eine Teildatei darf deshalb nur eine
 # eigene reguläre Datei sein; sonst könnte eine Wiederaufnahme fremde Daten
@@ -136,3 +154,4 @@ if [ -n "$SHA256" ]; then
 fi
 mv -f -h "$DEST.partial" "$DEST"
 echo "Fertig: $DEST"
+INSTALL
