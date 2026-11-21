@@ -36,8 +36,13 @@ prepare(pathlib.Path(sys.argv[2]))
                 fcntl.flock(lock, fcntl.LOCK_EX)
                 with subprocess.Popen(
                     [
-                        sys.executable, "-c", driver, str(script), directory,
-                        str(len(model)), hashlib.sha256(model).hexdigest(),
+                        sys.executable,
+                        "-c",
+                        driver,
+                        str(script),
+                        directory,
+                        str(len(model)),
+                        hashlib.sha256(model).hexdigest(),
                     ],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,

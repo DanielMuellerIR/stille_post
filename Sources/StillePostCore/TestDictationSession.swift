@@ -4,7 +4,9 @@ import Foundation
 /// Alle Methoden/Callbacks werden auf dem Hauptthread aufgerufen.
 @MainActor
 public final class TestDictationSession {
-    public enum State: Equatable { case ready, preparing, recording, paused, processing, completed, silence, cancelled, failed(String) }
+    public enum State: Equatable {
+        case ready, preparing, recording, paused, processing, completed, silence, cancelled, failed(String)
+    }
     public private(set) var state: State = .ready
     public private(set) var isActive = false
     public private(set) var ownsCurrentSession = false
@@ -24,10 +26,12 @@ public final class TestDictationSession {
     private var attemptedAt: Date?
 
     public convenience init(engine: DictationEngine, maximumRecordingDuration: TimeInterval = 20) {
-        self.init(engine: engine, maximumRecordingDuration: maximumRecordingDuration,
-                  clock: { ProcessInfo.processInfo.systemUptime })
+        self.init(
+            engine: engine, maximumRecordingDuration: maximumRecordingDuration,
+            clock: { ProcessInfo.processInfo.systemUptime })
     }
-    init(engine: DictationEngine, maximumRecordingDuration: TimeInterval, clock: @escaping () -> TimeInterval) {
+    init(engine: DictationEngine, maximumRecordingDuration: TimeInterval, clock: @escaping () -> TimeInterval)
+    {
         self.engine = engine
         self.maximumDuration = max(0.01, min(20, maximumRecordingDuration))
         self.clock = clock
@@ -36,20 +40,40 @@ public final class TestDictationSession {
     public func owns(_ source: DictationEngine) -> Bool { ownsCurrentSession && engine === source }
     public func uses(_ source: DictationEngine) -> Bool { engine === source }
 
-    public func start(configuration reviewed: Config, currentConfiguration: Config,
-                      nextRequestConfiguration: Config, inputAvailable: Bool, allowed: Bool,
-                      beforeStart: () -> Bool = { true }) {
+    public func start(
+        configuration reviewed: Config, currentConfiguration: Config,
+        nextRequestConfiguration: Config, inputAvailable: Bool, allowed: Bool,
+        beforeStart: () -> Bool = { true }
+    ) {
         guard !isActive else { return }
         attemptedAt = Date()
-        guard allowed, !engine.hasInFlightRequests else { fail("test_dictation.busy"); return }
-        guard reviewed == currentConfiguration else { fail("test_dictation.changed"); return }
-        guard inputAvailable else { fail("test_dictation.no_input"); return }
-        guard beforeStart() else { fail("test_dictation.busy"); return }
+        guard allowed, !engine.hasInFlightRequests else {
+            fail("test_dictation.busy")
+            return
+        }
+        guard reviewed == currentConfiguration else {
+            fail("test_dictation.changed")
+            return
+        }
+        guard inputAvailable else {
+            fail("test_dictation.no_input")
+            return
+        }
+        guard beforeStart() else {
+            fail("test_dictation.busy")
+            return
+        }
         let requestConfiguration = reviewed.resolvedForRequest()
         configuration = requestConfiguration
-        result = nil; timings = .empty; audioDuration = 0; levelDb = -120
-        cancelling = false; recordingBegan = nil
-        ownsCurrentSession = true; isActive = true; state = .preparing
+        result = nil
+        timings = .empty
+        audioDuration = 0
+        levelDb = -120
+        cancelling = false
+        recordingBegan = nil
+        ownsCurrentSession = true
+        isActive = true
+        state = .preparing
         onChange?()
         engine.configure(nextRequestConfiguration)
         engine.start(configuration: requestConfiguration)
@@ -66,38 +90,57 @@ public final class TestDictationSession {
             if recordingBegan == nil { recordingBegan = clock() }
             startTimer()
         case .paused: state = .paused
-        case .processing: state = .processing; stopTimer()
-        case .error(let message): state = .failed(message); isActive = false; stopTimer()
+        case .processing:
+            state = .processing
+            stopTimer()
+        case .error(let message):
+            state = .failed(message)
+            isActive = false
+            stopTimer()
         case .idle:
-            if cancelling { state = .cancelled; isActive = false; stopTimer() }
-            // Der Ergebnis-Callback folgt im selben Hauptthread-Schritt.
+            if cancelling {
+                state = .cancelled
+                isActive = false
+                stopTimer()
+            }
+        // Der Ergebnis-Callback folgt im selben Hauptthread-Schritt.
         }
         onChange?()
     }
     public func receiveResult(_ value: DictationResult) {
         guard ownsCurrentSession else { return }
-        captureTimings(); stopTimer(); isActive = false
+        captureTimings()
+        stopTimer()
+        isActive = false
         if let entry = value.entry, entry.isFailed {
-            result = nil; state = .failed(entry.errorMessage ?? L10n.text("test_dictation.failed"))
+            result = nil
+            state = .failed(entry.errorMessage ?? L10n.text("test_dictation.failed"))
         } else if value.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            result = nil; state = .silence
+            result = nil
+            state = .silence
         } else {
-            result = value; state = .completed
+            result = value
+            state = .completed
             if let duration = value.entry?.durationSec { audioDuration = duration }
         }
         onChange?()
     }
     public func stop() {
         guard isActive, ownsCurrentSession else { return }
-        if engine.state == .starting { cancel() }
-        else { engine.stop() }
+        if engine.state == .starting { cancel() } else { engine.stop() }
     }
     public func cancel() {
         guard isActive, ownsCurrentSession else { return }
-        cancelling = true; result = nil; stopTimer()
+        cancelling = true
+        result = nil
+        stopTimer()
         engine.cancel()
         captureTimings()
-        if case .error = engine.state {} else { state = .cancelled; isActive = false }
+        if case .error = engine.state {
+        } else {
+            state = .cancelled
+            isActive = false
+        }
         onChange?()
     }
     /// Nur abgeschlossene Testzuordnung freigeben, niemals einen aktiven Test
@@ -109,8 +152,14 @@ public final class TestDictationSession {
     }
     public func reset() {
         guard !isActive else { return }
-        ownsCurrentSession = false; result = nil; timings = .empty; audioDuration = 0
-        configuration = nil; state = .ready; cancelling = false; attemptedAt = nil
+        ownsCurrentSession = false
+        result = nil
+        timings = .empty
+        audioDuration = 0
+        configuration = nil
+        state = .ready
+        cancelling = false
+        attemptedAt = nil
         onChange?()
     }
     @discardableResult public func close() -> String? {
@@ -118,7 +167,8 @@ public final class TestDictationSession {
         if isActive { cancel() }
         let error: String?
         if wasActive, case .failed(let message) = state { error = message } else { error = nil }
-        stopTimer(); reset()
+        stopTimer()
+        reset()
         return error
     }
     func pulse() {
@@ -127,7 +177,8 @@ public final class TestDictationSession {
         levelDb = engine.currentLevelDb
         if engine.state == .recording { audioDuration = engine.recordingDuration }
         if let began = recordingBegan, clock() - began >= maximumDuration,
-           engine.state == .recording || engine.state == .paused || engine.state == .resuming {
+            engine.state == .recording || engine.state == .paused || engine.state == .resuming
+        {
             stop()
         }
         onChange?()
@@ -151,16 +202,22 @@ public final class TestDictationSession {
         func number(_ value: TimeInterval?) -> String {
             value.map { String(format: "%.3f", locale: Locale(identifier: "en_US_POSIX"), $0) } ?? "unknown"
         }
-        let origin = result == nil ? "none" : (result?.entry?.cleanupFellBack == true ? "raw_fallback" :
-            (configuration?.cleanup.enabled == false ? "cleanup_disabled" : "cleanup"))
-        return ([header, "test.state=" + code, "test.source=" + origin,
-            "test.preparation_sec=" + number(timings.preparationSec),
-            "test.recording_sec=" + number(timings.recordingSec),
-            "test.transcription_sum_sec=" + number(timings.transcriptionSec),
-            "test.transcription_count=\(timings.transcriptionCount)",
-            "test.cleanup_sec=" + number(timings.cleanupSec),
-            "test.local_only=" + (configuration.map { String($0.cleanup.localOnly) } ?? "unknown"),
-            "test.stores_text=" + (configuration.map { String($0.history.storeText) } ?? "unknown")]).joined(separator: "\n")
+        let origin =
+            result == nil
+            ? "none"
+            : (result?.entry?.cleanupFellBack == true
+                ? "raw_fallback" : (configuration?.cleanup.enabled == false ? "cleanup_disabled" : "cleanup"))
+        return
+            ([
+                header, "test.state=" + code, "test.source=" + origin,
+                "test.preparation_sec=" + number(timings.preparationSec),
+                "test.recording_sec=" + number(timings.recordingSec),
+                "test.transcription_sum_sec=" + number(timings.transcriptionSec),
+                "test.transcription_count=\(timings.transcriptionCount)",
+                "test.cleanup_sec=" + number(timings.cleanupSec),
+                "test.local_only=" + (configuration.map { String($0.cleanup.localOnly) } ?? "unknown"),
+                "test.stores_text=" + (configuration.map { String($0.history.storeText) } ?? "unknown"),
+            ]).joined(separator: "\n")
     }
 
     private func captureTimings() {
@@ -168,17 +225,28 @@ public final class TestDictationSession {
         if let recorded = timings.recordingSec { audioDuration = recorded }
     }
     private func fail(_ key: String) {
-        result = nil; timings = .empty; audioDuration = 0; stopTimer()
-        state = .failed(L10n.text(key)); isActive = false; onChange?()
+        result = nil
+        timings = .empty
+        audioDuration = 0
+        stopTimer()
+        state = .failed(L10n.text(key))
+        isActive = false
+        onChange?()
     }
     private func startTimer() {
         guard timer == nil else { return }
         let value = Timer(timeInterval: 0.05, repeats: true) { [weak self] timer in
-            guard let self else { timer.invalidate(); return }
+            guard let self else {
+                timer.invalidate()
+                return
+            }
             MainActor.assumeIsolated { self.pulse() }
         }
         timer = value
         RunLoop.main.add(value, forMode: .common)
     }
-    private func stopTimer() { timer?.invalidate(); timer = nil }
+    private func stopTimer() {
+        timer?.invalidate()
+        timer = nil
+    }
 }

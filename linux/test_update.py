@@ -232,7 +232,9 @@ class UpdateTests(unittest.TestCase):
         )
 
         command = [source / "install.sh"]
-        self.assertNotEqual(subprocess.run(command, env=env, capture_output=True).returncode, 0)
+        self.assertNotEqual(
+            subprocess.run(command, env=env, capture_output=True).returncode, 0
+        )
         current = self.bundle.parent / "current"
         installed = current.resolve()
         self.assertEqual(installed.name, version)
@@ -244,7 +246,9 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr.decode())
         self.assertTrue(os.access(launcher, os.X_OK))
         self.assertEqual(current.resolve(), installed)
-        self.assertEqual((self.bundle.parent / "previous-version").read_bytes(), generation)
+        self.assertEqual(
+            (self.bundle.parent / "previous-version").read_bytes(), generation
+        )
         with patch.dict(os.environ, {"XDG_DATA_HOME": str(self.root)}):
             Updater(installed).rollback()
             with self.assertRaises(UpdateError):
@@ -367,14 +371,18 @@ class UpdateTests(unittest.TestCase):
                 )
             response.read.assert_not_called()
 
-    def test_install_can_resume_after_process_exits_between_publish_and_activation(self):
+    def test_install_can_resume_after_process_exits_between_publish_and_activation(
+        self,
+    ):
         source = self.install_source("0.9.48", "exit 0\n")
         root = self.bundle.parent
         current = root / "current"
         with patch.dict(os.environ, {"XDG_DATA_HOME": str(self.root)}):
             pid = os.fork()
             if pid == 0:
-                with patch.object(Updater, "_switch", side_effect=lambda *_: os._exit(91)):
+                with patch.object(
+                    Updater, "_switch", side_effect=lambda *_: os._exit(91)
+                ):
                     Updater(source).install_local()
                 os._exit(92)
             _, status = os.waitpid(pid, 0)

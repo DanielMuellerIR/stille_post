@@ -24,17 +24,32 @@ public final class AudioImportSession {
     public func owns(_ source: DictationEngine) -> Bool { ownsCurrentSession && engine === source }
     public func uses(_ source: DictationEngine) -> Bool { engine === source }
 
-    public func start(file: URL, configuration reviewed: Config, currentConfiguration: Config,
-                      nextRequestConfiguration: Config, allowed: Bool, beforeStart: () -> Bool = { true }) {
+    public func start(
+        file: URL, configuration reviewed: Config, currentConfiguration: Config,
+        nextRequestConfiguration: Config, allowed: Bool, beforeStart: () -> Bool = { true }
+    ) {
         guard !isActive else { return }
-        guard allowed, !engine.hasInFlightRequests else { fail("test_dictation.busy"); return }
-        guard reviewed == currentConfiguration else { fail("test_dictation.changed"); return }
-        guard beforeStart() else { fail("test_dictation.busy"); return }
+        guard allowed, !engine.hasInFlightRequests else {
+            fail("test_dictation.busy")
+            return
+        }
+        guard reviewed == currentConfiguration else {
+            fail("test_dictation.changed")
+            return
+        }
+        guard beforeStart() else {
+            fail("test_dictation.busy")
+            return
+        }
         let requestConfiguration = reviewed.resolvedForRequest()
-        configuration = requestConfiguration; result = nil
+        configuration = requestConfiguration
+        result = nil
         progress = nil
-        cancelling = false; closed = false
-        ownsCurrentSession = true; isActive = true; state = .processing(.decoding)
+        cancelling = false
+        closed = false
+        ownsCurrentSession = true
+        isActive = true
+        state = .processing(.decoding)
         onChange?()
         engine.configure(nextRequestConfiguration)
         engine.importAudioFile(file, configuration: requestConfiguration)
@@ -46,23 +61,31 @@ public final class AudioImportSession {
         switch value {
         case .error(let message):
             progress = nil
-            state = .failed(message); isActive = false
+            state = .failed(message)
+            isActive = false
             if closed { onErrorWhileClosed?(message) }
         case .idle where cancelling:
             progress = nil
-            state = .cancelled; isActive = false
+            state = .cancelled
+            isActive = false
         default: break
         }
-        if closed, !isActive { configuration = nil; result = nil }
+        if closed, !isActive {
+            configuration = nil
+            result = nil
+        }
         onChange?()
     }
     public func receiveStage(_ stage: AudioImportStage) {
         guard ownsCurrentSession, isActive, !cancelling else { return }
-        progress = nil; state = .processing(stage); onChange?()
+        progress = nil
+        state = .processing(stage)
+        onChange?()
     }
     public func receiveProgress(_ value: AudioImportProgress) {
         guard ownsCurrentSession, isActive, !cancelling, state == .processing(value.stage) else { return }
-        progress = value; onChange?()
+        progress = value
+        onChange?()
     }
     public func receiveResult(_ value: DictationResult) {
         guard ownsCurrentSession else { return }
@@ -72,28 +95,47 @@ public final class AudioImportSession {
             if !closed { result = value }
             state = .failed(value.entry?.errorMessage ?? L10n.text("audio_import.failed"))
         } else if value.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            result = nil; state = .silence
+            result = nil
+            state = .silence
         } else {
             if !closed { result = value }
             state = .completed
         }
-        if closed { configuration = nil; result = nil }
+        if closed {
+            configuration = nil
+            result = nil
+        }
         onChange?()
     }
     public func cancel() {
         guard isActive, ownsCurrentSession, !cancelling else { return }
-        cancelling = true; result = nil; progress = nil; state = .cancelling
-        onChange?(); engine.cancel()
+        cancelling = true
+        result = nil
+        progress = nil
+        state = .cancelling
+        onChange?()
+        engine.cancel()
     }
     public func reset() {
         guard !isActive else { return }
-        closed = false; cancelling = false; result = nil; progress = nil; configuration = nil; state = .ready
+        closed = false
+        cancelling = false
+        result = nil
+        progress = nil
+        configuration = nil
+        state = .ready
         onChange?()
     }
     public func close() {
-        closed = true; result = nil
-        if isActive { cancel() }
-        else { configuration = nil; state = .ready; onChange?() }
+        closed = true
+        result = nil
+        if isActive {
+            cancel()
+        } else {
+            configuration = nil
+            state = .ready
+            onChange?()
+        }
         // Die Zuordnung bleibt für späte Speicherfehler bestehen. Nur ein
         // tatsächlicher neuer Auftrag darf sie freigeben.
     }
@@ -103,6 +145,9 @@ public final class AudioImportSession {
         return true
     }
     private func fail(_ key: String) {
-        state = .failed(L10n.text(key)); isActive = false; result = nil; onChange?()
+        state = .failed(L10n.text(key))
+        isActive = false
+        result = nil
+        onChange?()
     }
 }

@@ -29,4 +29,3 @@ func makeBridgeRouter(
     return BridgeRouter(handlers: handlers, maxBodyBytes: maxBodyBytes,
                         tokenProvider: { token })
 }
-

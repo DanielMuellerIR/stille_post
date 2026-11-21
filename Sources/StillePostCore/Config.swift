@@ -30,23 +30,35 @@ public struct Config: Codable, Equatable, Sendable {
         public init() {}
         var isValid: Bool {
             func normalized(_ value: String) -> String? {
-                let parts=value.split(separator:"+",omittingEmptySubsequences:false).map(String.init)
-                guard parts.count>=2,let key=parts.last,key.range(of:"^[A-Za-z0-9_]{1,32}$",options:.regularExpression) != nil else { return nil }
-                let modifiers=Array(parts.dropLast()),allowed:Set<String>=["CTRL","ALT","SHIFT","LOGO"]
-                guard Set(modifiers).count==modifiers.count,modifiers.allSatisfy(allowed.contains),modifiers.contains(where:{["CTRL","ALT","LOGO"].contains($0)}) else { return nil }
-                return modifiers.sorted().joined(separator:"+")+"+"+key.lowercased()
+                let parts = value.split(separator: "+", omittingEmptySubsequences: false).map(String.init)
+                guard parts.count >= 2, let key = parts.last,
+                    key.range(of: "^[A-Za-z0-9_]{1,32}$", options: .regularExpression) != nil
+                else { return nil }
+                let modifiers = Array(parts.dropLast())
+                let allowed: Set<String> = ["CTRL", "ALT", "SHIFT", "LOGO"]
+                guard Set(modifiers).count == modifiers.count, modifiers.allSatisfy(allowed.contains),
+                    modifiers.contains(where: { ["CTRL", "ALT", "LOGO"].contains($0) })
+                else { return nil }
+                return modifiers.sorted().joined(separator: "+") + "+" + key.lowercased()
             }
-            guard let dictate=normalized(dictationShortcut),let recall=normalized(recallShortcut) else { return false }
-            return dictate != recall && ["system","de","en"].contains(language)
+            guard let dictate = normalized(dictationShortcut), let recall = normalized(recallShortcut) else {
+                return false
+            }
+            return dictate != recall && ["system", "de", "en"].contains(language)
         }
-        private enum CodingKeys: String,CodingKey { case dictationShortcut,recallShortcut,automaticPaste,startAtLogin,language }
+        private enum CodingKeys: String, CodingKey {
+            case dictationShortcut, recallShortcut, automaticPaste, startAtLogin, language
+        }
         public init(from decoder: Decoder) throws {
-            self.init();let c=try decoder.container(keyedBy:CodingKeys.self)
-            dictationShortcut=(try? c.decode(String.self,forKey:.dictationShortcut)) ?? dictationShortcut
-            recallShortcut=(try? c.decode(String.self,forKey:.recallShortcut)) ?? recallShortcut
-            automaticPaste=c.contains(.automaticPaste) ? ((try? c.decode(Bool.self,forKey:.automaticPaste)) ?? false) : true
-            startAtLogin=(try? c.decode(Bool.self,forKey:.startAtLogin)) ?? false
-            language=(try? c.decode(String.self,forKey:.language)) ?? "system"
+            self.init()
+            let c = try decoder.container(keyedBy: CodingKeys.self)
+            dictationShortcut = (try? c.decode(String.self, forKey: .dictationShortcut)) ?? dictationShortcut
+            recallShortcut = (try? c.decode(String.self, forKey: .recallShortcut)) ?? recallShortcut
+            automaticPaste =
+                c.contains(.automaticPaste)
+                ? ((try? c.decode(Bool.self, forKey: .automaticPaste)) ?? false) : true
+            startAtLogin = (try? c.decode(Bool.self, forKey: .startAtLogin)) ?? false
+            language = (try? c.decode(String.self, forKey: .language)) ?? "system"
         }
     }
     public var linux = LinuxOptions()

@@ -91,7 +91,11 @@ def recover_pending_install(root):
     destination = root / entry["version"]
     active = (root / "current").resolve()
     previous = version_record(root, active.name).get("previous")
-    if active != destination and previous != destination.name and os.path.lexists(destination):
+    if (
+        active != destination
+        and previous != destination.name
+        and os.path.lexists(destination)
+    ):
         metadata = destination.lstat()
         if (
             not stat.S_ISDIR(metadata.st_mode)
@@ -389,7 +393,11 @@ class Updater:
         marker = stage.parent / "pending-install"
         marker.write_text(
             json.dumps(
-                {"version": destination.name, "device": metadata.st_dev, "inode": metadata.st_ino}
+                {
+                    "version": destination.name,
+                    "device": metadata.st_dev,
+                    "inode": metadata.st_ino,
+                }
             )
         )
         os.replace(marker, root / ".pending-install")
