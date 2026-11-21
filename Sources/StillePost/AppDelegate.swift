@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     /// Neustart. Als langlebiges Feld bleibt der Controller während der gesamten
     /// App-Laufzeit erhalten; mehr als eine Instanz darf es nicht geben.
     private let updaterController: SPUStandardUpdaterController
+    private let startsUpdater: Bool
     private let makeEngine: (Config) -> DictationEngine
     private let testContext: (Config) -> DiagnosticContext
 
@@ -22,17 +23,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     // ohne Mikrofonrechte, Alltagsdaten oder automatische Updateanfragen anzufassen.
     init(makeEngine: @escaping (Config) -> DictationEngine,
          testContext: @escaping (Config) -> DiagnosticContext, startsUpdater: Bool) {
-        self.makeEngine = makeEngine; self.testContext = testContext
-        updaterController = SPUStandardUpdaterController(startingUpdater: startsUpdater,
+        self.makeEngine = makeEngine
+        self.testContext = testContext
+        self.startsUpdater = startsUpdater
+        updaterController = SPUStandardUpdaterController(startingUpdater: false,
             updaterDelegate: nil, userDriverDelegate: nil)
         super.init()
     }
-    private var config = Config.load()
+    private var config = Config()
+    private var launchHarness: AppLaunchHarness?
+    private var syntheticResultPasteboard: NSPasteboard?
     private var engine: DictationEngine!
     private var retiredWork: [UUID: Task<Void, Never>] = [:]
     private var terminationPending = false
     private var statusItem: NSStatusItem!
-    private var hotkey: HotkeyManager!
+    private var hotkey: HotkeyManager?
     private var lastResultHotkey: HotkeyManager?
     private var isCapturingHotkey = false
     private var dictationHotkeyState = DictationHotkeyState()
@@ -117,15 +122,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        let environment = ProcessInfo.processInfo.environment
         // Einzelinstanz-Schutz: Läuft schon eine Stille Post, beendet sich die neue
         // sofort. Zwei Instanzen würden sonst beide aufnehmen und beide einfügen —
         // der Text stünde doppelt im Ziel.
-        if ProcessInfo.processInfo.environment["STILLEPOST_ALLOW_MULTIPLE"] == nil,
+        if environment["STILLEPOST_ALLOW_MULTIPLE"] == nil,
            let bundleID = Bundle.main.bundleIdentifier,
            NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).count > 1 {
             NSApp.terminate(nil)
             return
         }
+
+        config = Config.load()
+        let harness = AppLaunchHarness(environment: environment)
+        launchHarness = harness
+        if harness.hasSyntheticResult {
+            syntheticResultPasteboard = NSPasteboard(name: .init("stillepost-launch-\(UUID())"))
+        }
+        if startsUpdater { updaterController.startUpdater() }
 
         // Menüleisten-App ohne Dock-Symbol (LSUIElement steht zusätzlich im Info.plist
         // des App-Bundles; .accessory deckt den `swift run`-Entwicklungsfall ab).
@@ -136,7 +150,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         })
         NSApp.servicesProvider = selectionCleanupActions
 
+        setupWindowControllers(defaultSettingsTab: harness.settingsTab ?? .general)
+
+        setupStatusItem()
+
+        // Headless-GUI-Testweg für das echte Statusmenü. Erst im nächsten Runloop
+        // öffnen, damit AppKit das Menüleisten-Element vollständig registriert hat.
+        if harness.opensStatusMenu {
+            DispatchQueue.main.async { [weak self] in
+                self?.statusItem.button?.performClick(nil)
+            }
+        }
+        observeTargetApplication()
+        buildComponents()
+
+        // Bedienungshilfen-Berechtigung früh anstoßen (System-Dialog), damit das
+        // erste Diktat nicht daran scheitert. Für automatisierte Tests abschaltbar,
+        // weil der System-Dialog dort nur stören würde.
+        if environment["STILLEPOST_NO_AX_PROMPT"] == nil {
+            _ = PasteService.ensureAccessibilityPermission()
+        }
+
+        // Ohne Modell kann die App nichts — deshalb gleich beim Start fragen und
+        // nicht erst beim ersten Diktat scheitern lassen. Fragt nur, wenn wirklich
+        // etwas fehlt (oder das Modell nur geliehen ist).
+        let modelPath = config.whisper.modelPath
+        modelDownload.offerIfNeeded(whisper: config.whisper) { [weak self] in
+            guard let self, !self.terminationPending, self.config.whisper.modelPath == modelPath,
+                  self.canReplaceComponents else { return }
+            // Ein laufendes Diktat darf fertig werden. Beim nächsten Serverstart
+            // wird das Modell ohnehin neu vom inzwischen vorhandenen Pfad gelesen.
+            self.replaceComponents()
+        }
+
+        switch harness.settingsDestination {
+        case .settings: showSettings()
+        case .diagnostics: showDiagnostics()
+        case .testDictation: showTestDictation()
+        case .audioImport: showAudioImport()
+        case nil: break
+        }
+        if harness.opensHistory { historyWindow.show() }
+        let prospective = prospectiveConfiguration
+        harness.presentOverlay(overlay, engine: engine, configuration: prospective, hotkeyMode: config.hotkeyMode)
+        harness.exerciseResultDelivery(engine: engine, configuration: prospective) { text in
+            resultMemory.accept(text: text, rawFallback: false)
+        }
+    }
+
+    private func setupWindowControllers(defaultSettingsTab: SettingsWindowController.Tab) {
         settingsWindow = SettingsWindowController(
+            defaultTab: defaultSettingsTab,
             onApply: { [weak self] newConfig, expected in
                 try self?.applySettings(newConfig, expected: expected)
             },
@@ -179,157 +243,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                 self.overlay?.show(.failure(message))
             }
         )
-
-        setupStatusItem()
-
-        // Headless-GUI-Testweg für das echte Statusmenü. Erst im nächsten Runloop
-        // öffnen, damit AppKit das Menüleisten-Element vollständig registriert hat.
-        if ProcessInfo.processInfo.environment["STILLEPOST_OPEN_MENU"] != nil {
-            DispatchQueue.main.async { [weak self] in
-                self?.statusItem.button?.performClick(nil)
-            }
-        }
-        observeTargetApplication()
-        buildComponents()
-
-        // Bedienungshilfen-Berechtigung früh anstoßen (System-Dialog), damit das
-        // erste Diktat nicht daran scheitert. Für automatisierte Tests abschaltbar,
-        // weil der System-Dialog dort nur stören würde.
-        if ProcessInfo.processInfo.environment["STILLEPOST_NO_AX_PROMPT"] == nil {
-            _ = PasteService.ensureAccessibilityPermission()
-        }
-
-        // Ohne Modell kann die App nichts — deshalb gleich beim Start fragen und
-        // nicht erst beim ersten Diktat scheitern lassen. Fragt nur, wenn wirklich
-        // etwas fehlt (oder das Modell nur geliehen ist).
-        modelDownload.offerIfNeeded(whisper: config.whisper) { [weak self] in
-            // Nach dem Laden die Bausteine neu aufsetzen, damit der whisper-server
-            // mit dem frischen Modell startet.
-            self?.buildComponents()
-        }
-
-        // Für automatisierte GUI-Checks (headless-Testweg): Einstellungsfenster
-        // sofort öffnen, ohne dass jemand durchs Menü klicken muss.
-        if let tab = ProcessInfo.processInfo.environment["STILLEPOST_OPEN_SETTINGS"] {
-            if tab == "diagnose" { showDiagnostics() }
-            else if tab == "testdiktat" { showTestDictation() }
-            else if tab == "audioimport" { showAudioImport() }
-            else { settingsWindow.show() }
-        }
-        // Isolierter Screenshot-/GUI-Testweg fürs Verlaufsfenster. Zusammen mit
-        // STILLEPOST_APP_SUPPORT liest er ausschließlich künstliche Testeinträge.
-        if ProcessInfo.processInfo.environment["STILLEPOST_OPEN_HISTORY"] != nil {
-            historyWindow.show()
-        }
-        // Ebenfalls für GUI-Checks: Overlay in einem bestimmten Zustand zeigen
-        // (das Overlay erscheint sonst nur mitten in einem echten Diktat).
-        if let preview = ProcessInfo.processInfo.environment["STILLEPOST_OVERLAY_PREVIEW"],
-           preview.hasPrefix("raw-preview"),
-           ProcessInfo.processInfo.environment["STILLEPOST_CONFIG"] != nil,
-           ProcessInfo.processInfo.environment["STILLEPOST_APP_SUPPORT"] != nil {
-            overlay.liveTranscriptPreview = prospectiveConfiguration.ui.liveTranscriptPreview
-            overlay.recordingContext = L10n.format("profiles.recording", prospectiveConfiguration.profileLabel, prospectiveConfiguration.whisper.language)
-            let sample = L10n.text("overlay.live_preview.sample")
-            if preview != "raw-preview-waiting" {
-                overlay.transcriptPreview = DictationTranscriptPreview(
-                    text: preview == "raw-preview-empty-failed" ? "" :
-                        (preview == "raw-preview-long" ? String(repeating: sample + " ", count: 60) + L10n.text("overlay.live_preview.sample_end") : sample),
-                    hasFailedSegment: preview.hasSuffix("failed"))
-            }
-            if preview == "raw-preview-paused" { overlay.show(.paused) }
-            else if preview == "raw-preview-resuming" { overlay.show(.starting(hold: false, resuming: true)) }
-            else { overlay.show(.recording) }
-        }
-        if ProcessInfo.processInfo.environment["STILLEPOST_OVERLAY_PREVIEW"] != nil,
-           ProcessInfo.processInfo.environment["STILLEPOST_CONFIG"] != nil,
-           ProcessInfo.processInfo.environment["STILLEPOST_APP_SUPPORT"] != nil,
-           prospectiveConfiguration.vad.detector == .silero {
-            let vad = prospectiveConfiguration.vad
-            Task { @MainActor [weak self] in
-                let detector = await VadSegmenter.prepared(config: vad)
-                self?.overlay.recordingVad = detector.fallbackReason.map {
-                    L10n.format("vad.fallback_status", $0)
-                } ?? L10n.text("vad.active")
-            }
-        }
-        switch ProcessInfo.processInfo.environment["STILLEPOST_OVERLAY_PREVIEW"] {
-        case "recording":
-            overlay.recordingContext = L10n.format("profiles.recording", prospectiveConfiguration.profileLabel,
-                prospectiveConfiguration.whisper.language)
-            overlay.recordingReason = prospectiveConfiguration.requestProfileSelection?.label ?? ""
-            overlay.recordingInstruction = config.hotkeyMode == .hold ? L10n.text("hotkey.hold.release") : ""
-            overlay.show(.recording)
-        case "paused":
-            overlay.recordingContext = L10n.format("profiles.recording", prospectiveConfiguration.profileLabel, prospectiveConfiguration.whisper.language)
-            overlay.recordingReason = prospectiveConfiguration.requestProfileSelection?.label ?? ""
-            overlay.recordingInstruction = config.hotkeyMode == .hold ? L10n.text("hotkey.hold.release") : ""
-            overlay.show(.paused)
-        case "resuming":
-            overlay.show(.starting(hold: config.hotkeyMode == .hold, resuming: true))
-        case "hold-unavailable":
-            overlay.show(.failure(L10n.text("hotkey.hold.unavailable")))
-        case "starting":
-            overlay.show(.starting(hold: config.hotkeyMode == .hold))
-        case "processing-fallback":
-            overlay.show(.processing(detail: L10n.format(
-                "app.cleanup_fallback",
-                "gemma4:e4b-it-qat @ http://127.0.0.1:11434"
-            )))
-        case "success-raw":
-            overlay.show(.success(note: L10n.text("app.raw_fallback_note")))
-        case "clipboard-target-changed":
-            overlay.show(.clipboard(note: L10n.text("app.paste_target_changed")))
-        case "clipboard-target-unavailable":
-            overlay.show(.clipboard(note: L10n.text("app.paste_target_unavailable")))
-        case "clipboard-changed":
-            overlay.show(.failure(L10n.text("app.paste_clipboard_changed")))
-        case .some, .none:
-            break
-        }
-        // Künstlicher Ergebnisweg für Bundle-Abnahmen, nur mit isolierten Daten.
-        // Ausschließlich künstlicher Text; der lokale Prüfweg verwendet den echten Bereinigungsdienst.
-        let environment = ProcessInfo.processInfo.environment
-        if environment["STILLEPOST_APP_SUPPORT"] != nil,
-           environment["STILLEPOST_CONFIG"] != nil,
-           let test = environment["STILLEPOST_RESULT_TEST"],
-           ["seed", "success", "raw", "empty", "failed", "long", "concurrent-private", "local-policy"].contains(test) {
-            let synthetic = "Dies ist ein künstlicher Ergebnistext. Zahlen: 128 Euro."
-            let text = test == "long"
-                ? (1...80).map { "Absatz \($0): \(synthetic)" }.joined(separator: "\n\n")
-                : synthetic
-            if environment["STILLEPOST_RESULT_TEST_PREVIOUS"] == "1" {
-                resultMemory.accept(text: "Zuvor bestätigter Testtext.", rawFallback: false)
-            }
-            if test == "local-policy" {
-                let cleanup = prospectiveConfiguration.cleanup
-                Task { @MainActor [weak self] in
-                    let raw = "Die Zahl bleibt 128 und Version 2.4 wird nicht geändert."
-                    let result = await CleanupService(config: cleanup).clean(raw)
-                    var entry = HistoryStore.Entry(rawText: raw, cleanText: result.text, status: "ok", durationSec: 1,
-                        cleanupFellBack: result.usedFallback, cleanupFallbackReason: result.fallbackReason)
-                    entry.storesText = false
-                    self?.engine.onResult?(DictationResult(text: result.text, entry: entry))
-                }
-            } else if test == "seed" {
-                resultMemory.accept(text: text, rawFallback: false)
-            } else {
-                engine.onStateChange?(.starting)
-                engine.onStateChange?(.idle)
-                let failed = test == "failed"
-                let delivered = test == "empty" || failed ? "" : text
-                let entry = HistoryStore.Entry(rawText: delivered, cleanText: delivered,
-                    status: failed ? "failed" : "ok", durationSec: 1,
-                    cleanupFellBack: test == "raw")
-                engine.onResult?(DictationResult(text: delivered, entry: entry))
-                if test == "concurrent-private" {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak self] in
-                        var retry = HistoryStore.Entry(rawText: "", cleanText: "Älteres privates Wiederholungsergebnis 256.", status: "ok", durationSec: 1)
-                        retry.storesText = false
-                        self?.engine.onPrivateRetryResult?(retry)
-                    }
-                }
-            }
-        }
     }
 
     // Finder/Spotlight müssen auch bei ausgeblendetem Menüleistensymbol einen
@@ -350,11 +263,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         audioImportWindow?.prepareForTermination()
         hotkey = nil
         lastResultHotkey = nil
-        bridge?.stop()
+        bridgeGeneration &+= 1
+        if let bridgeCredentialsObserver {
+            NotificationCenter.default.removeObserver(bridgeCredentialsObserver)
+            self.bridgeCredentialsObserver = nil
+        }
+        let currentBridge = bridge
+        let transition = bridgeTransition
+        bridge = nil
+        bridgeTransition = nil
         warmUpTimer?.invalidate()
         if let appActivationObserver { NSWorkspace.shared.notificationCenter.removeObserver(appActivationObserver) }
         historyMaintenanceTimer?.invalidate()
-        historyMaintenanceTask?.cancel()
+        let maintenance = historyMaintenanceTask
+        maintenance?.cancel()
         engine.onStateChange = nil
         engine.onResult = nil
         let shutdown = engine.shutdown()
@@ -362,7 +284,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         let editSave = historyWindow?.pendingSaveTask
         historyWindow?.close()
         resultPreview.dismiss()
+        syntheticResultPasteboard?.releaseGlobally()
+        syntheticResultPasteboard = nil
         Task { @MainActor in
+            if let currentBridge {
+                await withCheckedContinuation { continuation in
+                    currentBridge.stop { continuation.resume() }
+                }
+            }
+            await transition?.value
+            await maintenance?.value
             await editSave?.value
             await shutdown.value
             for task in retired { await task.value }
@@ -376,6 +307,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     /// Baut Engine, Overlay, Verlaufsfenster und Hotkey aus der aktuellen Config auf.
     /// Läuft beim Start und nach Änderungen an globalen Komponenten.
     private func buildComponents() {
+        guard !terminationPending else { return }
         pasteTarget = nil
         let engineConfig = requestConfiguration
         engine = makeEngine(engineConfig)
@@ -387,6 +319,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             self.updateRequestConfiguration()
         })
         setupEngineCallbacks()
+        updateStatusIcon(for: engine.state)
         startHistoryMaintenance()
 
         registerHotkey()
@@ -437,7 +370,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     /// gezeigt statt verschluckt: Ein stillschweigend nicht laufender Zugang wäre
     /// später als „das iPhone kommt nicht durch“ viel schwerer zu finden.
     private func startBridgeIfEnabled() {
-        bridgeGeneration += 1
+        guard !terminationPending else { return }
+        bridgeGeneration &+= 1
         let generation = bridgeGeneration
         let previous = bridgeTransition
         bridgeTransition = Task { @MainActor [weak self] in
@@ -579,11 +513,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         guard config.resolvedForRequest().history.storeText else { return }
         temporaryPrivateHistory.toggle()
         engine.suppressTranscriptPreview()
-        let environment = ProcessInfo.processInfo.environment
-        if environment["STILLEPOST_HISTORY_TRACE"] == "1",
-           environment["STILLEPOST_CONFIG"] != nil, environment["STILLEPOST_APP_SUPPORT"] != nil {
-            FileHandle.standardError.write(Data("history-policy: storesText=\(effectiveHistoryPolicy.storeText)\n".utf8))
-        }
+        launchHarness?.tracePrivateHistory(storesText: effectiveHistoryPolicy.storeText)
         updateRequestConfiguration()
     }
 
@@ -610,7 +540,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             }
             do { try await history.applyRetentionAsync() }
             catch {
-                guard let self, self.historyGeneration == generation else { return }
+                guard let self, !self.terminationPending, self.historyGeneration == generation else { return }
                 let message = L10n.format("history.retention_error", error.localizedDescription)
                 self.historyWindow.reportError(message)
                 if self.canRecallResult { self.overlay.show(.failure(message)) }
@@ -727,7 +657,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         let needsRebuild = requestOnly != newConfig
         let changesBindings = config.hotkey != newConfig.hotkey || config.lastResultHotkey != newConfig.lastResultHotkey
         let changesInput = config.hotkeyMode != newConfig.hotkeyMode || changesBindings
-        if (needsRebuild || changesInput) && (engine.hasInFlightRequests || bridge?.hasInFlightRequests == true || !pendingResults.isEmpty) {
+        if (needsRebuild || changesInput) && !canReplaceComponents {
             throw NSError(domain: "StillePost", code: 1, userInfo: [NSLocalizedDescriptionKey: L10n.text("profiles.busy_settings")])
         }
         try newConfig.save(expected: expected)
@@ -738,11 +668,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             updateRequestConfiguration()
             return
         }
+        config = newConfig
+        replaceComponents()
+    }
+
+    private var canReplaceComponents: Bool {
+        !engine.hasInFlightRequests && bridge?.hasInFlightRequests != true && pendingResults.isEmpty
+    }
+
+    private func replaceComponents() {
         overlay.hide()
         if let save = historyWindow.pendingSaveTask { trackRetiredWork(save) }
         historyWindow.close()
+        engine.onStateChange = nil
+        engine.onResult = nil
         trackRetiredWork(engine.shutdown())
-        config = newConfig
         buildComponents()
     }
 
@@ -961,7 +901,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             self.overlay.liveTranscriptPreview = source.isTranscriptPreviewEnabled
             switch state {
             case .starting:
-                self.pasteTarget = PasteService.captureTarget()
+                self.pasteTarget = self.capturePasteTarget()
                 self.overlay.show(.starting(hold: self.dictationHotkeyState.ownsHold))
             case .resuming:
                 self.overlay.show(.starting(hold: self.dictationHotkeyState.ownsHold, resuming: true))
@@ -1022,7 +962,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         engine.onPrivateRetryResult = { [weak self, weak source] entry in
             guard let self, self.engine === source, let result = TransientResultStore.Result(text: entry.cleanText,
                 rawFallback: entry.cleanupFellBack == true, note: entry.cleanupFallbackReason, origin: entry.resultOrigin) else { return }
-            self.showPreview(result, target: PasteService.captureTarget(), focus: self.canRecallResult, floating: false)
+            self.showPreview(result, target: self.capturePasteTarget(), focus: self.canRecallResult, floating: false)
         }
 
         engine.onVadFallback = { [weak self, weak source] _ in
@@ -1091,7 +1031,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             return
         }
         overlay.hide()
-        showPreview(result, target: PasteService.captureTarget(), focus: true)
+        showPreview(result, target: capturePasteTarget(), focus: true)
     }
 
     private func remember(_ result: TransientResultStore.Result) {
@@ -1106,12 +1046,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     private func presentPreview(_ delivery: PreviewDelivery) {
         let result = delivery.result
         resultPreview.show(result, focus: delivery.focus, floating: delivery.floating) { [weak self] action in
-            guard let self else { return }
+            guard let self, !self.terminationPending else { return }
             switch action {
             case .discard: break
             case .copy:
                 self.remember(result)
-                let board = NSPasteboard.general
+                let board = self.syntheticResultPasteboard ?? .general
                 board.clearContents()
                 board.setString(result.text, forType: .string)
                 self.overlay.show(.clipboard(note: L10n.text("result.copied")))
@@ -1123,8 +1063,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         }
     }
 
+    private func capturePasteTarget() -> PasteService.Target? {
+        guard syntheticResultPasteboard == nil else { return nil }
+        return PasteService.captureTarget()
+    }
+
     private func insert(_ result: TransientResultStore.Result, target: PasteService.Target?) {
-        switch PasteService.paste(result.text, target: target) {
+        let access = syntheticResultPasteboard.map { board in
+            PasteService.Access(pasteboard: board, trusted: { true }, frontmost: { nil }, sendPaste: {})
+        }
+        switch PasteService.paste(result.text, target: target, access: access) {
         case .pasted:
             overlay.show(.success(note: result.rawFallback ? (result.note ?? L10n.text("app.raw_fallback_note")) : nil))
         case .clipboardOnlyScreenSharing:

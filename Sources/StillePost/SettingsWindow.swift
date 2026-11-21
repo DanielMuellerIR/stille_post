@@ -35,13 +35,15 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var tabSelection: SettingsTabSelection?
     /// Wird beim Speichern mit der neuen Config aufgerufen (App wendet sie an).
+    private let defaultTab: Tab
     private let onApply: (Config, Config) throws -> Void
     /// true = registrierte Hotkeys an den aktiven Recorder statt an das Diktat leiten.
     private let onHotkeyRecording: (Bool) -> Void
     private let onDiagnostics: () -> Void
 
-    init(onApply: @escaping (Config, Config) throws -> Void, onHotkeyRecording: @escaping (Bool) -> Void,
+    init(defaultTab: Tab = .general, onApply: @escaping (Config, Config) throws -> Void, onHotkeyRecording: @escaping (Bool) -> Void,
          onDiagnostics: @escaping () -> Void = {}) {
+        self.defaultTab = defaultTab
         self.onApply = onApply
         self.onHotkeyRecording = onHotkeyRecording
         self.onDiagnostics = onDiagnostics
@@ -64,8 +66,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         if let tabSelection {
             if let tab { tabSelection.tab = tab }
         } else {
-            let envTab = ProcessInfo.processInfo.environment["STILLEPOST_OPEN_SETTINGS"].flatMap(Tab.init(rawValue:))
-            let selection = SettingsTabSelection(tab: tab ?? envTab ?? .general)
+            let selection = SettingsTabSelection(tab: tab ?? defaultTab)
             tabSelection = selection
 
             let expected = Config.load()
