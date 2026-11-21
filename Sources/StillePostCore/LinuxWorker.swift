@@ -9,6 +9,7 @@ public final class LinuxWorker {
     nonisolated private static let maximumMessageBytes = 4 * 1024 * 1024
     public nonisolated static var version: String { LinuxInstallation.version }
     private var config: Config
+    private let startupWhisper: Config.Whisper
     private let engine: DictationEngine
     private let output = LinuxWorkerOutput()
     private let ollama = LinuxOllamaService()
@@ -36,6 +37,7 @@ public final class LinuxWorker {
         _ = Glibc.signal(SIGPIPE, SIG_IGN)
         umask(0o077)
         config = try ConfigFile().loadSnapshot()
+        startupWhisper = config.whisper
         engine = DictationEngine(config: config)
         AudioRecorder.capture = { [weak self] active, device in
             self?.send(["event": "capture", "active": active, "device": device])
@@ -434,7 +436,10 @@ public final class LinuxWorker {
                 engine.configure(requestConfiguration)
                 bridge.updateConfiguration(requestConfiguration)
                 sendConfiguration()
-                send(["event": "configSaved"])
+                send([
+                    "event": "configSaved",
+                    "whisperRestartRequired": config.whisper != runningWhisper,
+                ])
             } catch {
                 send([
                     "event": "error", "message": L10n.text("linux.config.save_failed"),
@@ -514,8 +519,17 @@ public final class LinuxWorker {
                 ? L10n.text("profiles.global") : resolved.profileLabel))
         sendHistoryPolicy()
     }
+    private var runningWhisper: Config.Whisper {
+        // Transkription, Bridge und der laufende Kindprozess verwenden dieselbe
+        // Serverkonfiguration bis zum nächsten Programmstart.
+        var active = startupWhisper
+        active.language = config.whisper.language
+        return active
+    }
+
     private var requestConfiguration: Config {
         var result = config
+        result.whisper = runningWhisper
         if temporaryPrivateHistory {
             result.history.storeText = false
             for index in result.profiles.indices where result.profiles[index].history != nil {
@@ -721,7 +735,8 @@ public final class LinuxWorker {
                     context.keyboardReadable = message.keyboard
                     context.bridge = bridgeReady ? .running : .stopped
                     let report = try await DiagnosticsService().scan(
-                        configuration: config.resolvedForRequest(appBundleID: activeApplication),
+                        configuration: requestConfiguration.resolvedForRequest(
+                            appBundleID: activeApplication),
                         context: context)
                     send([
                         "event": "diagnostics",

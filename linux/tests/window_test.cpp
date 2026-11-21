@@ -340,6 +340,31 @@ void run() {
     qInfo() << "PASS audio-drop-validation-and-confirmation";
     window->reject();
   }
+
+  controller.showSettings("speech");
+  auto server = settings->findChild<QLineEdit *>("whisper.serverURL");
+  check(server, "Whisper-Serverfeld fehlt");
+  const QString serverURL = "http://127.0.0.1:9191";
+  server->setText(serverURL);
+  QTest::mouseClick(control(settings, trKey("common.save", "Save")),
+                    Qt::LeftButton);
+  QPointer<QMessageBox> restart;
+  wait([&] {
+    for (auto widget : QApplication::topLevelWidgets()) {
+      auto box = qobject_cast<QMessageBox *>(widget);
+      if (box && box->isVisible() &&
+          box->windowTitle() == trText("Stille Post neu starten"))
+        restart = box;
+    }
+    return !restart.isNull();
+  });
+  check(!settings->isVisible() &&
+            read(configPath).object()["whisper"].toObject()["serverURL"] ==
+                serverURL,
+        "Server-URL wurde nicht mit Neustarthinweis gespeichert");
+  restart->accept();
+  qInfo() << "PASS whisper-save-requires-restart";
+
 }
 } // namespace
 int main(int argc, char **argv) {

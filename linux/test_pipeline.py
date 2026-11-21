@@ -7,6 +7,7 @@ import os
 import pathlib
 import queue
 import shutil
+import socket
 import struct
 import subprocess
 import tempfile
@@ -138,15 +139,20 @@ class PipelineTests(unittest.TestCase):
             ALL_PROXY=url(self.fallback),
         )
         self.worker_environment = env
+        self.worker_executable = bundle / "bin/stillepost-linux"
+        self.start_worker()
+
+    def start_worker(self):
         self.process = subprocess.Popen(
-            [str(bundle / "bin/stillepost-linux")],
+            [str(self.worker_executable)],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            env=env,
+            env=self.worker_environment,
         )
         self.events = queue.Queue()
-        threading.Thread(target=self.reader, daemon=True).start()
+        self.reader_thread = threading.Thread(target=self.reader, daemon=True)
+        self.reader_thread.start()
         self.wait("ready")
 
     def reader(self):
@@ -601,6 +607,94 @@ class PipelineTests(unittest.TestCase):
                 read_configuration(new_version)["whisper"]["binaryPath"],
                 str(configured),
             )
+
+    def test_whisper_server_settings_take_effect_after_restart(self):
+        with socket.socket() as loopback:
+            loopback.bind(("127.0.0.1", 0))
+            port = loopback.getsockname()[1]
+        fake_whisper = self.path / "whisper-server-fixture"
+        model = self.path / "model.bin"
+        model.write_bytes(b"synthetic fixture")
+        launch = self.path / "launch.json"
+        fake_whisper.write_text(
+            "#!/usr/bin/python3\n"
+            "import http.server, json, pathlib, sys\n"
+            "args = sys.argv[1:]\n"
+            f"pathlib.Path({str(launch)!r}).write_text(json.dumps(args))\n"
+            "class Whisper(http.server.BaseHTTPRequestHandler):\n"
+            "    def do_GET(self):\n"
+            "        self.send_response(200)\n"
+            "        self.send_header('Content-Type', 'application/json')\n"
+            "        self.end_headers()\n"
+            "        self.wfile.write(json.dumps(dict(status='ok')).encode())\n"
+            "http.server.HTTPServer((args[args.index('--host') + 1], "
+            "int(args[args.index('--port') + 1])), Whisper).serve_forever()\n"
+        )
+        fake_whisper.chmod(0o700)
+
+        self.send(command="config")
+        original = self.wait("config")["config"]
+        saved = {
+            **original,
+            "whisper": {
+                **original["whisper"],
+                "serverURL": f"http://127.0.0.1:{port}",
+                "autostart": True,
+                "binaryPath": str(fake_whisper),
+                "modelPath": str(model),
+                "threads": 2,
+                "useGPU": False,
+                "language": "en",
+            },
+        }
+        self.send(command="start")
+        self.wait("state", "recording")
+        self.send(command="saveConfig", config=saved, expected=original)
+        self.assertEqual(self.wait("config")["config"]["whisper"], saved["whisper"])
+        acknowledgement = self.wait("configSaved")
+        self.send(command="pause")
+        self.wait("state", "paused")
+        self.send(command="resume")
+        self.wait("state", "recording")
+        self.send(command="cancel")
+        self.wait("state", "idle")
+
+        self.send(command="reviewImport")
+        whisper = self.wait("importReview")["configuration"]["whisper"]
+        self.assertEqual(whisper, {**original["whisper"], "language": "en"})
+        self.assertTrue(acknowledgement.get("whisperRestartRequired"))
+        self.send(command="start")
+        self.wait("state", "recording")
+        self.assertFalse(launch.exists())
+
+        self.send(command="quit")
+        self.assertEqual(self.process.wait(timeout=8), 0)
+        self.reader_thread.join(timeout=2)
+        self.process.stdin.close()
+        self.process.stdout.close()
+        self.process.stderr.close()
+        self.start_worker()
+        self.send(command="config")
+        self.assertEqual(self.wait("config")["config"]["whisper"], saved["whisper"])
+        language_only = {**saved, "whisper": {**saved["whisper"], "language": "de"}}
+        self.send(command="saveConfig", config=language_only, expected=saved)
+        self.assertFalse(self.wait("configSaved").get("whisperRestartRequired"))
+        self.send(command="start")
+        self.wait("state", "recording")
+        self.assertEqual(
+            json.loads(launch.read_text()),
+            [
+                "-m",
+                str(model),
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(port),
+                "-t",
+                "2",
+                "--no-gpu",
+            ],
+        )
 
     def test_quit_and_parent_pipe_closure_share_one_shutdown(self):
         for _ in range(10):

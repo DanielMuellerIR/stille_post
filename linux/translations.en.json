@@ -1,5 +1,8 @@
 {
   "Aktualisieren": "Refresh",
+  "Die Whisper-Servereinstellungen wurden gespeichert. Beenden und öffnen Sie Stille Post erneut, um sie zu verwenden.": "Whisper server settings have been saved. Quit and reopen Stille Post to use them.",
+  "Servereinstellungen gelten nach einem Neustart von Stille Post.": "Server settings take effect after you restart Stille Post.",
+  "Stille Post neu starten": "Restart Stille Post",
   "Alle löschen …": "Delete all …",
   "App-Regel hinzufügen": "Add app rule",
   "Audio erneut transkribieren": "Transcribe audio again",

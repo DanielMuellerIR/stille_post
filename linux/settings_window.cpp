@@ -88,6 +88,15 @@ void SettingsWindow::receive(QJsonObject event) {
   } else if (kind == "configSaved") {
     save->setEnabled(true);
     accept();
+    if (event["whisperRestartRequired"].toBool()) {
+      auto notice = new QMessageBox(
+          QMessageBox::Information, trText("Stille Post neu starten"),
+          trText("Die Whisper-Servereinstellungen wurden gespeichert. Beenden "
+                 "und öffnen Sie Stille Post erneut, um sie zu verwenden."),
+          QMessageBox::Ok, this);
+      notice->setAttribute(Qt::WA_DeleteOnClose);
+      notice->open();
+    }
   } else if (kind == "bridgeCredentialsChanged") {
     message->setText(trText("Erneuert. Bitte die Geräte erneut koppeln."));
   } else if (kind == "error") {
@@ -595,6 +604,10 @@ QWidget *SettingsWindow::speechPage() {
   });
   auto advanced = section(T("settings.whisper.advanced", "Erweitert"));
   layout->addWidget(advanced);
+  auto restartHint = new QLabel(
+      trText("Servereinstellungen gelten nach einem Neustart von Stille Post."));
+  restartHint->setWordWrap(true);
+  rows(advanced)->addRow(restartHint);
   check(rows(advanced),
         T("settings.whisper.autostart", "whisper-server automatisch starten"),
         "whisper.autostart");
