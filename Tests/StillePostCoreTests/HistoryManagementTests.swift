@@ -97,6 +97,30 @@ final class HistoryManagementTests: XCTestCase {
         }
     }
 
+    func testLegacyDeletionRemnantRemainsNonRetryableWhenTextExpires() async throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("sp-history-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: base) }
+        let store = HistoryStore(baseDir: base)
+        let deadline = Date().addingTimeInterval(3600)
+        let legacy = HistoryStore.Entry(rawText: "", cleanText: "", status: "failed",
+            errorMessage: L10n.text("core.history.audio_delete_pending", language: "en"),
+            audioFileName: "old-recording.wav", durationSec: 1, textExpiresAt: deadline)
+        try Data([1]).write(to: store.recordingsDir.appendingPathComponent("old-recording.wav"))
+        try store.append(legacy)
+        try await store.applyRetentionAsync(now: deadline)
+        let reloaded = HistoryStore(baseDir: base)
+        let retained = try XCTUnwrap(reloaded.list().first)
+        XCTAssertTrue(retained.isDeletionPending)
+        XCTAssertFalse(retained.canRetry)
+        XCTAssertNil(retained.errorMessage)
+        var lateRetry = legacy
+        lateRetry.status = "ok"
+        lateRetry.cleanText = "Verspäteter Text"
+        XCTAssertThrowsError(try reloaded.update(lateRetry)) {
+            XCTAssertEqual($0 as? HistoryStore.PersistenceError, .entryNoLongerExists)
+        }
+    }
+
     func testSingleDeletionRefusesExternalAudioAndKeepsOtherHistory() throws {
         try withStore { store, base in
             let protected = base.appendingPathComponent("outside.wav")

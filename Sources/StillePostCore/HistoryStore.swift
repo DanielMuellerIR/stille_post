@@ -249,7 +249,7 @@ public final class HistoryStore: @unchecked Sendable {
     /// atomarer Write laufen auf der History-Queue statt auf dem Main-Thread.
     @discardableResult
     public func appendAsync(_ entry: Entry) async throws -> Entry {
-        let cancellation = PendingAppendCancellation()
+        let cancellation = PendingOperationCancellation()
         let receipt = try await withTaskCancellationHandler {
             try await onQueue { try self.appendOnQueue(entry, cancellation: cancellation) }
         } onCancel: {
@@ -277,7 +277,7 @@ public final class HistoryStore: @unchecked Sendable {
 
     /// Gemeinsamer Kern für synchrone und asynchrone Aufrufer. So können
     /// Lock-, Reload- und atomare Write-Reihenfolge nicht auseinanderlaufen.
-    private func appendOnQueue(_ entry: Entry, cancellation: PendingAppendCancellation? = nil) throws -> Entry {
+    private func appendOnQueue(_ entry: Entry, cancellation: PendingOperationCancellation? = nil) throws -> Entry {
         try withFileLock {
             if cancellation?.isCancelled == true { throw CancellationError() }
             var fresh = try loadFromDiskLocked()
@@ -329,7 +329,7 @@ public final class HistoryStore: @unchecked Sendable {
 
     /// Der Abbruch kommt vom Task, der Schreibbeginn von der seriellen Queue.
     /// Das Lock verbindet beide, ohne den Hauptthread am Plattenzugriff zu halten.
-    private final class PendingAppendCancellation: @unchecked Sendable {
+    private final class PendingOperationCancellation: @unchecked Sendable {
         private let lock = NSLock()
         private var cancelled = false
         var isCancelled: Bool {
@@ -381,55 +381,32 @@ public final class HistoryStore: @unchecked Sendable {
     /// jüngere Korrektur noch eine Löschung oder inzwischen abgelaufenen Text.
     /// `expected` stammt aus `list` oder einem vorherigen Korrektur-Save.
     public func saveCorrectionAsync(_ text: String, expected: Entry) async throws -> Entry {
-        let receipt = try await onQueue {
-            try self.withFileLock {
-                var fresh = try self.loadFromDiskLocked()
-                try self.expireTextLocked(&fresh, now: Date())
-                guard let index = fresh.firstIndex(where: { $0.id == expected.id }) else {
-                    throw PersistenceError.entryNoLongerExists
-                }
-                var current = fresh[index]
-                guard current.canEdit else { throw PersistenceError.correctionUnavailable }
-                guard Self.sameSnapshot(current, expected) else { throw PersistenceError.correctionConflict }
-                guard !Self.sameText(current.cleanText, text) else { return current }
-                let (count, overflow) = (current.manualEditCount ?? 0).addingReportingOverflow(1)
-                guard !overflow else { throw PersistenceError.correctionConflict }
-                var revisions = current.previousResults ?? []
-                revisions.insert(.init(text: current.cleanText, date: current.resultMetadata?.date ?? current.manualEditDate ?? current.date,
-                                       origin: current.resultOrigin), at: 0)
-                if current.originalCleanText == nil { current.originalCleanText = current.cleanText }
-                current.previousResults = Array(revisions.prefix(3))
-                current.cleanText = text
-                current.manualEditCount = count
-                // JSON verwendet ISO-8601 ohne Sekundenbruchteile. Der Rückgabewert
-                // muss beim nächsten Save denselben Snapshot wie die Platte ergeben.
-                current.manualEditDate = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970))
-                let (generation, generationOverflow) = (current.resultMetadata?.generation ?? 0).addingReportingOverflow(1)
-                guard !generationOverflow else { throw PersistenceError.correctionConflict }
-                current.resultMetadata = .init(date: current.manualEditDate!, origin: .manual, generation: generation)
-                fresh[index] = current
-                try self.saveLocked(fresh)
-                return current
-            }
+        try await saveRevisionAsync(expected: expected) { current in
+            guard !Self.sameText(current.cleanText, text) else { return nil }
+            let (count, overflow) = (current.manualEditCount ?? 0).addingReportingOverflow(1)
+            guard !overflow else { throw PersistenceError.correctionConflict }
+            var revised = try Self.revisedEntry(current, text: text, origin: .manual)
+            revised.manualEditCount = count
+            revised.manualEditDate = revised.resultMetadata?.date
+            return revised
         }
-        onChange?()
-        return receipt
     }
 
     /// Autorisiert eine Aktion anhand des frischen, noch editierbaren Eintrags.
     /// Der kurze synchrone Vorgang darf seinerseits nur den Config-Lock nehmen;
     /// Netzwerk und UI laufen immer außerhalb dieses History-Locks.
     public func withEditableSnapshotAsync<T: Sendable>(expected: Entry, action: @escaping @Sendable () throws -> T) async throws -> T {
-        try await onQueue {
-            try self.withFileLock {
-                var fresh = try self.loadFromDiskLocked()
-                try self.expireTextLocked(&fresh, now: Date())
-                guard let current = fresh.first(where: { $0.id == expected.id }) else { throw PersistenceError.entryNoLongerExists }
-                guard current.canEdit else { throw PersistenceError.correctionUnavailable }
-                guard Self.sameSnapshot(current, expected) else { throw PersistenceError.correctionConflict }
-                try Task.checkCancellation()
-                return try action()
+        let cancellation = PendingOperationCancellation()
+        return try await withTaskCancellationHandler {
+            try await onQueue {
+                try self.withEditableEntryOnQueue(expected: expected) { _, _ in
+                    // Die Dispatch-Queue läuft außerhalb des aufrufenden Swift-Tasks.
+                    if cancellation.isCancelled { throw CancellationError() }
+                    return try action()
+                }
             }
+        } onCancel: {
+            cancellation.cancel()
         }
     }
 
@@ -439,32 +416,59 @@ public final class HistoryStore: @unchecked Sendable {
               !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw PersistenceError.correctionUnavailable
         }
+        return try await saveRevisionAsync(expected: expected) { current in
+            try Self.revisedEntry(current, text: result.text, origin: result.origin,
+                                  endpoint: result.endpoint, durationSec: durationSec)
+        }
+    }
+
+    private func saveRevisionAsync(expected: Entry,
+                                   revise: @escaping @Sendable (Entry) throws -> Entry?) async throws -> Entry {
         let receipt = try await onQueue {
-            try self.withFileLock {
-                var fresh = try self.loadFromDiskLocked()
-                try self.expireTextLocked(&fresh, now: Date())
-                guard let index = fresh.firstIndex(where: { $0.id == expected.id }) else { throw PersistenceError.entryNoLongerExists }
-                var current = fresh[index]
-                guard current.canEdit else { throw PersistenceError.correctionUnavailable }
-                guard Self.sameSnapshot(current, expected) else { throw PersistenceError.correctionConflict }
-                let (generation, overflow) = (current.resultMetadata?.generation ?? 0).addingReportingOverflow(1)
-                guard !overflow else { throw PersistenceError.correctionConflict }
-                var revisions = current.previousResults ?? []
-                revisions.insert(.init(text: current.cleanText, date: current.resultMetadata?.date ?? current.manualEditDate ?? current.date,
-                                       origin: current.resultOrigin), at: 0)
-                if current.originalCleanText == nil { current.originalCleanText = current.cleanText }
-                current.previousResults = Array(revisions.prefix(3))
-                current.cleanText = result.text
-                current.resultMetadata = .init(date: Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970)),
-                                               origin: result.origin, generation: generation, endpoint: result.endpoint,
-                                               durationSec: durationSec)
-                fresh[index] = current
-                try self.saveLocked(fresh)
-                return current
+            try self.withEditableEntryOnQueue(expected: expected) { entries, index in
+                let current = entries[index]
+                guard let revised = try revise(current) else { return current }
+                entries[index] = revised
+                try self.saveLocked(entries)
+                return revised
             }
         }
         onChange?()
         return receipt
+    }
+
+    private func withEditableEntryOnQueue<T>(expected: Entry, action: (inout [Entry], Int) throws -> T) throws -> T {
+        try withFileLock {
+            var fresh = try loadFromDiskLocked()
+            try expireTextLocked(&fresh, now: Date())
+            guard let index = fresh.firstIndex(where: { $0.id == expected.id }) else {
+                throw PersistenceError.entryNoLongerExists
+            }
+            let current = fresh[index]
+            guard current.canEdit else { throw PersistenceError.correctionUnavailable }
+            guard Self.sameSnapshot(current, expected) else { throw PersistenceError.correctionConflict }
+            return try action(&fresh, index)
+        }
+    }
+
+    private static let revisionLimit = 3
+
+    private static func revisedEntry(_ current: Entry, text: String, origin: Entry.ResultOrigin,
+                                     endpoint: String? = nil, durationSec: Double? = nil) throws -> Entry {
+        let (generation, overflow) = (current.resultMetadata?.generation ?? 0).addingReportingOverflow(1)
+        guard !overflow else { throw PersistenceError.correctionConflict }
+        let previous = Entry.Revision(text: current.cleanText,
+                                      date: current.resultMetadata?.date ?? current.manualEditDate ?? current.date,
+                                      origin: current.resultOrigin)
+        var revised = current
+        revised.originalCleanText = current.originalCleanText ?? current.cleanText
+        revised.previousResults = [previous] + (current.previousResults ?? []).prefix(revisionLimit - 1)
+        revised.cleanText = text
+        // ISO-8601 ohne Sekundenbruchteile: Rückgabebeleg und Platte vergleichen sich gleich.
+        let date = Date(timeIntervalSince1970: floor(Date().timeIntervalSince1970))
+        revised.resultMetadata = .init(date: date, origin: origin, generation: generation,
+                                      endpoint: endpoint, durationSec: durationSec)
+        return revised
     }
 
     public static func sameText(_ first: String, _ second: String) -> Bool {
@@ -592,26 +596,19 @@ public final class HistoryStore: @unchecked Sendable {
     private static func persistableEntry(_ entry: Entry) -> Entry? {
         guard entry.storesText == false else {
             var bounded = entry
-            if let revisions = entry.previousResults { bounded.previousResults = Array(revisions.prefix(3)) }
+            if let revisions = entry.previousResults {
+                bounded.previousResults = Array(revisions.prefix(revisionLimit))
+            }
             return bounded
         }
-        guard entry.audioFileName != nil else { return nil }
-        var result = entry
-        result.rawText = ""
-        result.cleanText = ""
-        result.cleanupFellBack = nil
-        result.cleanupFallbackReason = nil
-        result.cleanupEndpoint = nil
-        result.cleanupSec = nil
-        result.originalCleanText = nil
-        result.manualEditDate = nil
-        result.manualEditCount = nil
-        result.previousResults = nil
-        result.resultMetadata = nil
-        result.originalOrigin = nil
-        result.status = "failed"
-        result.errorMessage = nil
-        return result
+        guard let audioFileName = entry.audioFileName else { return nil }
+        // Nur Felder zur Aufnahme und ihren Fristen gehen auf die Platte.
+        // Bei alten Löschresten trägt nach der Redigierung allein das Flag den Löschauftrag.
+        return Entry(id: entry.id, date: entry.date, rawText: "", cleanText: "",
+                     status: "failed", audioFileName: audioFileName, durationSec: entry.durationSec,
+                     deletionPending: entry.isDeletionPending ? true : entry.deletionPending, storesText: false,
+                     textExpiresAt: entry.textExpiresAt, audioExpiresAt: entry.audioExpiresAt,
+                     audioIsComplete: entry.audioIsComplete)
     }
 
     /// Löscht ALLE Einträge samt zurückbehaltener Audio-Dateien ("Alle löschen"-Button).

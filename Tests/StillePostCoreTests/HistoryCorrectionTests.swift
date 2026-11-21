@@ -81,6 +81,28 @@ final class HistoryCorrectionTests: XCTestCase {
         XCTAssertThrowsError(try store.update(pipeline)) { XCTAssertEqual($0 as? HistoryStore.PersistenceError, .correctionConflict) }
     }
 
+    func testCancelledAuthorizationDoesNotRunEditableSnapshotAction() async throws {
+        let base = directory()
+        defer { try? FileManager.default.removeItem(at: base) }
+        let store = HistoryStore(baseDir: base)
+        try store.append(entry())
+        let expected = try XCTUnwrap(store.list().first)
+        let actionRan = LockedTestValue(false)
+        let operation = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            try await store.withEditableSnapshotAsync(expected: expected) {
+                actionRan.update { $0 = true }
+            }
+        }
+        do {
+            try await operation.value
+            XCTFail("Abbruch fehlt")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertFalse(actionRan.snapshot)
+    }
+
     func testFailedAtomicCorrectionWritePreservesPreviousDiskState() async throws {
         let base = directory(); defer { try? FileManager.default.removeItem(at: base) }
         let initial = HistoryStore(baseDir: base)
