@@ -1,11 +1,13 @@
+import XCTest
+@testable import StillePost
 import AppKit
 import UniformTypeIdentifiers
 import StillePostCore
 
 // Prüft echte verzögerte NSItemProvider-Antworten ohne Fenster oder Netz;
 // die gemeinsame Zwischenablage wird nur über ihren Änderungszähler beobachtet.
-@main struct AudioImportSelectionRegression {
-    @MainActor static func main() async throws {
+final class AudioImportSelectionTests: XCTestCase {
+    @MainActor func testAudioSelectionAcceptsOnlyTheCurrentLocalFile() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -35,7 +37,7 @@ import StillePostCore
         let cancelled = model.beginSelection(); model.cancelSelection(cancelled)
         model.completeSelection(cancelled, url: first)
         guard model.selectedURL == nil else { throw Failure.stale }
-        let provider = NSItemProvider(contentsOf: first)!
+        let provider = try XCTUnwrap(NSItemProvider(contentsOf: first))
         guard !model.acceptDrop([provider, provider]), model.selectionError != nil, model.selectedURL == nil else { throw Failure.multiple }
         let invalid = model.beginSelection(); model.completeSelection(invalid, url: plain)
         guard model.selectionError != nil, model.selectedURL == nil else { throw Failure.invalid }
@@ -52,9 +54,9 @@ import StillePostCore
         guard !model.isSelecting, model.state == .ready, model.selectionError == nil,
               NSPasteboard.general.changeCount == clipboard else { throw Failure.state }
         model.close()
-        print("PASS Audioauswahl: verspäteter Drop, neuere Auswahl, Schließen, Abbrechen, Mehrfach-/Nichtaudio-/Netz-/Ordnereingabe, kein automatischer Start oder Clipboard-Zugriff")
+
     }
-    @MainActor static func wait(_ condition: () -> Bool) async throws {
+    @MainActor private func wait(_ condition: () -> Bool) async throws {
         for _ in 0..<2000 {
             if condition() { return }
             try await Task.sleep(nanoseconds: 1_000_000)

@@ -52,7 +52,8 @@ let package = Package(
                 // Das Release-Skript legt Sparkle im üblichen App-Bundle-Ordner ab.
                 // SwiftPM ergänzt für Binär-Targets nur @loader_path (neben dem
                 // Executable); diesen Bundle-rpath müssen wir daher selbst setzen.
-                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../Frameworks"])
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@loader_path/../Frameworks"],
+                             .when(configuration: .release))
             ]
         ),
         .target(name: "StillePostCLITerminal"),
@@ -64,6 +65,11 @@ let package = Package(
         .testTarget(
             name: "StillePostCoreTests",
             dependencies: ["StillePostCore"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        .testTarget(
+            name: "StillePostAppTests",
+            dependencies: ["StillePost", "StillePostCore"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]

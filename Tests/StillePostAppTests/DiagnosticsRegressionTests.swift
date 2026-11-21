@@ -1,9 +1,11 @@
+import XCTest
+@testable import StillePost
 import Foundation
 @testable import StillePostCore
 
 // Prüft das produktive Ansichtsmodell ohne Fenster, Aufnahme, Netz oder Clipboard.
-@main struct DiagnosticsRegression {
-    @MainActor static func main() async throws {
+final class DiagnosticsRegressionTests: XCTestCase {
+    @MainActor func testOnlyTheLatestDiagnosisCanPublish() async throws {
         var config = Config()
         config.whisper.language = "de"
         config.cleanup.enabled = false
@@ -37,7 +39,7 @@ import Foundation
         model.start(); model.cancel()
         try await Task.sleep(nanoseconds: 20_000_000)
         guard model.report == nil, !model.checking, model.note == L10n.text("diagnosis.cancelled") else { throw Failure.cancel }
-        print("PASS Diagnose-Ansichtsmodell: bedienbar während Await, neuester Auftrag, gefrorenes Profil, Abbruch ohne spätes Ergebnis")
+
     }
     enum Failure: Error { case timeout, state, stale, cancel }
 }

@@ -8,6 +8,7 @@ import StillePostCore
 final class HistoryEditorModel: ObservableObject, Identifiable {
     let id: UUID
     private let history: HistoryStore
+    private let configFile: ConfigFile
     let vocabularyScopeLabel: String
     private let vocabularyProfileID: UUID?
     private let onVocabularySaved: (Config) -> Void
@@ -32,13 +33,15 @@ final class HistoryEditorModel: ObservableObject, Identifiable {
 
     private let appBundleIDProvider: () -> String?
 
-    init(entry: HistoryStore.Entry, history: HistoryStore, appBundleIDProvider: @escaping () -> String? = { nil }, onVocabularySaved: @escaping (Config) -> Void = { _ in }) {
+    init(entry: HistoryStore.Entry, history: HistoryStore, configFile: ConfigFile = ConfigFile(),
+         appBundleIDProvider: @escaping () -> String? = { nil }, onVocabularySaved: @escaping (Config) -> Void = { _ in }) {
         id = entry.id
         snapshot = entry
         draft = entry.cleanText
         self.history = history
+        self.configFile = configFile
         self.appBundleIDProvider = appBundleIDProvider
-        let config = Config.load().resolvedForRequest(appBundleID: appBundleIDProvider())
+        let config = ((try? configFile.loadSnapshot()) ?? Config()).resolvedForRequest(appBundleID: appBundleIDProvider())
         self.vocabularyProfileID = config.vocabularyProfileID
         self.vocabularyScopeLabel = config.vocabularyProfileID == nil ? L10n.text("profiles.global") : config.profileLabel
         self.onVocabularySaved = onVocabularySaved
@@ -110,8 +113,8 @@ final class HistoryEditorModel: ObservableObject, Identifiable {
         saveTask = Task { @MainActor in
             defer { saving = false; saveTask = nil }
             do {
-                let saved = try await history.withEditableSnapshotAsync(expected: expected) {
-                    try ConfigFile().addVocabulary(term: term, variant: variant, profileID: profileID)
+                let saved = try await history.withEditableSnapshotAsync(expected: expected) { [configFile] in
+                    try configFile.addVocabulary(term: term, variant: variant, profileID: profileID)
                 }
                 onVocabularySaved(saved)
                 vocabularySaved = true
@@ -133,7 +136,8 @@ final class HistoryEditorModel: ObservableObject, Identifiable {
         let appBundleID = appBundleIDProvider()
         recleanupTask = Task { @MainActor in
             do {
-                let result = try await HistoryRecleanup.run(expected: expected, history: history, appBundleID: appBundleID)
+                let result = try await HistoryRecleanup.run(expected: expected, history: history,
+                                                           configFile: configFile, appBundleID: appBundleID)
                 guard generation == recleanupGeneration, snapshot != nil else { return }
                 candidate = result
             } catch {

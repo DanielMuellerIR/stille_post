@@ -1,11 +1,12 @@
+import XCTest
+@testable import StillePost
 import AppKit
 import StillePostCore
 
-@main
-struct PasteRegression {
-    static func main() {
+final class PasteRegressionTests: XCTestCase {
+    @MainActor func testPasteChecksTargetAndClipboardDuringHandoff() async throws {
         guard let application = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first else {
-            fatalError("Die Probe benötigt eine laufende Finder-Instanz, aktiviert sie aber nicht.")
+            throw XCTSkip("Für diese Probe wird die Prozessidentität einer laufenden Finder-Instanz benötigt.")
         }
         let window = AXUIElementCreateApplication(100001)
         let fieldA = AXUIElementCreateApplication(100002)
@@ -14,7 +15,7 @@ struct PasteRegression {
         let board = NSPasteboard(name: .init("stillepost-regression-\(UUID())"))
         defer { board.releaseGlobally() }
         var focusedField: AXUIElement? = fieldA
-        var role = kAXTextAreaRole
+        let fieldRole = FieldRole()
         var focusedWindow = window
         var onRole: (() -> Void)?
         var sent = 0
@@ -32,19 +33,19 @@ struct PasteRegression {
             case kAXFocusedUIElementAttribute: return focusedField
             case kAXRoleAttribute:
                 onRole?()
-                return role as CFString
+                return fieldRole.value as CFString
             case kAXWindowAttribute: return window
             default: return nil
             }
         }
         var target = PasteService.captureTarget(access: access)
-        precondition(target != nil)
+        XCTAssertTrue(target != nil)
         func attempt(_ expected: PasteService.Outcome, _ label: String) {
             let prior = sent
             let outcome = PasteService.paste("Künstliches Diktat 128.", target: target, access: access)
-            precondition(outcome == expected, "\(label): \(outcome), erwartet \(expected)")
-            precondition(sent == prior + (expected == .pasted ? 1 : 0), label)
-            print("PASS \(label)")
+            XCTAssertTrue(outcome == expected, "\(label): \(outcome), erwartet \(expected)")
+            XCTAssertTrue(sent == prior + (expected == .pasted ? 1 : 0), label)
+
         }
         attempt(.pasted, "Normalfall")
         onRole = { focusedField = fieldB }
@@ -58,7 +59,7 @@ struct PasteRegression {
             board.setString("Fremde neue Kopieraktion", forType: .string)
         }
         attempt(.clipboardChanged, "Fremde Zwischenablage während AX-Metadaten")
-        precondition(board.string(forType: .string) == "Fremde neue Kopieraktion")
+        XCTAssertTrue(board.string(forType: .string) == "Fremde neue Kopieraktion")
         onRole = { Thread.sleep(forTimeInterval: 0.26) }
         attempt(.clipboardOnlyTargetUnavailable, "AX-Zeitbudget ausgeschöpft")
         onRole = nil
@@ -71,10 +72,10 @@ struct PasteRegression {
         focusedWindow = window
         focusedField = fieldA
         attempt(.clipboardOnlyTargetUnavailable, "AX-Fokusfeld erscheint erst später")
-        role = kAXButtonRole
+        fieldRole.value = kAXButtonRole
         target = PasteService.captureTarget(access: access)
         attempt(.clipboardOnlyTargetUnavailable, "Erkannter Button ist kein Textfeld")
-        role = "AXWebArea"
+        fieldRole.value = "AXWebArea"
         target = PasteService.captureTarget(access: access)
         attempt(.pasted, "Editierbarer Mail-HTML-Nachrichtentext")
         focusedField = fieldB
@@ -87,10 +88,14 @@ struct PasteRegression {
         attempt(.clipboardOnlyTargetUnavailable, "HTML-Editor verliert Schreibzugriff")
         target = PasteService.captureTarget(access: access)
         attempt(.clipboardOnlyTargetUnavailable, "Nicht editierbarer HTML-Inhalt")
-        role = kAXTextAreaRole
+        fieldRole.value = kAXTextAreaRole
         target = PasteService.captureTarget(access: access)
         trusted = false
         attempt(.noPermission, "Berechtigung fehlt")
         print("Keine Fenster aktiviert, keine Tastendrücke versandt; eigene benannte Zwischenablage.")
     }
+}
+
+@MainActor private final class FieldRole {
+    var value = kAXTextAreaRole
 }
