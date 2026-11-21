@@ -18,7 +18,9 @@ final class URLSessionCleanupTransport: CleanupTransport {
     private let redirectGuard: CleanupRedirectGuard
     private let session: URLSession
     private let probeSession: URLSession
+#if !os(Linux)
     private let streamSession: URLSession
+#endif
 
     init(localOnly: Bool = false) {
         self.localOnly = localOnly
@@ -36,15 +38,20 @@ final class URLSessionCleanupTransport: CleanupTransport {
         probeConfig.timeoutIntervalForResource = 2
         if localOnly { CleanupNetworkPolicy.configureLocalSession(probeConfig) }
         probeSession = URLSession(configuration: probeConfig, delegate: redirectGuard, delegateQueue: nil)
+#if !os(Linux)
         streamSession = Self.makeStreamSession(localOnly: localOnly)
+#endif
     }
 
     deinit {
         session.invalidateAndCancel()
         probeSession.invalidateAndCancel()
+#if !os(Linux)
         streamSession.invalidateAndCancel()
+#endif
     }
 
+#if !os(Linux)
     static func makeStreamSession(localOnly: Bool = false) -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         // Leerlauf-Timeout: Solange Häppchen fließen, darf die Antwort weiterlaufen.
@@ -53,6 +60,8 @@ final class URLSessionCleanupTransport: CleanupTransport {
         if localOnly { CleanupNetworkPolicy.configureLocalSession(config) }
         return URLSession(configuration: config, delegate: CleanupRedirectGuard(localOnly: localOnly), delegateQueue: nil)
     }
+
+#endif
 
     func data(for request: URLRequest, probing: Bool) async throws -> (Data, URLResponse) {
         try check(request)

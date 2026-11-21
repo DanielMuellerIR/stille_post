@@ -10,13 +10,13 @@ import tarfile
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
-from update import Updater, UpdateError, PRODUCT, update_lock
+from update import Updater, UpdateError, PRODUCT, install_workspace, update_lock
 
 
 class UpdateTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.root = pathlib.Path(self.tmp.name)
+        self.root = pathlib.Path(self.tmp.name).resolve()
         self.bundle = self.root / "stillepost/app/0.9.47"
         (self.bundle / "bin").mkdir(parents=True)
         (self.bundle / "bin/openssl").symlink_to(shutil.which("openssl"))
@@ -223,6 +223,7 @@ class UpdateTests(unittest.TestCase):
         env["STILLEPOST_SKIP_MODEL_SETUP"] = "0"
         version = "0.9.48"
         source = self.install_source(version, "exit 0\n")
+        (source / "VERSION").write_bytes(b" 0.9.48 \r\n")
         model_marker = self.root / "model-attempt"
         env["STILLEPOST_TEST_MODEL_ATTEMPT"] = str(model_marker)
         (source / "setup-models.py").write_text(
@@ -404,6 +405,51 @@ class UpdateTests(unittest.TestCase):
             self.assertEqual(Updater(source).install_local()["version"], "0.9.48")
             self.assertEqual(current.resolve(), root / "0.9.48")
             self.assertFalse((root / ".pending-install").exists())
+
+    def test_recovery_removes_workspace_on_both_sides_of_publishing(self):
+        root = self.bundle.parent
+        target = root / "0.9.48"
+        current = root / "current"
+
+        for published in (False, True):
+            with self.subTest(published=published):
+                pid = os.fork()
+                if pid == 0:
+                    with update_lock(root), install_workspace(root, ".update-") as work:
+                        (work / "package.tar.gz").write_bytes(b"fixture archive")
+                        stage = work / "app"
+                        stage.mkdir()
+                        if published:
+                            with patch.object(Updater, "_switch", side_effect=lambda *_: os._exit(91)):
+                                self.updater._publish(stage, target)
+                        else:
+                            with patch.object(pathlib.Path, "rename", side_effect=lambda *_: os._exit(91)):
+                                self.updater._publish(stage, target)
+                    os._exit(92)
+                _, status = os.waitpid(pid, 0)
+                self.assertEqual(os.waitstatus_to_exitcode(status), 91)
+                self.assertEqual(current.resolve(), self.bundle)
+                self.assertEqual(target.is_dir(), published)
+                work, = [path for path in root.glob(".update-*") if path.is_dir()]
+                self.assertTrue((work / "package.tar.gz").is_file())
+
+                with update_lock(root):
+                    self.assertEqual(current.resolve(), self.bundle)
+                    self.assertFalse(target.exists())
+                    self.assertFalse(work.exists())
+                    self.assertFalse((root / ".pending-install").exists())
+
+    def test_app_root_symlink_is_canonical_for_activation_and_resume(self):
+        source = self.install_source("0.9.47", "exit 0\n")
+        (self.bundle / "VERSION").write_text("0.9.47\n")
+        shutil.copy2(source / "bin/stillepost-linux", self.bundle / "bin/stillepost-linux")
+        root = self.bundle.parent
+        relocated = self.root / "relocated-apps"
+        root.rename(relocated)
+        root.symlink_to(relocated, target_is_directory=True)
+        with patch.dict(os.environ, {"XDG_DATA_HOME": str(self.root)}):
+            self.assertEqual(Updater(self.bundle).activation(), 0)
+            self.assertTrue(Updater(source).install_local()["resumed"])
 
     def tearDown(self):
         self.tmp.cleanup()

@@ -143,8 +143,8 @@ public final class CleanupService: Sendable {
         }
         if plan.restoringLiterals(cleaned.text, cleanup: config) != nil,
            let shadow = plan.shadow(cleaned.text), let output = plan.render(cleaned.text),
-           case .accepted(_, let reverted) = Self.reconcile(raw: plan.expectedForValidation(config), cleaned: shadow,
-                dictionary: Self.normalizedDictionary(config.dictionary)), reverted == 0 {
+           case .accepted(_, let reverted) = TranscriptReconciler.reconcile(raw: plan.expectedForValidation(config), cleaned: shadow,
+                dictionary: TranscriptReconciler.normalizedDictionary(config.dictionary)), reverted == 0 {
             return Result(text: output, usedFallback: false, fallbackReason: cleaned.fallbackReason,
                           endpoint: cleaned.endpoint, origin: .cleanup)
         }
@@ -202,8 +202,8 @@ public final class CleanupService: Sendable {
                     }
                     checked = restored
                 } else { checked = cleaned }
-                switch Self.reconcile(raw: prepared, cleaned: checked,
-                                      dictionary: Self.normalizedDictionary(config.dictionary)) {
+                switch TranscriptReconciler.reconcile(raw: prepared, cleaned: checked,
+                                      dictionary: TranscriptReconciler.normalizedDictionary(config.dictionary)) {
                 case .rejected(let reason):
                     return Result(text: TranscriptPolish.repairPunctuation(trimmed),
                                   usedFallback: true, fallbackReason: reason,
@@ -456,31 +456,6 @@ public final class CleanupService: Sendable {
     /// abgelehnt" oder "Netzwerk weg" melden sich mit einem anderen Code.
     private static func isIdleTimeout(_ error: Error) -> Bool {
         (error as? URLError)?.code == .timedOut
-    }
-
-    // MARK: - Plausibilitäts- und Worttreue-Abgleich
-
-    /// Ergebnis des Abgleichs zwischen Rohtext und LLM-Ausgabe.
-    public enum Reconciliation: Equatable {
-        /// Ausgabe insgesamt unbrauchbar (Markdown, extreme Länge, überwiegend
-        /// veränderte Wörter) — der Aufrufer nimmt den Rohtext, `reason` erklärt warum.
-        case rejected(reason: String)
-        /// Ausgabe verwendbar. `revertedClauses` > 0 heißt: einzelne Satzteile
-        /// wurden chirurgisch auf den Rohtext zurückgesetzt, der Rest bleibt bereinigt.
-        case accepted(text: String, revertedClauses: Int)
-    }
-
-    static func reconcile(raw: String, cleaned: String,
-                          dictionary: Set<String> = []) -> Reconciliation {
-        TranscriptReconciler.reconcile(raw: raw, cleaned: cleaned, dictionary: dictionary)
-    }
-
-    static func preservesFormattingPosition(raw: String, cleaned: String) -> Bool {
-        TranscriptReconciler.preservesFormattingPosition(raw: raw, cleaned: cleaned)
-    }
-
-    static func normalizedDictionary(_ terms: [String]) -> Set<String> {
-        TranscriptReconciler.normalizedDictionary(terms)
     }
 
     // MARK: - Provider: Ollama (lokal oder anderer Rechner im eigenen Netz)

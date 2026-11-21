@@ -3,7 +3,12 @@ import Security
 import StillePostClientCore
 
 actor BridgeKeychain {
-    private let service = "io.github.danielmuellerir.stillepost.ios.bridge"
+    private let service: String
+    init(testPairingID: UUID? = nil) {
+        let productionService = "io.github.danielmuellerir.stillepost.ios.bridge"
+        service = testPairingID.map { productionService + ".uitest." + $0.uuidString } ?? productionService
+    }
+
     private var query: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
          kSecAttrAccount as String: "bridge-token", kSecAttrSynchronizable as String: false]

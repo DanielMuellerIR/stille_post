@@ -248,7 +248,7 @@ public final class BridgeServer: @unchecked Sendable {
     func restartForCredentialChange() {
         queue.async { [self] in
             guard running || listener != nil else { return }
-            stopOnQueue(startError: CancellationError())
+            stopOnQueue(startError: nil)
             startCallbacks.append { [weak self] result in
                 if case .failure = result { self?.log(L10n.text("core.bridge.identity_failed")) }
             }
@@ -293,7 +293,7 @@ public final class BridgeServer: @unchecked Sendable {
         }
     }
 
-    private func stopOnQueue(startError: Error,
+    private func stopOnQueue(startError: Error?,
                              completion: (@Sendable () -> Void)? = nil) {
         if let completion { stopCallbacks.append(completion) }
         if let stopped = listener {
@@ -314,7 +314,14 @@ public final class BridgeServer: @unchecked Sendable {
             stopped.cancel()
         }
         running = false
-        finishStart(.failure(startError))
+        if let startError {
+            finishStart(.failure(startError))
+        } else {
+            // Ein interner Neustart beantwortet ausstehende Startaufrufe erst
+            // mit dem Ergebnis des Ersatzlisteners.
+            startTimeout?.cancel()
+            startTimeout = nil
+        }
         for session in Array(sessions.values) {
             session.connection.cancel()
             finish(session)

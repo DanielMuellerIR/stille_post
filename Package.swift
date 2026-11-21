@@ -1,4 +1,4 @@
-// swift-tools-version:6.0
+// swift-tools-version:6.2
 // Stille Post — lokale Diktier-App mit Whisper und optionaler Textbereinigung.
 // Aufbau:
 //   StillePostCore  — die gesamte Logik ohne GUI (Aufnahme, VAD, Whisper, Ollama, Verlauf).

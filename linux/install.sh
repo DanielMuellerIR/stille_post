@@ -2,13 +2,19 @@
 # Benutzerlokale Installation; Config, Verlauf und Modelle bleiben separat.
 set -eu
 source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-version=$(cat "$source_dir/VERSION")
 install_root="${XDG_DATA_HOME:-$HOME/.local/share}/stillepost/app"
 if ! result=$(python3 "$source_dir/update.py" install-local); then
     printf '%s\n' "$result" >&2
     exit 1
 fi
-resumed=$(printf '%s\n' "$result" | python3 -c 'import json, sys; print(int(json.load(sys.stdin).get("resumed", False)))')
+installation=$(printf '%s\n' "$result" | python3 -c '
+import json, sys
+result = json.load(sys.stdin)
+print(result["version"], int(result.get("resumed", False)))
+')
+read -r version resumed <<EOF
+$installation
+EOF
 installed_dir="$install_root/$version"
 bin_dir="$HOME/.local/bin"
 desktop_dir="${XDG_DATA_HOME:-$HOME/.local/share}/applications"

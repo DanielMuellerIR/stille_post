@@ -24,11 +24,12 @@ import UniformTypeIdentifiers
     @Published var copied = false
     private let session: DictationSession
     private let bridge: any BridgeAccess
-    private let keychain = BridgeKeychain()
+    private let keychain: BridgeKeychain
     private var connectionTask: Task<Void, Never>?
     private var actionTask: Task<Void, Never>?
     private var actionGeneration = UUID()
-    private let configurationKey = "bridge.configuration"
+    private let configurationKey: String
+    let usesTestPairing: Bool
 
     var busy: Bool {
         pendingAction || [.permission, .recording, .sending, .transcribing, .stopping, .cleaning].contains(state.phase)
@@ -47,7 +48,17 @@ import UniformTypeIdentifiers
         offline: (any OfflineDictating)? = nil
     ) {
         self.bridge = bridge
-        let mode = UserDefaults.standard.string(forKey: "dictation.mode").flatMap(DictationMode.init(rawValue:)) ?? .mac
+#if DEBUG
+        let testPairingID = ProcessInfo.processInfo.environment["STILLEPOST_MOBILE_TEST_PAIRING_ID"]
+            .flatMap(UUID.init(uuidString:))
+#else
+        let testPairingID: UUID? = nil
+#endif
+        keychain = BridgeKeychain(testPairingID: testPairingID)
+        usesTestPairing = testPairingID != nil
+        configurationKey = testPairingID.map { "bridge.configuration.uitest." + $0.uuidString } ?? "bridge.configuration"
+        let mode = testPairingID != nil ? .mac
+            : UserDefaults.standard.string(forKey: "dictation.mode").flatMap(DictationMode.init(rawValue:)) ?? .mac
         let language =
             UserDefaults.standard.string(forKey: "dictation.language").flatMap(DictationLanguage.init(rawValue:)) ?? .de
         session = DictationSession(
@@ -66,7 +77,19 @@ import UniformTypeIdentifiers
         guard !busy else { return }
         pendingAction = true
         do {
-            if let credentials = try await keychain.load() {
+            var credentials = try await keychain.load()
+#if DEBUG
+            if credentials == nil, usesTestPairing {
+                let fixture = BridgeCredentials(
+                    configuration: BridgeConfiguration(address: "https://127.0.0.1:2",
+                        fingerprint: String(repeating: "a", count: 64)),
+                    token: UUID().uuidString
+                )
+                try await keychain.save(fixture)
+                credentials = fixture
+            }
+#endif
+            if let credentials {
                 try Task.checkCancellation()
                 configuration = credentials.configuration
                 hasToken = true
@@ -76,7 +99,7 @@ import UniformTypeIdentifiers
         }
         pendingAction = false
         #if DEBUG
-            if !Task.isCancelled,
+            if !Task.isCancelled, !usesTestPairing,
                 ProcessInfo.processInfo.environment["STILLEPOST_MOBILE_IMPORT_TEST_CONNECTION"] == "1"
             {
                 await importDevelopmentConnection()

@@ -75,6 +75,25 @@ final class ModelDownloadTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: target), data)
     }
 
+    func testUnknownLengthFullResponseKeepsOlderProgressUntilItCatchesUp() async throws {
+        let target = try destination(), data = data
+        let previous = Data("prior".utf8)
+        for count in [0, 3, 8] {
+            try previous.write(to: target)
+            let transport = downloader { request in
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Range"), "bytes=5-")
+                return .init(status: 200, headers: [:], parts: [data.prefix(count)])
+            }
+            do {
+                try await transport.download(file(), to: target) { _ in }
+                XCTFail("Unvollständige Vollantwort muss scheitern")
+            } catch { XCTAssertEqual(error as? LocalModelFailure, .integrity) }
+            XCTAssertEqual(try Data(contentsOf: target), count < previous.count ? previous : data.prefix(count))
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(
+                atPath: target.deletingLastPathComponent().path), [target.lastPathComponent])
+        }
+    }
+
     func testMismatchedRangeIsRejectedBeforeWriting() async throws {
         let target = try destination(), data = data
         try data.prefix(5).write(to: target)

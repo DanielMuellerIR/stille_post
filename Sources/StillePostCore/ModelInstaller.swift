@@ -182,31 +182,73 @@ public final class ModelInstaller: Sendable {
             throw InstallError.incomplete(got: finalSize, expected: expected, partialPath: partialPath)
         }
 
-        guard try Self.digest(at: partialPath, expected: expected) == sha256 else {
+        let destination = URL(fileURLWithPath: path)
+        let stage = destination.deletingLastPathComponent().appendingPathComponent(".model-stage-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: false,
+                                                attributes: [.posixPermissions: 0o700])
+        let directory = stage.path.withCString { open($0, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) }
+        guard directory >= 0 else {
+            let error = POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+            _ = stage.path.withCString { rmdir($0) }
+            throw error
+        }
+
+        var stageInfo = stat()
+        guard fstat(directory, &stageInfo) == 0, stageInfo.st_uid == geteuid(),
+              stageInfo.st_mode & 0o777 == 0o700 else {
+            _ = close(directory)
+            throw InstallError.partialNotReplaceable(partialPath)
+        }
+
+        let name = "model"
+        var restorePartial = false
+        defer {
+            // Ein anderer Installer darf keine neu angelegte Teildatei verlieren.
+            // Bei einem Dateisystemfehler bleibt die gesicherte Kopie erhalten.
+            let restored = !restorePartial || partialPath.withCString {
+                linkat(directory, name, AT_FDCWD, $0, 0) == 0 || errno == EEXIST
+            }
+            if restored {
+                _ = unlinkat(directory, name, 0)
+                _ = stage.path.withCString { rmdir($0) }
+            }
+            _ = close(directory)
+        }
+        guard partialPath.withCString({ renameat(AT_FDCWD, $0, directory, name) }) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        restorePartial = true
+        guard try Self.digest(in: directory, name: name, partialPath: partialPath, expected: expected) == sha256 else {
             // Eine vollständige, falsche Datei kann nicht mehr fortgesetzt werden.
-            let removed = partialPath.withCString { unlink($0) }
-            if removed != 0 && errno != ENOENT { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+            restorePartial = false
             throw InstallError.checksumMismatch
         }
         try Task.checkCancellation()
         if Self.targetKind(atPath: path) == .unsupported {
             throw InstallError.targetNotReplaceable(path)
         }
-        // rename ersetzt die alte Datei beziehungsweise den Link in einem Schritt.
-        let result = partialPath.withCString { source in path.withCString { rename(source, $0) } }
-        if result != 0 { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        // Der offene Verzeichnisdeskriptor bindet die geprüfte Datei an die
+        // Veröffentlichung, auch wenn der äußere Verzeichnispfad umbenannt wird.
+        guard path.withCString({ renameat(directory, name, AT_FDCWD, $0) }) == 0 else {
+            throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+        }
+        restorePartial = false
     }
 
-    private static func digest(at path: String, expected: Int64) throws -> String {
-        let descriptor = path.withCString { open($0, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC) }
-        guard descriptor >= 0 else { throw InstallError.partialNotReplaceable(path) }
+    private static func digest(in directory: Int32, name: String, partialPath: String, expected: Int64) throws -> String {
+        let descriptor = openat(directory, name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC)
+        guard descriptor >= 0 else { throw InstallError.partialNotReplaceable(partialPath) }
         defer { _ = close(descriptor) }
         var metadata = stat()
         guard fstat(descriptor, &metadata) == 0, (metadata.st_mode & S_IFMT) == S_IFREG,
-              metadata.st_size == expected else { throw InstallError.partialNotReplaceable(path) }
+              metadata.st_size == expected else { throw InstallError.partialNotReplaceable(partialPath) }
 #if os(Linux)
         var digest = [UInt8](repeating: 0, count: 32)
-        guard sp_model_sha256(descriptor, UInt64(expected), &digest) == 1 else { throw CocoaError(.fileReadUnknown) }
+        let hashed = sp_model_sha256(descriptor, UInt64(expected), &digest) {
+            Task<Never, Never>.isCancelled ? 1 : 0
+        }
+        try Task.checkCancellation()
+        guard hashed == 1 else { throw CocoaError(.fileReadUnknown) }
         return digest.map { String(format: "%02x", $0) }.joined()
 #else
         var digest = SHA256()

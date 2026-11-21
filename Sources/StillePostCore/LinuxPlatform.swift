@@ -11,18 +11,27 @@ enum LinuxInstallation {
         return URL(fileURLWithPath: executable).deletingLastPathComponent()
     }()
 
-    private static let managedRoot: URL = {
+    private static let configuredManagedRoot: URL = {
         let configured = ProcessInfo.processInfo.environment["XDG_DATA_HOME"] ?? ""
         let dataHome = configured.isEmpty
             ? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".local/share")
             : URL(fileURLWithPath: configured)
-        return dataHome.resolvingSymlinksInPath().appendingPathComponent("stillepost/app")
+        return dataHome.appendingPathComponent("stillepost/app")
     }()
 
+    private static let managedRoot = configuredManagedRoot.resolvingSymlinksInPath()
+
     static func migrateWhisperBinaryPath(_ path: String) -> String {
-        let prefix = managedRoot.path + "/"
+        // Einstellungen können unter dem konfigurierten Alias oder einem
+        // aufgelösten Installationspfad gespeichert worden sein.
+        let prefixes = [
+            configuredManagedRoot,
+            configuredManagedRoot.deletingLastPathComponent().deletingLastPathComponent()
+                .resolvingSymlinksInPath().appendingPathComponent("stillepost/app"),
+            managedRoot,
+        ].map { $0.path + "/" }
         // Linux unterscheidet auch Unicode-Pfade mit verschiedener Bytefolge.
-        guard path.utf8.starts(with: prefix.utf8) else { return path }
+        guard let prefix = prefixes.first(where: { path.utf8.starts(with: $0.utf8) }) else { return path }
         let relativePath = String(decoding: path.utf8.dropFirst(prefix.utf8.count), as: UTF8.self)
         let components = relativePath.split(separator: "/", omittingEmptySubsequences: false)
         guard components.count == 3, isReleaseVersion(String(components[0])),

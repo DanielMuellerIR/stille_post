@@ -29,7 +29,7 @@ class UpdateError(Exception):
 
 def install_root():
     data_home = os.environ.get("XDG_DATA_HOME") or pathlib.Path.home() / ".local/share"
-    return pathlib.Path(data_home).resolve() / "stillepost/app"
+    return (pathlib.Path(data_home) / "stillepost/app").resolve()
 
 
 def valid_version(version):
@@ -72,6 +72,35 @@ def version_record(root, active):
     return legacy
 
 
+def installed_identity(path):
+    metadata = path.lstat()
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise UpdateError("Installationsrest ist kein Arbeitsverzeichnis.")
+    return {"device": metadata.st_dev, "inode": metadata.st_ino}
+
+
+def write_pending_install(root, work, entry):
+    marker = work / "pending-install"
+    marker.write_text(json.dumps(entry))
+    os.replace(marker, root / ".pending-install")
+
+
+@contextmanager
+def install_workspace(root, prefix):
+    work = pathlib.Path(tempfile.mkdtemp(prefix=prefix, dir=root))
+    identity = installed_identity(work)
+    try:
+        write_pending_install(root, work, {"work": work.name, "work_identity": identity})
+    except OSError:
+        if installed_identity(work) == identity:
+            shutil.rmtree(work)
+        raise
+    try:
+        yield work
+    finally:
+        recover_pending_install(root)
+
+
 def recover_pending_install(root):
     journal = root / ".pending-install"
     try:
@@ -80,30 +109,46 @@ def recover_pending_install(root):
         return
     except (ValueError, UnicodeError):
         raise UpdateError("Installationsrest kann nicht geprüft werden.") from None
-    if (
-        not isinstance(entry, dict)
-        or not valid_version(entry.get("version"))
-        or type(entry.get("device")) is not int
-        or type(entry.get("inode")) is not int
-    ):
+    if not isinstance(entry, dict) or ("version" not in entry and "work" not in entry):
         raise UpdateError("Installationsrest kann nicht geprüft werden.")
 
-    destination = root / entry["version"]
-    active = (root / "current").resolve()
-    previous = version_record(root, active.name).get("previous")
-    if (
-        active != destination
-        and previous != destination.name
-        and os.path.lexists(destination)
-    ):
-        metadata = destination.lstat()
+    def verified_directory(path, identity):
         if (
-            not stat.S_ISDIR(metadata.st_mode)
-            or metadata.st_dev != entry["device"]
-            or metadata.st_ino != entry["inode"]
+            not isinstance(identity, dict)
+            or type(identity.get("device")) is not int
+            or type(identity.get("inode")) is not int
         ):
+            raise UpdateError("Installationsrest kann nicht geprüft werden.")
+        if not os.path.lexists(path):
+            return None
+        if installed_identity(path) != {"device": identity["device"], "inode": identity["inode"]}:
             raise UpdateError("Installationsrest hat sich inzwischen geändert.")
-        shutil.rmtree(destination)
+        return path
+
+    work = None
+    if "work" in entry:
+        name = entry["work"]
+        if not isinstance(name, str) or re.fullmatch(r"\.(?:install|update)-[a-z0-9_]{8}", name) is None:
+            raise UpdateError("Installationsrest kann nicht geprüft werden.")
+        work = verified_directory(root / name, entry.get("work_identity"))
+
+    destination = None
+    if "version" in entry:
+        if (
+            not valid_version(entry["version"])
+            or type(entry.get("device")) is not int
+            or type(entry.get("inode")) is not int
+        ):
+            raise UpdateError("Installationsrest kann nicht geprüft werden.")
+        candidate = root / entry["version"]
+        active = (root / "current").resolve()
+        previous = version_record(root, active.name).get("previous")
+        if active != candidate and previous != candidate.name:
+            destination = verified_directory(candidate, entry)
+
+    for leftover in (destination, work):
+        if leftover is not None:
+            shutil.rmtree(leftover)
     journal.unlink()
 
 
@@ -283,8 +328,7 @@ class Updater:
             activation = self.activation()
             if activation is None:
                 raise UpdateError("Bitte das Update über die aktive App starten.")
-            with tempfile.TemporaryDirectory(prefix=".update-", dir=root) as temp:
-                work = pathlib.Path(temp)
+            with install_workspace(root, ".update-") as work:
                 manifest = work / "manifest"
                 signature = work / "signature"
                 archive = work / "package.tar.gz"
@@ -359,8 +403,8 @@ class Updater:
                 self._probe_local_bundle(destination)
                 return {"installed": True, "version": version, "resumed": True}
 
-            with tempfile.TemporaryDirectory(prefix=".install-", dir=root) as temp:
-                stage = pathlib.Path(temp) / "app"
+            with install_workspace(root, ".install-") as work:
+                stage = work / "app"
                 shutil.copytree(self.bundle, stage, symlinks=True)
                 self._probe_local_bundle(stage)
                 self._publish(stage, destination)
@@ -389,23 +433,15 @@ class Updater:
 
     def _publish(self, stage, destination):
         root = destination.parent
-        metadata = stage.stat()
-        marker = stage.parent / "pending-install"
-        marker.write_text(
-            json.dumps(
-                {
-                    "version": destination.name,
-                    "device": metadata.st_dev,
-                    "inode": metadata.st_ino,
-                }
-            )
-        )
-        os.replace(marker, root / ".pending-install")
-        try:
-            stage.rename(destination)
-            self._switch(root, destination.name)
-        finally:
-            recover_pending_install(root)
+        work = stage.parent
+        write_pending_install(root, work, {
+            "version": destination.name,
+            **installed_identity(stage),
+            "work": work.name,
+            "work_identity": installed_identity(work),
+        })
+        stage.rename(destination)
+        self._switch(root, destination.name)
 
     @staticmethod
     def extract(archive, destination):

@@ -111,7 +111,7 @@ for payload, message in [(b'\xff', 'ungültiges UTF-8'), (b'a' * (byte_limit + 1
     result = cleanup(payload)
     assert result.returncode == 2 and not result.stdout and message.encode() in result.stderr
 
-aborting = [signal.SIGTSTP, signal.SIGTTIN]
+aborting = [signal.SIGTSTP, signal.SIGTTIN, signal.SIGTTOU]
 for interrupt in [signal.SIGHUP, signal.SIGINT, signal.SIGQUIT, signal.SIGTERM, *aborting, None]:
     master, terminal = pty.openpty()
     try:

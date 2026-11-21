@@ -10,6 +10,23 @@ Messwerte, verworfene Alternativen, Fallstricke — steht im jeweils genannten
 Commit; hier steht nur, was sich für den Nutzer geändert hat. Ab 0.8.2 wird die
 Datei mit dem Versions-Bump fortgeschrieben.
 
+## [0.9.58] — 2026-11-21
+
+### Korrigiert
+
+- Das macOS-Menü zeigt den Privatmodus für das Profil der Vordergrund-App.
+  Ein interner Bridge-Neustart meldet das Ergebnis des Ersatzlisteners.
+- Die CLI stellt den Terminalzustand auch nach einer unterbrochenen
+  Hintergrundausgabe wieder her. Erst nach der Echo-Umschaltung eingelesene
+  Zeichen können Teil der Schlüsseleingabe sein.
+- iOS behält den bisherigen Modellfortschritt, bis eine neu begonnene
+  Vollantwort ihn erreicht. Der Gerätetest nutzt eine eigene Testkopplung.
+- Linux räumt abgebrochene Update-Arbeitsverzeichnisse auf und erkennt
+  Installationen unter einem verlinkten App-Verzeichnis. Das Setup übernimmt
+  die vom Paket bestätigte Versionsnummer.
+- Modellinstallationen veröffentlichen die Datei aus dem geschützten
+  Prüfverzeichnis. Unter Linux lässt sich die Hashprüfung abbrechen.
+
 ## [0.9.57] — 2026-11-21
 
 ### Korrigiert

@@ -594,6 +594,17 @@ class PipelineTests(unittest.TestCase):
             read_configuration(new_version)["whisper"]["binaryPath"], new_path
         )
 
+        canonical_root = managed_root.with_name("relocated-apps")
+        managed_root.rename(canonical_root)
+        managed_root.symlink_to(canonical_root, target_is_directory=True)
+        for stored_root in (managed_root, canonical_root):
+            saved["whisper"]["binaryPath"] = str(stored_root / old_version / "bin/whisper-server")
+            config_path.write_text(json.dumps(saved))
+            self.assertEqual(
+                read_configuration(new_version)["whisper"]["binaryPath"],
+                str(canonical_root / new_version / "bin/whisper-server"),
+            )
+
         for configured in (
             managed_root / old_version / "bin/whisper-custom",
             data_home / "other/app/0.8.5/bin/whisper-server",

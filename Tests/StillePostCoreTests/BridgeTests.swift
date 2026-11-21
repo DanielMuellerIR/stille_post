@@ -321,6 +321,40 @@ final class BridgeTests: XCTestCase {
         XCTAssertFalse(server.isRunning)
     }
 
+    func testRotationDuringStartDeliversReplacementErrorToOriginalCallback() throws {
+        let firstIdentity = expectation(description: "Erster Start wartet auf Identität")
+        let returned = expectation(description: "Ersatzstart beantwortet den ersten Aufruf")
+        let release = DispatchSemaphore(value: 0)
+        let calls = LockedTestValue(0)
+        struct ReplacementFailure: Error {}
+        let identity = try Self.serverIdentity()
+        var bridge = Config.Bridge()
+        bridge.port = Int.random(in: 20_000...55_000)
+        let server = BridgeServer(config: bridge, router: makeBridgeRouter(), identityProvider: {
+            let call = calls.update { value in value += 1; return value }
+            if call == 1 {
+                firstIdentity.fulfill()
+                _ = release.wait(timeout: .now() + 2)
+                return identity
+            }
+            throw ReplacementFailure()
+        })
+        defer { server.stop() }
+        server.start { result in
+            switch result {
+            case .success: XCTFail("Der ursprüngliche Start darf keinen Erfolg melden.")
+            case .failure(let failure): XCTAssertTrue(failure is ReplacementFailure, "\(failure)")
+            }
+            returned.fulfill()
+        }
+        wait(for: [firstIdentity], timeout: 3)
+        server.restartForCredentialChange()
+        release.signal()
+        wait(for: [returned], timeout: 5)
+        XCTAssertEqual(calls.snapshot, 2)
+        XCTAssertFalse(server.isRunning)
+    }
+
     func testStopCompletionReleasesPortForReplacement() throws {
         let (old, port) = try startServer(router: makeBridgeRouter())
         let stopped = expectation(description: "Listener hat Port freigegeben")

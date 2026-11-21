@@ -405,8 +405,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
                 guard let self, let server, self.bridge === server,
                       self.bridgeGeneration == generation else { return }
                 self.bridgeStarting = false
-                // Eine Schlüsselrotation kann den ersten Start abbrechen und
-                // dieselbe Serverinstanz intern neu starten.
                 if case .failure(let error) = result, !(error is CancellationError) {
                     self.bridge = nil
                     let message = L10n.format("app.bridge_start_failed", error.localizedDescription)
@@ -502,14 +500,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         }
     }
 
+    private var profileHistoryPolicy: Config.History {
+        config.resolvedForRequest(appBundleID: targetAppBundleID).history
+    }
+
     private var effectiveHistoryPolicy: Config.History {
-        var policy = config.resolvedForRequest().history
+        var policy = profileHistoryPolicy
         if temporaryPrivateHistory { policy.storeText = false }
         return policy
     }
 
     @objc private func togglePrivateHistory() {
-        guard config.resolvedForRequest().history.storeText else { return }
+        guard profileHistoryPolicy.storeText else { return }
         temporaryPrivateHistory.toggle()
         engine.suppressTranscriptPreview()
         launchHarness?.tracePrivateHistory(storesText: effectiveHistoryPolicy.storeText)
@@ -1006,7 +1008,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             menuItem.title = L10n.text(engine.state == .paused ? "recording.resume" : "recording.pause")
             return engine.state == .recording || engine.state == .paused
         }
-        if menuItem.action == #selector(togglePrivateHistory) { return config.resolvedForRequest().history.storeText }
+        if menuItem.action == #selector(togglePrivateHistory) {
+            menuItem.state = effectiveHistoryPolicy.storeText ? .off : .on
+            return profileHistoryPolicy.storeText
+        }
         return menuItem.action != #selector(showLastResult) ||
             ((resultMemory.last != nil || resultPreview.isVisible) && canRecallResult)
     }

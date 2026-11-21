@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public struct HTTPSModelDownloader: LocalModelDownloading, @unchecked Sendable {
@@ -29,6 +30,8 @@ private final class ModelDownloadOperation: NSObject, URLSessionDataDelegate, @u
     // Empfang und Dateioperationen laufen ausschließlich auf der seriellen Delegate-Queue.
     private var handle: FileHandle?
     private var received: Int64 = 0
+    private var existingBytes: Int64 = 0
+    private var fullResponseFile: URL?
     private var failure: LocalModelFailure?
     private var accepted = false
     private var lastProgress = Date.distantPast
@@ -106,14 +109,23 @@ private final class ModelDownloadOperation: NSObject, URLSessionDataDelegate, @u
             failure = .invalidResponse; completionHandler(.cancel); return
         }
         if offset == 0, received > 0 {
-            // Manche CDNs ignorieren Range. Erst nach Prüfung der Vollantwort neu beginnen.
+            // Die vorherige Teildatei bleibt nutzbar, bis die Vollantwort sie einholt.
+            let replacement = destination.deletingLastPathComponent().appendingPathComponent(
+                ".model-download-\(UUID().uuidString)"
+            )
+            guard FileManager.default.createFile(atPath: replacement.path, contents: nil,
+                attributes: [.posixPermissions: 0o600]) else {
+                failure = .storage; completionHandler(.cancel); return
+            }
+            fullResponseFile = replacement
             do {
-                try handle?.truncate(atOffset: 0)
-                try handle?.seek(toOffset: 0)
+                try handle?.close()
+                handle = try FileHandle(forWritingTo: replacement)
+                existingBytes = received
                 received = 0
             } catch { failure = .storage; completionHandler(.cancel); return }
         }
-        accepted = true; progress(received); completionHandler(.allow)
+        accepted = true; progress(max(received, existingBytes)); completionHandler(.allow)
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
@@ -126,13 +138,34 @@ private final class ModelDownloadOperation: NSObject, URLSessionDataDelegate, @u
             received += Int64(data.count)
             let now = Date()
             if received == file.size || now.timeIntervalSince(lastProgress) >= 0.1 {
-                lastProgress = now; progress(received)
+                lastProgress = now; progress(max(received, existingBytes))
             }
         } catch { failure = .storage; dataTask.cancel() }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
-        try? handle?.close(); handle = nil
+        do {
+            if let handle {
+                if fullResponseFile != nil, failure == nil, received >= existingBytes {
+                    try handle.synchronize()
+                }
+                try handle.close()
+            }
+        } catch { failure = .storage }
+        handle = nil
+        if let replacement = fullResponseFile {
+            if failure == nil, received >= existingBytes {
+                let moved = replacement.withUnsafeFileSystemRepresentation { source in
+                    destination.withUnsafeFileSystemRepresentation { target -> Bool in
+                        guard let source, let target else { return false }
+                        return rename(source, target) == 0
+                    }
+                }
+                if !moved { failure = .storage }
+            }
+            try? FileManager.default.removeItem(at: replacement)
+            fullResponseFile = nil
+        }
         lock.lock()
         let waiting = continuation; continuation = nil; self.task = nil
         let wasCancelled = cancelled

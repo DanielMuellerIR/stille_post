@@ -6,13 +6,13 @@ final class TranscriptReconciliationTests: XCTestCase {
 
     /// Kurzform: Abgleich ohne Wörterbuch — akzeptiert die Ausgabe unverändert?
     private func acceptsUnchanged(raw: String, cleaned: String) -> Bool {
-        CleanupService.reconcile(raw: raw, cleaned: cleaned)
+        TranscriptReconciler.reconcile(raw: raw, cleaned: cleaned)
             == .accepted(text: cleaned, revertedClauses: 0)
     }
 
     /// Kurzform: Abgleich ohne Wörterbuch — komplett verworfen (Rohtext-Fallback)?
     private func rejects(raw: String, cleaned: String) -> Bool {
-        if case .rejected = CleanupService.reconcile(raw: raw, cleaned: cleaned) {
+        if case .rejected = TranscriptReconciler.reconcile(raw: raw, cleaned: cleaned) {
             return true
         }
         return false
@@ -65,7 +65,7 @@ final class TranscriptReconciliationTests: XCTestCase {
         // DER Kernfall der neuen Prüfung: Ein verändertes Wort verwirft nicht mehr
         // die ganze Bereinigung, sondern setzt nur den betroffenen Satzteil zurück —
         // die korrekten Korrekturen der übrigen Satzteile bleiben erhalten.
-        let result = CleanupService.reconcile(
+        let result = TranscriptReconciler.reconcile(
             raw: "das machen wir ähm mit dem tool außerdem verbinden wir die geräte",
             cleaned: "Das machen wir mit dem Tool, außerdem verwenden wir die Geräte."
         )
@@ -79,7 +79,7 @@ final class TranscriptReconciliationTests: XCTestCase {
         // Die Rücksetzung baut den Satzteil aus dem Original-Substring wieder
         // auf — Schräg- und Bindestriche ("CI/CD-Workflow") dürfen dabei nicht
         // zu Leerzeichen zerfallen (früherer Fehler: "CI CD Workflow").
-        let result = CleanupService.reconcile(
+        let result = TranscriptReconciler.reconcile(
             raw: "wir bauen den CI/CD-Workflow ähm morgen um außerdem testen wir alles",
             cleaned: "Wir reparieren den CI/CD-Workflow morgen um, außerdem testen wir alles."
         )
@@ -104,7 +104,7 @@ final class TranscriptReconciliationTests: XCTestCase {
             cleanWords.append(word)
             if index % 7 == 0 { rawWords.append("ähm") }  // Füllwörter, die gelöscht werden
         }
-        let result = CleanupService.reconcile(raw: rawWords.joined(separator: " "),
+        let result = TranscriptReconciler.reconcile(raw: rawWords.joined(separator: " "),
                                               cleaned: cleanWords.joined(separator: " "))
         XCTAssertEqual(result, .accepted(text: cleanWords.joined(separator: " "),
                                          revertedClauses: 0))
@@ -200,8 +200,8 @@ final class TranscriptReconciliationTests: XCTestCase {
         let raw = "mein mini macs abo läuft diese woche aus und wird nicht verlängert"
         let cleaned = "Mein MiniMax Abo läuft diese Woche aus und wird nicht verlängert."
         XCTAssertEqual(
-            CleanupService.reconcile(raw: raw, cleaned: cleaned,
-                                     dictionary: CleanupService.normalizedDictionary(["MiniMax"])),
+            TranscriptReconciler.reconcile(raw: raw, cleaned: cleaned,
+                                     dictionary: TranscriptReconciler.normalizedDictionary(["MiniMax"])),
             .accepted(text: cleaned, revertedClauses: 0)
         )
         // Ohne Wörterbuch bleibt es eine unzulässige Ersetzung (ein Satzteil,
@@ -257,7 +257,7 @@ final class TranscriptReconciliationTests: XCTestCase {
     func testReconcileRevertsOnlyTheNegationClause() {
         // Die Sperrliste wirkt wie jede andere unzulässige Ersetzung: Nur der
         // betroffene Satzteil geht auf den Rohtext zurück, der Rest bleibt geputzt.
-        let result = CleanupService.reconcile(
+        let result = TranscriptReconciler.reconcile(
             raw: "das ist kein problem, wir machen das ähm morgen",
             cleaned: "Das ist ein Problem, wir machen das morgen."
         )
@@ -299,7 +299,7 @@ final class TranscriptReconciliationTests: XCTestCase {
         // muss die Rücksetzung chirurgisch bleiben: nur der Satzteil, aus dem sie
         // verschwunden ist, geht auf den Rohtext zurück — der zweite bleibt geputzt
         // (dort wird das Füllwort "ähm" weiterhin entfernt).
-        let result = CleanupService.reconcile(
+        let result = TranscriptReconciler.reconcile(
             raw: "das geht so nicht, wir machen das ähm morgen",
             cleaned: "Das geht so, wir machen das morgen."
         )
@@ -314,7 +314,7 @@ final class TranscriptReconciliationTests: XCTestCase {
         // trotzdem dem Ausgabe-Wort DAVOR zuzuschlagen setzte den falschen —
         // nämlich unveränderten — ersten Satz zurück, und die Verneinung hing
         // als Rest an dessen Ende („erster satz. nicht Machen wir das.“).
-        let result = CleanupService.reconcile(
+        let result = TranscriptReconciler.reconcile(
             raw: "erster satz. nicht machen wir das",
             cleaned: "Erster Satz. Machen wir das."
         )
@@ -328,7 +328,7 @@ final class TranscriptReconciliationTests: XCTestCase {
         // Die Löschungslücke enthält mehr als die Verneinung. Entscheidend ist
         // die Satzgrenze INNERHALB der Lücke: `nicht` gehört zum zweiten Satz,
         // das Füllwort davor darf trotzdem verschwinden.
-        let result = CleanupService.reconcile(
+        let result = TranscriptReconciler.reconcile(
             raw: "erster satz ähm. nicht machen wir das",
             cleaned: "Erster Satz. Machen wir das."
         )
@@ -339,7 +339,7 @@ final class TranscriptReconciliationTests: XCTestCase {
 
         // Die Satzgrenze kann auch VOR dem Füllwort liegen. Sie gehört trotzdem
         // zur selben Löschungslücke und ordnet `nicht` dem zweiten Satz zu.
-        let boundaryBeforeFiller = CleanupService.reconcile(
+        let boundaryBeforeFiller = TranscriptReconciler.reconcile(
             raw: "erster satz. ähm nicht machen wir das",
             cleaned: "Erster Satz. Machen wir das."
         )
@@ -417,7 +417,7 @@ final class TranscriptReconciliationTests: XCTestCase {
     }
 
     func testReconcileRevertsOnlyTheClauseWithDroppedAmount() {
-        XCTAssertEqual(CleanupService.reconcile(
+        XCTAssertEqual(TranscriptReconciler.reconcile(
             raw: "ich überweise hundert euro. danach schicke ich den beleg",
             cleaned: "Ich überweise Euro. Danach schicke ich den Beleg."
         ), .accepted(text: "ich überweise hundert euro. Danach schicke ich den Beleg.",

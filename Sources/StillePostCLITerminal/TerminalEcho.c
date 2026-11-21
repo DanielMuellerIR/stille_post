@@ -9,7 +9,7 @@
 _Static_assert(ATOMIC_POINTER_LOCK_FREE == 2, "Terminal-Signalhandler braucht lock-freie Zeiger");
 static atomic_flag terminalLock = ATOMIC_FLAG_INIT;
 static _Atomic(struct termios *) restoreSettings;
-static const int terminalSignals[] = { SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGPIPE, SIGTSTP, SIGTTIN };
+static const int terminalSignals[] = { SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGPIPE, SIGTSTP, SIGTTIN, SIGTTOU };
 enum { terminalSignalCount = sizeof(terminalSignals) / sizeof(terminalSignals[0]) };
 static struct sigaction savedActions[terminalSignalCount];
 
@@ -18,7 +18,6 @@ static void guardedSignals(sigset_t *signals) {
     for (int index = 0; index < terminalSignalCount; ++index) {
         sigaddset(signals, terminalSignals[index]);
     }
-    sigaddset(signals, SIGTTOU);
 }
 
 static void lockTerminal(void) {
@@ -63,7 +62,7 @@ static void restoreOnSignal(int signo) {
 
     // Eine angefangene Schlüsseleingabe lässt sich nach `fg` nicht sicher
     // fortsetzen: Die Shell kann inzwischen den Echo-Modus geändert haben.
-    if (signo == SIGTSTP || signo == SIGTTIN) {
+    if (signo == SIGTSTP || signo == SIGTTIN || signo == SIGTTOU) {
         _exit(128 + signo);
     }
 
@@ -113,7 +112,8 @@ SPTerminalEchoResult sp_terminal_disable_echo(struct termios *settings) {
             struct termios hidden = *settings;
             hidden.c_lflag &= ~(ECHO | ECHONL);
             atomic_store_explicit(&restoreSettings, settings, memory_order_relaxed);
-            if (tcflush(STDIN_FILENO, TCIFLUSH) == 0 && setTerminalAttributes(&hidden) == 0) {
+            // Eine vor dem Echo-Wechsel eingereihte Zeile darf kein Schlüssel sein.
+            if (setTerminalAttributes(&hidden) == 0 && tcflush(STDIN_FILENO, TCIFLUSH) == 0) {
                 result = SP_TERMINAL_ECHO_DISABLED;
             } else if (restoreAttributes(settings) == 0) {
                 restoreSignalActions(installed);

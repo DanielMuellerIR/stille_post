@@ -94,7 +94,7 @@ struct SpokenFormattingPlan {
 
     func restoringLiterals(_ candidate: String, cleanup: Config.Cleanup = Config.Cleanup()) -> String? {
         guard let spans = markerSpans(candidate), let expected = markerSpans(modelInput(cleanup)),
-              zip(expected, spans).allSatisfy({ CleanupService.preservesFormattingPosition(raw: $0.0, cleaned: $0.1) }) else { return nil }
+              zip(expected, spans).allSatisfy({ TranscriptReconciler.preservesFormattingPosition(raw: $0.0, cleaned: $0.1) }) else { return nil }
         var result = candidate
         for node in nodes.reversed() {
             guard let literal = node.action.literal, let end = node.end,

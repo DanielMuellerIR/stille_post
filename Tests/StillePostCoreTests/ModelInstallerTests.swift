@@ -185,6 +185,24 @@ final class ModelInstallerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: partial.path))
     }
 
+    func testCancelledVerificationRestoresTheCompletePartial() async throws {
+        let target = directory.appendingPathComponent("model.bin")
+        let partial = target.appendingPathExtension("partial")
+        let valid = Data("abc".utf8)
+        try valid.write(to: partial)
+        let sha256 = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        let task = Task.detached {
+            withUnsafeCurrentTask { $0?.cancel() }
+            try ModelInstaller.publishPartial(at: partial.path, to: target.path, expected: 3, sha256: sha256)
+        }
+
+        do { try await task.value; XCTFail("Abbruch erwartet") }
+        catch is CancellationError { }
+        XCTAssertEqual(try Data(contentsOf: partial), valid)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: target.path))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path), [partial.lastPathComponent])
+    }
+
     func testConcurrentInstallFailsBeforeRequestingModel() async throws {
         let target = directory.appendingPathComponent("model.bin")
         let descriptor = try AdvisoryFileLock.acquire(at: target.appendingPathExtension("lock"))

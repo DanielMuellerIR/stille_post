@@ -2,6 +2,16 @@ import Foundation
 
 /// Prüft, welche Änderungen der Bereinigung durch den Rohtext gedeckt sind.
 enum TranscriptReconciler {
+    /// Ergebnis des Abgleichs zwischen Rohtext und LLM-Ausgabe.
+    enum Reconciliation: Equatable {
+        /// Ausgabe insgesamt unbrauchbar (Markdown, extreme Länge, überwiegend
+        /// veränderte Wörter) — der Aufrufer nimmt den Rohtext, `reason` erklärt warum.
+        case rejected(reason: String)
+        /// Ausgabe verwendbar. `revertedClauses` > 0 heißt: einzelne Satzteile
+        /// wurden chirurgisch auf den Rohtext zurückgesetzt, der Rest bleibt bereinigt.
+        case accepted(text: String, revertedClauses: Int)
+    }
+
     /// Gleicht die LLM-Ausgabe mit dem Rohtext ab. Unzulässige Änderungen setzen
     /// den betroffenen Satzteil auf die Roh-Wörter zurück, damit Satzzeichen und
     /// Füllwortkorrekturen in den übrigen Satzteilen erhalten bleiben.
@@ -20,7 +30,7 @@ enum TranscriptReconciler {
     /// Markdown-Strukturen, Längenkorridor, Korrektur-Budget (schleichendes
     /// Umschreiben) und mehr als die Hälfte zurückgesetzter Satzteile.
     static func reconcile(raw: String, cleaned: String,
-                          dictionary: Set<String> = []) -> CleanupService.Reconciliation {
+                          dictionary: Set<String> = []) -> Reconciliation {
         if cleaned.isEmpty { return .rejected(reason: L10n.text("core.cleanup.empty")) }
         // Struktur-Prüfung: Gesprochene Sprache enthält keine Markdown-Syntax.
         // Tauchen Code-Zäune, Überschriften oder Tabellen NEU in der Ausgabe auf,

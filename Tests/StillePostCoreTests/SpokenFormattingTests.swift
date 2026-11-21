@@ -164,8 +164,8 @@ final class SpokenFormattingTests: XCTestCase {
             input + "⟦SPFAKEN0⟧",
             input.replacingOccurrences(of: "128", with: "256")
         ] { XCTAssertNil(plan.restoringLiterals(candidate, cleanup: config)) }
-        XCTAssertTrue(CleanupService.preservesFormattingPosition(raw: "didn't restart", cleaned: "did not restart"))
-        XCTAssertFalse(CleanupService.preservesFormattingPosition(raw: "128 128", cleaned: "128"))
+        XCTAssertTrue(TranscriptReconciler.preservesFormattingPosition(raw: "didn't restart", cleaned: "did not restart"))
+        XCTAssertFalse(TranscriptReconciler.preservesFormattingPosition(raw: "128 128", cleaned: "128"))
     }
 
     func testCommandsAreRecognizedAfterOrderedSegmentsAndWithDecomposedUnicode() throws {

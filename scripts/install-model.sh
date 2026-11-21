@@ -144,14 +144,45 @@ if [[ ! -f "$DEST.partial" || -L "$DEST.partial" ]] || unsupported_path "$DEST";
     echo "Fehler: Modell- oder Zielpfad hat sich während des Downloads geändert." >&2
     exit 1
 fi
-if [ -n "$SHA256" ]; then
-    ACTUAL_SHA=$(shasum -a 256 "$DEST.partial" | awk '{print $1}')
-    if [ "$ACTUAL_SHA" != "$SHA256" ]; then
-        rm -f -- "$DEST.partial"
-        echo "Fehler: Prüfsumme für $MODEL stimmt nicht. Bitte erneut laden." >&2
+work=$(mktemp -d "$(dirname "$DEST")/.model-stage.XXXXXXXX")
+(
+    cd -- "$work"
+    if [ "$(/usr/bin/stat -f '%u:%Lp' .)" != "$(id -u):700" ]; then
+        echo "Fehler: Das Arbeitsverzeichnis gehört nicht dieser Installation." >&2
         exit 1
     fi
-fi
-mv -f -h "$DEST.partial" "$DEST"
+    restore_partial=0
+    cleanup_stage() {
+        if [ "$restore_partial" -eq 1 ]; then
+            # Das fehlgeschlagene Modell bleibt fortsetzbar, ohne eine fremde
+            # Teildatei zu überschreiben.
+            ln -h model "$DEST.partial" || return 0
+        fi
+        rm -f -- model
+        rmdir -- "$work" || true
+    }
+    trap cleanup_stage EXIT
+    trap 'exit 1' HUP INT TERM
+    mv -h "$DEST.partial" model
+    restore_partial=1
+    if [[ ! -f model || -L model ]]; then
+        echo "Fehler: Modellpfad hat sich während des Downloads geändert." >&2
+        exit 1
+    fi
+    if [ -n "$SHA256" ]; then
+        ACTUAL_SHA=$(shasum -a 256 model | awk '{print $1}')
+        if [ "$ACTUAL_SHA" != "$SHA256" ]; then
+            restore_partial=0
+            echo "Fehler: Prüfsumme für $MODEL stimmt nicht. Bitte erneut laden." >&2
+            exit 1
+        fi
+    fi
+    if unsupported_path "$DEST"; then
+        echo "Fehler: Zielpfad hat sich während des Downloads geändert." >&2
+        exit 1
+    fi
+    mv -f -h model "$DEST"
+    restore_partial=0
+)
 echo "Fertig: $DEST"
 INSTALL

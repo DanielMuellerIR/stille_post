@@ -124,6 +124,7 @@ import XCTest
         }
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(de)", "-AppleLocale", "de_DE"]
+        app.launchEnvironment["STILLEPOST_MOBILE_TEST_PAIRING_ID"] = UUID().uuidString
         app.launch()
         defer { showHome() }
         XCTAssertTrue(app.buttons["dictation.primary"].waitForExistence(timeout: 10))
@@ -189,6 +190,10 @@ import XCTest
         discardRecording(in: app)
         waitForPhase(app, "Bereit für dein Diktat")
         app.buttons["connection.open"].tap()
+        guard app.staticTexts["connection.testPairing"].waitForExistence(timeout: 5) else {
+            XCTFail("Isolierte Testkopplung ist nicht verfügbar.")
+            return
+        }
         let address = app.textFields["connection.address"]
         let original = address.value as? String ?? ""
         address.tap(); address.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: original.count))
@@ -199,9 +204,12 @@ import XCTest
         XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 5), .completed)
         check.tap()
         XCTAssertTrue(app.staticTexts.containing(NSPredicate(format: "label BEGINSWITH %@", "Der Mac ist nicht erreichbar")).firstMatch.waitForExistence(timeout: 15))
-        // Nur die eigene kurzlebige Testverbindung entfernen; kein Alltags-Token wird gelesen.
-        reveal(app.buttons["Verbindung und Token entfernen"], in: app)
-        app.buttons["Verbindung und Token entfernen"].tap()
+        // Die Testkopplung liegt in einem separaten Schlüsselbund-Eintrag.
+        let forget = app.buttons["Verbindung und Token entfernen"]
+        reveal(forget, in: app)
+        forget.tap()
+        let removed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: forget)
+        XCTAssertEqual(XCTWaiter.wait(for: [removed], timeout: 5), .completed)
         app.buttons["Fertig"].tap()
     }
 

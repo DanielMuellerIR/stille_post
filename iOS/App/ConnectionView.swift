@@ -29,7 +29,9 @@ struct ConnectionView: View {
                     SecureField(model.hasToken ? "connection.tokenReplace" : "connection.token", text: $token)
                         .textInputAutocapitalization(.never).autocorrectionDisabled().privacySensitive()
                         .accessibilityIdentifier("connection.token")
-                    Text(model.hasToken ? "connection.tokenStored" : "connection.tokenHint").font(.footnote).foregroundStyle(.secondary)
+                    Text(model.hasToken ? "connection.tokenStored" : "connection.tokenHint")
+                        .font(.footnote).foregroundStyle(.secondary)
+                        .accessibilityIdentifier(model.hasToken && model.usesTestPairing ? "connection.testPairing" : "connection.tokenStatus")
                 } header: { Text("connection.mac") } footer: { Text("connection.confirmHint") }
                 if let scanFailure { Section { Text(LocalizedStringKey(scanFailure.messageKey)).foregroundStyle(.red) } }
                 if let failure = model.setupFailure { Section { Text(LocalizedStringKey(failure.messageKey)).foregroundStyle(.red) } }
