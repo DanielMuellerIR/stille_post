@@ -10,6 +10,7 @@ import pathlib
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -47,6 +48,7 @@ def update_lock(root):
             fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             raise UpdateError("Eine andere Aktualisierung läuft bereits.") from None
+        recover_pending_install(root)
         yield
     finally:
         os.close(descriptor)
@@ -68,6 +70,37 @@ def version_record(root, active):
     if isinstance(record, dict) and type(record.get("activation")) is int:
         return record
     return legacy
+
+
+def recover_pending_install(root):
+    journal = root / ".pending-install"
+    try:
+        entry = json.loads(journal.read_text())
+    except FileNotFoundError:
+        return
+    except (ValueError, UnicodeError):
+        raise UpdateError("Installationsrest kann nicht geprüft werden.") from None
+    if (
+        not isinstance(entry, dict)
+        or not valid_version(entry.get("version"))
+        or type(entry.get("device")) is not int
+        or type(entry.get("inode")) is not int
+    ):
+        raise UpdateError("Installationsrest kann nicht geprüft werden.")
+
+    destination = root / entry["version"]
+    active = (root / "current").resolve()
+    previous = version_record(root, active.name).get("previous")
+    if active != destination and previous != destination.name and os.path.lexists(destination):
+        metadata = destination.lstat()
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_dev != entry["device"]
+            or metadata.st_ino != entry["inode"]
+        ):
+            raise UpdateError("Installationsrest hat sich inzwischen geändert.")
+        shutil.rmtree(destination)
+    journal.unlink()
 
 
 class Redirects(urllib.request.HTTPRedirectHandler):
@@ -334,13 +367,19 @@ class Updater:
 
     def _publish(self, stage, destination):
         root = destination.parent
-        stage.rename(destination)
+        metadata = stage.stat()
+        marker = stage.parent / "pending-install"
+        marker.write_text(
+            json.dumps(
+                {"version": destination.name, "device": metadata.st_dev, "inode": metadata.st_ino}
+            )
+        )
+        os.replace(marker, root / ".pending-install")
         try:
+            stage.rename(destination)
             self._switch(root, destination.name)
-        except Exception:
-            if (root / "current").resolve() != destination:
-                destination.rename(stage)
-            raise
+        finally:
+            recover_pending_install(root)
 
     @staticmethod
     def extract(archive, destination):

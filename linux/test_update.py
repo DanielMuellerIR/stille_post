@@ -333,6 +333,25 @@ class UpdateTests(unittest.TestCase):
                 )
             response.read.assert_not_called()
 
+    def test_install_can_resume_after_process_exits_between_publish_and_activation(self):
+        source = self.install_source("0.9.48", "exit 0\n")
+        root = self.bundle.parent
+        current = root / "current"
+        with patch.dict(os.environ, {"XDG_DATA_HOME": str(self.root)}):
+            pid = os.fork()
+            if pid == 0:
+                with patch.object(Updater, "_switch", side_effect=lambda *_: os._exit(91)):
+                    Updater(source).install_local()
+                os._exit(92)
+            _, status = os.waitpid(pid, 0)
+            self.assertEqual(os.waitstatus_to_exitcode(status), 91)
+            self.assertEqual(current.resolve(), self.bundle)
+            self.assertTrue((root / "0.9.48").is_dir())
+
+            self.assertEqual(Updater(source).install_local()["version"], "0.9.48")
+            self.assertEqual(current.resolve(), root / "0.9.48")
+            self.assertFalse((root / ".pending-install").exists())
+
     def tearDown(self):
         self.tmp.cleanup()
 
