@@ -574,8 +574,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         }
     }
 
-    private var pinnedWarmUpTarget: WarmUpTarget? {
-        let cleanup = prospectiveConfiguration.cleanup
+    private func pinnedWarmUpTarget(appBundleID: String?) -> WarmUpTarget? {
+        let cleanup = requestConfiguration.resolvedForRequest(appBundleID: appBundleID).cleanup
         guard cleanup.enabled,
               let endpoint = cleanup.chain.first(where: { CleanupService.endpointAllowed($0, localOnly: cleanup.localOnly) }),
               endpoint.provider != "openai", CleanupService.pinsForever(endpoint.keepAlive) else { return nil }
@@ -583,7 +583,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     }
 
     private func refreshWarmUpTimer() {
-        let target = pinnedWarmUpTarget
+        let target = pinnedWarmUpTarget(appBundleID: targetAppBundleID)
         guard warmUpTarget != target else { return }
         warmUpTimer?.invalidate()
         warmUpTimer = nil
@@ -591,8 +591,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         guard let target else { return }
         let timer = Timer(timeInterval: 60, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, !self.terminationPending, self.pinnedWarmUpTarget == target else { return }
-                self.engine.keepCleanupModelWarm()
+                guard let self, !self.terminationPending else { return }
+                let bundleID = self.targetAppBundleID
+                guard self.pinnedWarmUpTarget(appBundleID: bundleID) == target else { return }
+                self.engine.keepCleanupModelWarm(appBundleID: bundleID, pinnedOnly: true)
             }
         }
         warmUpTimer = timer
