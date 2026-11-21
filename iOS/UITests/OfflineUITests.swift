@@ -1,6 +1,6 @@
 import XCTest
 
-final class OfflineUITests: XCTestCase {
+@MainActor final class OfflineUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
 
     func testOfflineMissingModelKeepsRecordingAndChoiceAfterRestart() throws {

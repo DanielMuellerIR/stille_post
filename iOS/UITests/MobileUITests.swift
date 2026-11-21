@@ -1,6 +1,6 @@
 import XCTest
 
-final class MobileUITests: XCTestCase {
+@MainActor final class MobileUITests: XCTestCase {
     override func setUp() { continueAfterFailure = false }
     func testConnectionAndAccessibleMainAction() {
         let app = XCUIApplication()

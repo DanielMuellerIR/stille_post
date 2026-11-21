@@ -5,7 +5,7 @@ import CryptoKit
 public enum PinnedTrust {
     public static func validate(_ trust: SecTrust, fingerprint: String) throws {
         guard BridgeConfiguration.validFingerprint(fingerprint),
-              let certificate = SecTrustGetCertificateAtIndex(trust, 0) else { throw ClientFailure.pairingRequired }
+              let certificate = (SecTrustCopyCertificateChain(trust) as? [SecCertificate])?.first else { throw ClientFailure.pairingRequired }
         let actual = SHA256.hash(data: SecCertificateCopyData(certificate) as Data).map { String(format: "%02x", $0) }.joined()
         guard actual == fingerprint else { throw ClientFailure.identityChanged }
         // Die Identität kommt vom physischen QR-Code, nicht aus DNS oder einer CA.

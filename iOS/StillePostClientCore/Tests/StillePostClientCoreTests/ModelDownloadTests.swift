@@ -1,4 +1,5 @@
 import CryptoKit
+import os
 import XCTest
 @testable import StillePostClientCore
 
@@ -83,14 +84,15 @@ final class ModelDownloadTests: XCTestCase {
             started.fulfill()
             return .init(status: 200, headers: [:], parts: [], holdOpen: true)
         }
-        let task = Task { try await transport.download(file(), to: target) { _ in } }
+        let file = file()
+        let task = Task { try await transport.download(file, to: target) { _ in } }
         await fulfillment(of: [started], timeout: 3)
         task.cancel()
         do { try await task.value; XCTFail("Abbruch erwartet") } catch is CancellationError { }
         XCTAssertTrue(try Data(contentsOf: target).isEmpty)
         let data = data
         let next = downloader { _ in .init(status: 200, headers: ["Content-Length": "16"], parts: [data]) }
-        try await next.download(file(), to: target) { _ in }
+        try await next.download(file, to: target) { _ in }
         XCTAssertEqual(try Data(contentsOf: target), data)
     }
 }
@@ -102,15 +104,14 @@ private final class ModelDownloadStub: URLProtocol, @unchecked Sendable {
         let parts: [Data]
         var holdOpen = false
     }
-    private static let lock = NSLock()
-    private static var handler: (@Sendable (URLRequest) throws -> Reply)?
+    private static let handler = OSAllocatedUnfairLock<(@Sendable (URLRequest) throws -> Reply)?>(initialState: nil)
     static func setHandler(_ action: @escaping @Sendable (URLRequest) throws -> Reply) {
-        lock.lock(); handler = action; lock.unlock()
+        handler.withLock { $0 = action }
     }
     override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "huggingface.co" }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        Self.lock.lock(); let action = Self.handler; Self.lock.unlock()
+        let action = Self.handler.withLock { $0 }
         do {
             guard let action else { throw URLError(.unsupportedURL) }
             let reply = try action(request)

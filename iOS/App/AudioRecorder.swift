@@ -68,8 +68,9 @@ import StillePostClientCore
     }
 
     nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+        let identity = ObjectIdentifier(recorder)
         Task { @MainActor [weak self] in
-            guard let self, self.recorder === recorder else { return }
+            guard let self, let recorder = self.recorder, ObjectIdentifier(recorder) == identity else { return }
             let duration = max(recorder.currentTime, (try? AVAudioPlayer(contentsOf: recorder.url).duration) ?? 0)
             _ = self.stop()
             self.onStopped?(duration, flag ? nil : .recordingFailed)
@@ -77,13 +78,14 @@ import StillePostClientCore
     }
 
     nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
+        let identity = ObjectIdentifier(recorder)
         Task { @MainActor [weak self] in
-            guard let self, self.recorder === recorder else { return }
+            guard let self, let recorder = self.recorder, ObjectIdentifier(recorder) == identity else { return }
             self.onStopped?(self.stop(), .recordingFailed)
         }
     }
 
-    deinit {
+    isolated deinit {
         if let interruption { NotificationCenter.default.removeObserver(interruption) }
         if let routeChange { NotificationCenter.default.removeObserver(routeChange) }
         timer?.invalidate()

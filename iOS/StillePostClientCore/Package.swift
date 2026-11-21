@@ -7,8 +7,8 @@ let package = Package(
     products: [.library(name: "StillePostClientCore", targets: ["StillePostClientCore"])],
     targets: [
         .target(name: "StillePostClientCore", resources: [.process("Resources")],
-                swiftSettings: [.swiftLanguageMode(.v5)]),
+                swiftSettings: [.swiftLanguageMode(.v6)]),
         .testTarget(name: "StillePostClientCoreTests", dependencies: ["StillePostClientCore"],
-                    swiftSettings: [.swiftLanguageMode(.v5)])
+                    swiftSettings: [.swiftLanguageMode(.v6)])
     ]
 )

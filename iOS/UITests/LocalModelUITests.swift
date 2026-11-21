@@ -1,10 +1,7 @@
 import XCTest
 
-final class LocalModelUITests: XCTestCase {
-    override func setUp() {
-        continueAfterFailure = false
-        XCUIDevice.shared.orientation = .portrait
-    }
+@MainActor final class LocalModelUITests: XCTestCase {
+    override func setUp() { continueAfterFailure = false }
 
     func testGermanModelScreenAndExplicitActions() {
         let app = XCUIApplication()
@@ -152,6 +149,7 @@ final class LocalModelUITests: XCTestCase {
     }
 
     private func openModel(_ app: XCUIApplication) {
+        XCUIDevice.shared.orientation = .portrait
         let button = app.buttons["model.open"]
         XCTAssertTrue(button.waitForExistence(timeout: 10))
         reveal(button, app: app); button.tap()
