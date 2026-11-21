@@ -9,7 +9,7 @@
 _Static_assert(ATOMIC_POINTER_LOCK_FREE == 2, "Terminal-Signalhandler braucht lock-freie Zeiger");
 static atomic_flag terminalLock = ATOMIC_FLAG_INIT;
 static _Atomic(struct termios *) restoreSettings;
-static const int terminalSignals[] = { SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGPIPE };
+static const int terminalSignals[] = { SIGHUP, SIGINT, SIGQUIT, SIGTERM, SIGPIPE, SIGTSTP, SIGTTIN };
 enum { terminalSignalCount = sizeof(terminalSignals) / sizeof(terminalSignals[0]) };
 static struct sigaction savedActions[terminalSignalCount];
 
@@ -61,6 +61,12 @@ static void restoreOnSignal(int signo) {
         (void)restoreAttributes(settings);
     }
 
+    // Eine angefangene Schlüsseleingabe lässt sich nach `fg` nicht sicher
+    // fortsetzen: Die Shell kann inzwischen den Echo-Modus geändert haben.
+    if (signo == SIGTSTP || signo == SIGTTIN) {
+        _exit(128 + signo);
+    }
+
     // Der Prozess endet durch das ursprüngliche Signal, auch für Eltern,
     // die per waitpid zwischen Signal und regulärem Exit unterscheiden.
     struct sigaction defaultAction = { .sa_handler = SIG_DFL };
@@ -91,7 +97,11 @@ SPTerminalEchoResult sp_terminal_disable_echo(struct termios *settings) {
     // anderen Threads zugestellte Signale warten bis nach der Änderung.
     lockTerminal();
     SPTerminalEchoResult result = SP_TERMINAL_ECHO_FAILED;
-    if (tcgetattr(STDIN_FILENO, settings) == 0) {
+    errno = 0;
+    pid_t foreground = tcgetpgrp(STDIN_FILENO);
+    // Eine umgeleitete PTY kann lesbar sein, ohne das steuernde Terminal zu sein.
+    if ((foreground == getpgrp() || (foreground < 0 && errno == ENOTTY))
+        && tcgetattr(STDIN_FILENO, settings) == 0) {
         int installed = 0;
         while (installed < terminalSignalCount
             && sigaction(terminalSignals[installed], &action, &savedActions[installed]) == 0) {

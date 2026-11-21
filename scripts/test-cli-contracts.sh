@@ -111,7 +111,8 @@ for payload, message in [(b'\xff', 'ungültiges UTF-8'), (b'a' * (byte_limit + 1
     result = cleanup(payload)
     assert result.returncode == 2 and not result.stdout and message.encode() in result.stderr
 
-for interrupt in [signal.SIGHUP, signal.SIGINT, signal.SIGQUIT, signal.SIGTERM, None]:
+aborting = [signal.SIGTSTP, signal.SIGTTIN]
+for interrupt in [signal.SIGHUP, signal.SIGINT, signal.SIGQUIT, signal.SIGTERM, *aborting, None]:
     master, terminal = pty.openpty()
     try:
         original = termios.tcgetattr(terminal)
@@ -128,7 +129,8 @@ for interrupt in [signal.SIGHUP, signal.SIGINT, signal.SIGQUIT, signal.SIGTERM, 
                 else:
                     child.send_signal(interrupt)
                 output, _ = child.communicate(timeout=5)
-                assert child.returncode == (2 if interrupt is None else -interrupt)
+                expected = 2 if interrupt is None else (128 + interrupt if interrupt in aborting else -interrupt)
+                assert child.returncode == expected
                 assert not output
                 assert termios.tcgetattr(terminal) == original
             finally:
