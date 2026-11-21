@@ -1359,41 +1359,17 @@ final class CoreTests: XCTestCase {
     }
 
     func testPrimaryDirectRequestRetriesOnFreshConnection() async throws {
-        // Kürzlich erreichbarer Primär-Endpoint: clean() schickt die Anfrage DIREKT
-        // (keine Probe); scheitert sie, folgt sofort ein zweiter Versuch über eine
-        // frische Verbindung (onPrimaryRetry wird gemeldet). Hier ist der Endpoint
-        // tot (geschlossener Port) -> beide Versuche scheitern schnell, Ergebnis
-        // ist der Rohtext.
+        // Ein geschlossener Loopback-Port prüft den Transport vor dem ersten
+        // Frame. Der zweite Stream scheitert ebenfalls und es bleibt der Rohtext.
         var cleanup = Config.Cleanup()
         cleanup.ollamaURL = "http://127.0.0.1:1"
         let service = CleanupService(config: cleanup)
-        service.notePrimarySuccess()
         let retryReported = LockedTestValue(false)
         service.onPrimaryRetry = { retryReported.update { $0 = true } }
 
         let result: CleanupService.Result? = await service.clean("roher text der bereinigt werden soll")
         XCTAssertTrue(retryReported.snapshot, "Zweitversuch muss gemeldet werden (Overlay-Transparenz)")
         XCTAssertEqual(result?.usedFallback, true)
-    }
-
-    func testNoDirectRequestWithoutRecentPrimaryContact() throws {
-        // OHNE kürzlichen Kontakt (App unterwegs gestartet) gilt der Probe-Pfad:
-        // toter Primär-Endpoint => schnell weiter in der Kette, KEIN Zweitversuch.
-        var cleanup = Config.Cleanup()
-        cleanup.ollamaURL = "http://127.0.0.1:1"
-        let service = CleanupService(config: cleanup)
-        let retryReported = LockedTestValue(false)
-        service.onPrimaryRetry = { retryReported.update { $0 = true } }
-
-        let started = Date()
-        let expectation = expectation(description: "clean")
-        Task {
-            _ = await service.clean("roher text")
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 15)
-        XCTAssertLessThan(Date().timeIntervalSince(started), 5, "Probe-Pfad muss schnell aufgeben")
-        XCTAssertFalse(retryReported.snapshot, "ohne Recency-Marker kein Direkt-Zweitversuch")
     }
 
     func testStreamChunkParsing() throws {
@@ -1440,7 +1416,6 @@ final class CoreTests: XCTestCase {
             [#"{"message":{"content":"\#(partial)"},"done":false}"#],
         ])
         let service = CleanupService(config: Config.Cleanup(), transport: transport)
-        service.notePrimarySuccess()
 
         let result = await service.clean(raw)
 
@@ -1463,7 +1438,6 @@ final class CoreTests: XCTestCase {
             ],
         ])
         let service = CleanupService(config: Config.Cleanup(), transport: transport)
-        service.notePrimarySuccess()
         let retryReported = LockedTestValue(false)
         service.onPrimaryRetry = { retryReported.update { $0 = true } }
 
@@ -1484,7 +1458,6 @@ final class CoreTests: XCTestCase {
             fallback.model = "test"
             config.fallbacks = [fallback]
             let service = CleanupService(config: config, transport: transport)
-            service.notePrimarySuccess()
             let retryReported = LockedTestValue(false)
             service.onPrimaryRetry = { retryReported.update { $0 = true } }
             _ = await service.clean("Dieser Text ist ein künstlicher Abbruchtest.")
@@ -1495,8 +1468,8 @@ final class CoreTests: XCTestCase {
         }
     }
 
-    func testCancelledColdCleanupDoesNotRepeatProbeOrUseFallback() async {
-        let transport = StubCleanupTransport(outcomes: [], probeError: CancellationError())
+    func testCancelledIdleTimeoutProbeDoesNotRepeatOrUseFallback() async {
+        let transport = StubCleanupTransport(outcomes: [.failure(URLError(.timedOut))], probeError: CancellationError())
         var config = Config.Cleanup()
         var fallback = Config.Cleanup.Endpoint()
         fallback.ollamaURL = "http://127.0.0.1:11435"
@@ -1504,7 +1477,7 @@ final class CoreTests: XCTestCase {
         let service = CleanupService(config: config, transport: transport)
         _ = await service.clean("Dieser Text ist ein künstlicher Abbruchtest.")
         XCTAssertEqual(transport.probeCallCount, 1)
-        XCTAssertEqual(transport.streamCallCount, 0)
+        XCTAssertEqual(transport.streamCallCount, 1)
         XCTAssertEqual(transport.normalCallCount, 0)
     }
 
@@ -1533,7 +1506,6 @@ final class CoreTests: XCTestCase {
             streams: [[incomplete], [incomplete]], normalContent: cleaned
         )
         let service = CleanupService(config: config, transport: transport)
-        service.notePrimarySuccess()
         let fallbackLabel = LockedTestValue<String?>(nil)
         service.onFallbackEndpoint = { label in fallbackLabel.update { $0 = label } }
 
@@ -1559,7 +1531,6 @@ final class CoreTests: XCTestCase {
             outcomes: [.failure(URLError(.timedOut))], normalContent: cleaned
         )
         let service = CleanupService(config: Config.Cleanup(), transport: transport)
-        service.notePrimarySuccess()
         let retryReported = LockedTestValue(false)
         service.onPrimaryRetry = { retryReported.update { $0 = true } }
 
@@ -1584,7 +1555,6 @@ final class CoreTests: XCTestCase {
             outcomes: [.failure(URLError(.timedOut))], probeSucceeds: false
         )
         let service = CleanupService(config: Config.Cleanup(), transport: transport)
-        service.notePrimarySuccess()
 
         let result = await service.clean(raw)
 
@@ -1724,7 +1694,6 @@ final class CoreTests: XCTestCase {
             throw XCTSkip("Kein lokales Ollama mit \(cleanup.model) — Streaming-Integrationstest übersprungen")
         }
         let service = CleanupService(config: cleanup)
-        service.notePrimarySuccess()  // erzwingt den Streaming-Direktpfad
         let result: CleanupService.Result? = await service.clean("also ähm das ist ist ein streaming test")
         // Der Live-Test prüft den Transport, nicht die schwankende Modellqualität:
         // Ändert das echte Modell ein Wort, muss die Worttreue-Sicherung ausdrücklich

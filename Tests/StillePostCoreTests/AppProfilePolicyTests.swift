@@ -143,7 +143,7 @@ final class AppProfilePolicyTests: XCTestCase {
         config.ollamaURL = local.ollamaURL; config.fallbacks = []
         for error in [URLError(.networkConnectionLost), URLError(.timedOut)] {
             let retry = PolicyTransport(); retry.streamFailure = error
-            let service = CleanupService(config:config,transport:retry); service.notePrimarySuccess()
+            let service = CleanupService(config:config,transport:retry)
             let retried = await service.clean("Die Zahl bleibt 128.")
             XCTAssertFalse(retried.usedFallback)
             XCTAssertEqual(retry.streamFresh.first, false)

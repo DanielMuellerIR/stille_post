@@ -21,7 +21,7 @@ final class SpokenFormattingPipelineTests: XCTestCase {
         let literal = "„Format neue Zeile, 256 nicht 128“"
         let transport = FormattingTransport { $0.replacingOccurrences(of: literal, with: "„999 wird geändert“") }
         var config = Config.Cleanup(); config.spokenFormatting = true; config.localOnly = true
-        let service = CleanupService(config: config, transport: transport); service.notePrimarySuccess()
+        let service = CleanupService(config: config, transport: transport)
         let raw = "Eins 128, nicht 256. Format neuer Absatz Zwei 1.2. " + literal
         let result = await service.clean(raw)
         XCTAssertEqual(result.text, "Eins 128, nicht 256.\n\nZwei 1.2. " + literal)
@@ -44,7 +44,7 @@ final class SpokenFormattingPipelineTests: XCTestCase {
         var config = Config.Cleanup(); config.spokenFormatting = true
         var fallback = Config.Cleanup.Endpoint(); fallback.ollamaURL = "http://127.0.0.1:29999"
         config.fallbacks = [fallback]
-        let service = CleanupService(config: config, transport: transport); service.notePrimarySuccess()
+        let service = CleanupService(config: config, transport: transport)
         let result = await service.clean("128, nicht 256. Format neue Zeile Version 1.2 bleibt.")
         XCTAssertTrue(result.usedFallback); XCTAssertEqual(result.origin, .rawFallback)
         XCTAssertEqual(result.text.lowercased(), "128, nicht 256.\nVersion 1.2 bleibt.".lowercased())
@@ -54,7 +54,7 @@ final class SpokenFormattingPipelineTests: XCTestCase {
     func testFormattingCannotRemoveNegationsOrNumbersThroughMarkerBudget() async throws {
         let transport = FormattingTransport { $0.replacingOccurrences(of: "nicht 256", with: "999") }
         var config = Config.Cleanup(); config.spokenFormatting = true
-        let service = CleanupService(config: config, transport: transport); service.notePrimarySuccess()
+        let service = CleanupService(config: config, transport: transport)
         let result = await service.clean("Server 128, nicht 256. Format neuer Absatz Version 1.2 bleibt.")
         XCTAssertTrue(result.text.contains("nicht 256")); XCTAssertTrue(result.text.contains("128"))
         XCTAssertTrue(result.text.contains("1.2")); XCTAssertFalse(result.text.contains("999"))
@@ -141,7 +141,7 @@ final class SpokenFormattingPipelineTests: XCTestCase {
         ] {
             let transport = FormattingTransport { $0.replacingOccurrences(of: literal, with: "999 changed") }
             var config = Config.Cleanup(); config.spokenFormatting = true; config.localOnly = true
-            let service = CleanupService(config: config, transport: transport); service.notePrimarySuccess()
+            let service = CleanupService(config: config, transport: transport)
             let result = await service.clean(raw)
             XCTAssertEqual(result.text, expected)
             XCTAssertFalse(result.usedFallback); XCTAssertEqual(result.origin, .cleanup)
@@ -165,7 +165,7 @@ final class SpokenFormattingPipelineTests: XCTestCase {
                 }
             }
             var config = Config.Cleanup(); config.spokenFormatting = true; config.fallbacks = [Config.Cleanup.Endpoint()]
-            let service = CleanupService(config: config, transport: transport); service.notePrimarySuccess()
+            let service = CleanupService(config: config, transport: transport)
             let result = await service.clean(raw)
             XCTAssertTrue(result.usedFallback, "mutation \(mutation)")
             XCTAssertEqual(result.origin, .rawFallback)
@@ -177,7 +177,7 @@ final class SpokenFormattingPipelineTests: XCTestCase {
     func testNewIntentCannotBeRecognizedFromModelOutput() async throws {
         var config = Config.Cleanup(); config.spokenFormatting = true
         let transport = FormattingTransport { _ in "Format list start." }
-        let service = CleanupService(config: config, transport: transport); service.notePrimarySuccess()
+        let service = CleanupService(config: config, transport: transport)
         let result = await service.clean("Format list starts.")
         XCTAssertFalse(result.text.contains("•"))
         XCTAssertEqual(transport.posts, 1)

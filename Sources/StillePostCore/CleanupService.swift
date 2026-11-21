@@ -46,16 +46,14 @@ public final class CleanupService: Sendable {
         get { state.withLock { $0.fallbackObserver } }
         set { state.withLock { $0.fallbackObserver = newValue } }
     }
-    /// Wird gemeldet, wenn die Direktanfrage an den primären Endpoint scheiterte
-    /// und sofort ein zweiter Versuch über eine frische Verbindung läuft
-    /// (s. clean()). Ebenfalls von beliebigem Thread.
+    /// Wird gemeldet, wenn der primäre Ollama-Stream scheitert und die
+    /// Bereinigung den zweiten Versuch einleitet. Ebenfalls von beliebigem Thread.
     public var onPrimaryRetry: (@Sendable () -> Void)? {
         get { state.withLock { $0.retryObserver } }
         set { state.withLock { $0.retryObserver = newValue } }
     }
 
     private struct StateSnapshot {
-        var lastPrimarySuccess: Date?
         var fallbackObserver: (@Sendable (String) -> Void)?
         var retryObserver: (@Sendable () -> Void)?
     }
@@ -70,17 +68,6 @@ public final class CleanupService: Sendable {
     }
 
     private let state = State()
-
-    func notePrimarySuccess() {
-        state.withLock { $0.lastPrimarySuccess = Date() }
-    }
-
-    // Vorwärmen und Bereinigung hinterlegen einen frischen Kontakt. Nach
-    // längerer Pause beginnt clean() wieder mit der Erreichbarkeitsprobe.
-    private var primaryWasRecentlyReachable: Bool {
-        guard let last = state.withLock({ $0.lastPrimarySuccess }) else { return false }
-        return Date().timeIntervalSince(last) < 180
-    }
 
     private let config: Config.Cleanup
     private let transport: CleanupTransport
@@ -110,10 +97,7 @@ public final class CleanupService: Sendable {
         let nextTransport: CleanupTransport = transport is URLSessionCleanupTransport && next.localOnly != config.localOnly
             ? URLSessionCleanupTransport(localOnly: next.localOnly) : transport
         let service = CleanupService(config: next, transport: nextTransport)
-        var snapshot = state.withLock { $0 }
-        if next.chain != config.chain || next.localOnly != config.localOnly {
-            snapshot.lastPrimarySuccess = nil
-        }
+        let snapshot = state.withLock { $0 }
         service.state.withLock { $0 = snapshot }
         return service
     }
@@ -195,61 +179,16 @@ public final class CleanupService: Sendable {
                 case "openai":
                     cleaned = try await cleanViaOpenAICompatible(prepared, endpoint: endpoint)
                 default:
-                    if index == 0, primaryWasRecentlyReachable {
-                        // Eine kurze WLAN-Latenzspitze kann die 2-s-Probe
-                        // scheitern lassen, obwohl die Bereinigungsanfrage sie
-                        // überstehen würde. Mit frischem Kontakt direkt streamen.
-                        do {
-                            cleaned = try await cleanViaOllama(prepared, endpoint: endpoint,
-                                                               streaming: true,
-                                                               freshConnection: false)
-                        } catch {
-                            // Ein Abbruch ist kein Dienstausfall: keine weitere
-                            // Verbindung und kein anderes Modell dafür anfragen.
-                            if Self.isCancellation(error) { return cancelled }
-                            onPrimaryRetry?()
-                            if Self.isIdleTimeout(error) {
-                                // 10 s lang kam kein einziges Häppchen. Antwortet der
-                                // Server auf die schnelle Probe, lebt er und lädt
-                                // gerade das Modell (kalt gemessen: 11,5 s für 6 GB,
-                                // auf RAM-knappen Rechnern ein Vielfaches davon) — ein
-                                // zweiter Stream mit derselben kurzen Geduld liefe
-                                // genauso ins Leere. Deshalb hier dieselbe Antwort wie
-                                // beim kalt startenden Fallback-Modell: die geduldige
-                                // Komplett-Antwort ohne Leerlauf-Timeout.
-                                guard try await isReachable(ollamaURL: endpoint.ollamaURL) else {
-                                    // Server wirklich weg: nicht noch einmal 10 s
-                                    // verschenken, sofort zum nächsten Endpoint.
-                                    throw CleanupError.unreachable(endpoint.ollamaURL)
-                                }
-                                cleaned = try await cleanViaOllama(prepared, endpoint: endpoint,
-                                                                   streaming: false,
-                                                                   freshConnection: false)
-                            } else {
-                                // Abgebrochener Stream, kaputter Frame, Providerfehler:
-                                // frische Verbindung, falls eine gestorbene
-                                // Pool-Verbindung schuld war.
-                                cleaned = try await cleanViaOllama(prepared, endpoint: endpoint,
-                                                                   streaming: true,
-                                                                   freshConnection: true)
-                            }
-                        }
-                        notePrimarySuccess()
+                    if index == 0 {
+                        cleaned = try await cleanViaPrimaryOllama(prepared, endpoint: endpoint)
                     } else {
-                        // Ohne frischen Kontakt (unterwegs, App-Kaltstart) und für
-                        // Fallback-Endpoints bleibt die schnelle Probe: Ein wirklich
-                        // toter Rechner soll den Ketten-Durchlauf nur wenige Sekunden
-                        // kosten statt eines langen Verbindungs-Timeouts. Und ohne
-                        // Streaming: Ein kalt startendes Fallback-Modell liefert
-                        // erst nach dem Laden das erste Häppchen — ein Leerlauf-
-                        // Timeout würde genau daran scheitern.
+                        // Die Probe begrenzt die Wartezeit auf nicht verfügbare
+                        // Ausweichdienste. Erreichbare Modelle dürfen länger laden.
                         guard try await isReachable(ollamaURL: endpoint.ollamaURL) else {
                             throw CleanupError.unreachable(endpoint.ollamaURL)
                         }
                         cleaned = try await cleanViaOllama(prepared, endpoint: endpoint,
-                                                           streaming: false,
-                                                           freshConnection: false)
-                        if index == 0 { notePrimarySuccess() }
+                                                           streaming: false, freshConnection: false)
                     }
                 }
                 try Task.checkCancellation()
@@ -288,6 +227,26 @@ public final class CleanupService: Sendable {
                       fallbackReason: config.localOnly ? L10n.text("core.cleanup.local_unavailable")
                         : L10n.format("core.cleanup.failed", failures.joined(separator: " · ")),
                       endpoint: nil)
+    }
+
+    private func cleanViaPrimaryOllama(_ text: String, endpoint: Config.Cleanup.Endpoint) async throws -> String {
+        do {
+            return try await cleanViaOllama(text, endpoint: endpoint, streaming: true, freshConnection: false)
+        } catch {
+            if Self.isCancellation(error) { throw error }
+            onPrimaryRetry?()
+            guard Self.isIdleTimeout(error) else {
+                // Bei Stream- und Verbindungsfehlern eine möglicherweise defekte
+                // Pool-Verbindung umgehen.
+                return try await cleanViaOllama(text, endpoint: endpoint, streaming: true, freshConnection: true)
+            }
+            // Wenn der Server antwortet, lädt er womöglich erst das Modell.
+            // Die Komplett-Antwort wartet länger auf den ersten Text.
+            guard try await isReachable(ollamaURL: endpoint.ollamaURL) else {
+                throw CleanupError.unreachable(endpoint.ollamaURL)
+            }
+            return try await cleanViaOllama(text, endpoint: endpoint, streaming: false, freshConnection: false)
+        }
     }
 
     private var requestSystemPrompt: String {
@@ -340,18 +299,13 @@ public final class CleanupService: Sendable {
         // Beim Aufnahmebeginn läuft das Vorwärmen parallel zur Aufnahme. Der
         // Task hält diese Konfiguration bis zur Endpoint-Auswahl fest.
         Task {
-            for (index, endpoint) in chain.enumerated() where endpoint.provider != "openai" {
+            for endpoint in chain where endpoint.provider != "openai" {
                 if pinnedOnly, !Self.pinsForever(endpoint.keepAlive) { continue }
                 guard Self.endpointAllowed(endpoint, localOnly: config.localOnly) else { continue }
                 guard (try? await isReachable(ollamaURL: endpoint.ollamaURL)) == true else {
                     if Task.isCancelled { return }
                     continue
                 }
-                // Erreichbarkeit des Primärs protokollieren — Grundlage der
-                // Blip-Toleranz in clean(). Weil warmUp() beim Aufnahme-START
-                // läuft, ist der Zeitstempel frisch, wenn clean() nach dem Diktat
-                // dran ist; im Dauer-Modus hält ihn zusätzlich der Minuten-Timer.
-                if index == 0 { notePrimarySuccess() }
                 sendWarmUpRequest(endpoint)
                 break
             }
@@ -500,7 +454,7 @@ public final class CleanupService: Sendable {
     /// einem harten Netzwerkfehler abzubrechen? Nur dann ist "der Server lädt
     /// vielleicht gerade das Modell" überhaupt eine Erklärung; "Verbindung
     /// abgelehnt" oder "Netzwerk weg" melden sich mit einem anderen Code.
-    static func isIdleTimeout(_ error: Error) -> Bool {
+    private static func isIdleTimeout(_ error: Error) -> Bool {
         (error as? URLError)?.code == .timedOut
     }
 
@@ -575,24 +529,33 @@ public final class CleanupService: Sendable {
             )
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
                 var body = ""
-                for try await line in lines {
-                    body += line
-                    if body.count > 300 { break }
+                do {
+                    for try await line in lines {
+                        body += line
+                        if body.count > 300 { break }
+                    }
+                } catch {
+                    if Self.isCancellation(error) { throw error }
                 }
                 throw CleanupError.serverError(body: body)
             }
             var content = ""
-            var receivedCompletion = false
-            for try await line in lines {
-                let (chunk, done) = try Self.streamChunk(fromLine: line)
-                if let chunk { content += chunk }
-                if done {
-                    receivedCompletion = true
-                    break
+            var receivedFrame = false
+            do {
+                for try await line in lines {
+                    let (chunk, done) = try Self.streamChunk(fromLine: line)
+                    if let chunk { content += chunk }
+                    if done {
+                        return Self.stripThinking(content, for: text).trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                    receivedFrame = true
                 }
+            } catch where receivedFrame && Self.isIdleTimeout(error) {
+                // Ab dem ersten gültigen Frame ist ein Timeout ein abgebrochener
+                // Stream. Die geduldige Komplett-Antwort ist für das Anlaufen gedacht.
+                throw CleanupError.incompleteStream
             }
-            guard receivedCompletion else { throw CleanupError.incompleteStream }
-            return Self.stripThinking(content, for: text).trimmingCharacters(in: .whitespacesAndNewlines)
+            throw CleanupError.incompleteStream
         }
 
         let (data, response) = try await transport.data(for: request, probing: false)

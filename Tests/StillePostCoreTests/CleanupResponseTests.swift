@@ -74,6 +74,25 @@ final class CleanupResponseTests: XCTestCase {
         XCTAssertEqual(chat["stream"] as? Bool, true)
     }
 
+    func testColdOllamaRetriesPartialTimeoutWithFreshStreamAndNoProbe() async throws {
+        let transport = RequestRecordingCleanupTransport(
+            frames: [#"{"message":{"content":"Erster"},"done":false}"#],
+            streamFailure: URLError(.timedOut),
+            retryFrames: [#"{"message":{"content":"Fertiger Text."},"done":true}"#]
+        )
+        let service = CleanupService(config: Config.Cleanup(), transport: transport)
+
+        let result = await service.clean("ähm fertiger text")
+
+        XCTAssertEqual(result.text, "Fertiger Text.")
+        XCTAssertFalse(result.usedFallback)
+        let requests = transport.requests.snapshot
+        XCTAssertEqual(requests.map { $0.url?.path }, ["/api/chat", "/api/chat"])
+        XCTAssertEqual(transport.streamFreshness.snapshot, [false, true])
+        let body = try jsonBody(XCTUnwrap(requests.first))
+        XCTAssertEqual(body["stream"] as? Bool, true)
+    }
+
     func testEachProviderPathKeepsLiteralTagsAndRemovesReasoning() async throws {
         for path in ProviderPath.allCases {
             let literal = "Lass <think> und </think> im Text."
@@ -109,7 +128,7 @@ final class CleanupResponseTests: XCTestCase {
             transport = RequestRecordingCleanupTransport(frames: [String(decoding: frame, as: UTF8.self)])
         case .ollamaComplete:
             let body = try JSONSerialization.data(withJSONObject: ["message": message])
-            transport = RequestRecordingCleanupTransport(chatBody: body)
+            transport = RequestRecordingCleanupTransport(chatBody: body, streamFailure: URLError(.timedOut))
         case .openAIComplete:
             config.provider = "openai"
             config.remote.baseURL = "http://127.0.0.1:1234/v1"
@@ -118,7 +137,6 @@ final class CleanupResponseTests: XCTestCase {
             transport = RequestRecordingCleanupTransport(chatBody: body)
         }
         let service = CleanupService(config: config, transport: transport)
-        if path == .ollamaStream { service.notePrimarySuccess() }
         return await service.clean(raw)
     }
 
@@ -130,14 +148,20 @@ final class CleanupResponseTests: XCTestCase {
 
 private final class RequestRecordingCleanupTransport: CleanupTransport {
     let requests = LockedTestValue<[URLRequest]>([])
+    let streamFreshness = LockedTestValue<[Bool]>([])
     private let warmed: XCTestExpectation?
     private let frames: [String]
     private let chatBody: Data
+    private let streamFailure: URLError?
+    private let retryFrames: [String]
 
-    init(warmed: XCTestExpectation? = nil, frames: [String] = [], chatBody: Data = Data()) {
+    init(warmed: XCTestExpectation? = nil, frames: [String] = [], chatBody: Data = Data(),
+         streamFailure: URLError? = nil, retryFrames: [String] = []) {
         self.warmed = warmed
         self.frames = frames
         self.chatBody = chatBody
+        self.streamFailure = streamFailure
+        self.retryFrames = retryFrames
     }
 
     func data(for request: URLRequest, probing: Bool) async throws -> (Data, URLResponse) {
@@ -148,9 +172,10 @@ private final class RequestRecordingCleanupTransport: CleanupTransport {
     func streamLines(for request: URLRequest, freshConnection: Bool) async throws
         -> (AsyncThrowingStream<String, Error>, URLResponse) {
         requests.update { $0.append(request) }
+        streamFreshness.update { $0.append(freshConnection) }
         let lines = AsyncThrowingStream<String, Error> { continuation in
-            for frame in frames { continuation.yield(frame) }
-            continuation.finish()
+            for frame in freshConnection ? retryFrames : frames { continuation.yield(frame) }
+            continuation.finish(throwing: freshConnection ? nil : streamFailure)
         }
         return (lines, try response(for: request))
     }
