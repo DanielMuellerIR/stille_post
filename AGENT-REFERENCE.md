@@ -52,6 +52,14 @@ Fallbacks oder Konfiguration zusätzlich auszuführen. GUI-/Hotkey-Änderungen b
 einen echten App-Bundle-Smoke-Test; Signatur/Notarisierung braucht die vorhandenen
 Build-Prüfungen und einen Start des resultierenden Bundles.
 
+Die [CI für Apple-Plattformen](.github/workflows/tests.yml) führt Swift-Tests
+und Shell-Verträge für CLI, Bundle-Bau, Modellinstallation und Release aus.
+Sie testet den mobilen Kern auf macOS und kompiliert App und UI-Tests für den
+iOS-Simulator. Für TLS-Fixtures braucht die Testsitzung einen beschreibbaren
+Schlüsselbund. `scripts/test-app-regressions.sh` prüft zusätzlich ein sichtbares
+AppKit-Overlay und benötigt eine interaktive macOS-Sitzung. iPhone-Gerätetests
+stehen in der [mobilen Anleitung](iOS/README.md#prüfung).
+
 ### Änderungsspezifische Prüfungen
 
 - Streaming/Zusammenfügen: mehrere Segmente ergeben genau einen Cleanup-Aufruf in

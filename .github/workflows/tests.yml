@@ -9,18 +9,52 @@ on:
 permissions:
   contents: read
 
+env:
+  # Das macos-15-Image verwendet standardmäßig Xcode 16.4. Die Apps
+  # benötigen Swift 6.2 oder neuer für isolierte Destruktoren.
+  DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+
 jobs:
   tests:
     runs-on: macos-15
+    timeout-minutes: 25
     steps:
       - name: Quelltext auschecken
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Swift-Tests ausführen
+      - name: Swift-Tests für macOS ausführen
         run: swift test
 
+      - name: CLI-Verträge prüfen
+        run: bash scripts/test-cli-contracts.sh
+
+      - name: Bundle-Bau und Modellinstallation prüfen
+        run: |
+          bash scripts/test-build-signing.sh
+          bash scripts/test-install-model-safety.sh
+
       - name: Release-Verträge prüfen
-        shell: bash
         run: |
           bash scripts/test-release-clean-tree.sh
           bash scripts/test-release-publication.sh
+
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - name: Quelltext auschecken
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Mobilen Kern auf macOS testen
+        run: swift test --package-path iOS/StillePostClientCore
+
+      - name: iOS-App und UI-Tests für den Simulator bauen
+        run: |
+          xcodebuild -quiet \
+            -project iOS/StillePostMobile.xcodeproj \
+            -scheme StillePostMobile \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/StillePostMobile" \
+            -onlyUsePackageVersionsFromResolvedFile \
+            CODE_SIGNING_ALLOWED=NO \
+            build-for-testing
