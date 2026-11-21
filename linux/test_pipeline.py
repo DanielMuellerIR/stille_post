@@ -538,7 +538,7 @@ class PipelineTests(unittest.TestCase):
 
     def test_saved_whisper_path_follows_the_active_installed_bundle(self):
         executable = pathlib.Path(self.process.args[0])
-        data_home = self.path / "xdg-data"
+        data_home = self.path / "xdg-datá"
         managed_root = data_home / "stillepost/app"
         old_version, new_version = "0.8.5", "0.8.6"
         for version in (old_version, new_version):
@@ -591,6 +591,8 @@ class PipelineTests(unittest.TestCase):
         for configured in (
             managed_root / old_version / "bin/whisper-custom",
             data_home / "other/app/0.8.5/bin/whisper-server",
+            data_home.with_name("xdg-data\u0301")
+            / "stillepost/app/0.8.5/bin/whisper-server",
             managed_root / "development/bin/whisper-server",
         ):
             saved["whisper"]["binaryPath"] = str(configured)

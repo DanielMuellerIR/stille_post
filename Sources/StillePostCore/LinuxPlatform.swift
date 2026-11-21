@@ -21,21 +21,27 @@ enum LinuxInstallation {
 
     static func migrateWhisperBinaryPath(_ path: String) -> String {
         let prefix = managedRoot.path + "/"
-        guard path.hasPrefix(prefix) else { return path }
-        let components = path.dropFirst(prefix.count).split(separator: "/", omittingEmptySubsequences: false)
+        // Linux unterscheidet auch Unicode-Pfade mit verschiedener Bytefolge.
+        guard path.utf8.starts(with: prefix.utf8) else { return path }
+        let relativePath = String(decoding: path.utf8.dropFirst(prefix.utf8.count), as: UTF8.self)
+        let components = relativePath.split(separator: "/", omittingEmptySubsequences: false)
         guard components.count == 3, isReleaseVersion(String(components[0])),
             components[1] == "bin", components[2] == "whisper-server"
         else { return path }
 
         let package = executableDirectory.deletingLastPathComponent()
         guard executableDirectory.lastPathComponent == "bin",
-            package.deletingLastPathComponent().path == managedRoot.path,
+            samePath(package.deletingLastPathComponent(), managedRoot),
             isReleaseVersion(package.lastPathComponent),
-            managedRoot.appendingPathComponent("current").resolvingSymlinksInPath().path == package.path
+            samePath(managedRoot.appendingPathComponent("current").resolvingSymlinksInPath(), package)
         else { return path }
 
         // Ältere Einstellungen speicherten die damalige Paketvorgabe absolut.
         return executableDirectory.appendingPathComponent("whisper-server").path
+    }
+
+    private static func samePath(_ first: URL, _ second: URL) -> Bool {
+        first.path.utf8.elementsEqual(second.path.utf8)
     }
 
     private static func isReleaseVersion(_ value: String) -> Bool {
