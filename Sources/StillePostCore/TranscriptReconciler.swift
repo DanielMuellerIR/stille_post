@@ -2,20 +2,17 @@ import Foundation
 
 /// Prüft, welche Änderungen der Bereinigung durch den Rohtext gedeckt sind.
 enum TranscriptReconciler {
-    /// Gleicht die LLM-Ausgabe mit dem Rohtext ab — NICHT mehr alles-oder-nichts:
-    ///
-    /// Früher verwarf ein einziges verändertes Wort die komplette Bereinigung —
-    /// inklusive aller korrekten Satzzeichen-Korrekturen im selben Durchlauf. Jetzt
-    /// wird der Text an Satzzeichen in Satzteile ("Klauseln") zerlegt und nur der
-    /// betroffene Satzteil auf die Roh-Wörter zurückgesetzt.
+    /// Gleicht die LLM-Ausgabe mit dem Rohtext ab. Unzulässige Änderungen setzen
+    /// den betroffenen Satzteil auf die Roh-Wörter zurück, damit Satzzeichen und
+    /// Füllwortkorrekturen in den übrigen Satzteilen erhalten bleiben.
     ///
     /// Erlaubte Abweichungen je Ausrichtungslücke (via LCS-Anker):
     ///  - Eindeutige Sprechpausen und unmittelbare wortgleiche Wiederholungen
     ///    löschen; andere Löschungen setzen den betroffenen Satzteil zurück.
     ///  - Reine Wort-Trennung/-Fusion ("dauer haft").
     ///  - Ein Tippfehler/Verhörer (Editierabstand 1) und kurze Flexionsendungen.
-    ///  - NEU: gleich klingende Wörter (Kölner Phonetik, "Rack" -> "RAG").
-    ///  - NEU: Wörterbuch-Fachbegriffe, wenn sie ähnlich klingen ("Mini Macs" ->
+    ///  - Gleich klingende Wörter (Kölner Phonetik, "Rack" -> "RAG").
+    ///  - Wörterbuch-Fachbegriffe, wenn sie ähnlich klingen ("Mini Macs" ->
     ///    "MiniMax"). `dictionary` enthält dafür normalisierte Begriffe
     ///    (siehe `normalizedDictionary`).
     ///
@@ -83,49 +80,20 @@ enum TranscriptReconciler {
         var anchors: [(raw: Int, clean: Int)] = []
         lcsAnchors(rawIDs, cleanIDs, rawRange: 0..<n, cleanRange: 0..<m, into: &anchors)
 
-        // Je Ausgabe-Wort: Deckungsbereich in Roh-Wort-Indizes (für die spätere
-        // Rücksetzung) und ob es zu einer unzulässigen Änderung gehört.
-        var tainted = [Bool](repeating: false, count: m)
-        var rawLo = [Int](repeating: 0, count: m)
-        var rawHi = [Int](repeating: 0, count: m)
+        var alignment = [WordAlignment](repeating: WordAlignment(rawWords: 0..<0), count: m)
         var corrections = 0
-        // Unzulässig weggelassene Wörter, einzeln für die Nachbewertung unten.
-        // Neben dem Wort selbst bleiben die Grenzen der ganzen Löschungslücke
-        // erhalten: Eine Satzgrenze kann vor einem ebenfalls gelöschten Füllwort
-        // stehen und gehört trotzdem zur Einordnung der folgenden Verneinung.
-        var droppedMeaning: [(
-            rawStart: Int, rawEnd: Int, gapStart: Int, gapEnd: Int, cleanIndex: Int
-        )] = []
-        // Nur eindeutige Sprechpausen löschen. „um“, „also“, „halt“ und
-        // „quasi“ können Bedeutung tragen; Sprache=auto erlaubt keine sichere
-        // Zuordnung. Eine unmittelbare Wiederholung muss daneben wortgleich
-        // erhalten bleiben und darf keine Satzteilgrenze überschreiten.
-        let hesitationWords: Set<String> = ["äh", "ähm", "ähh", "öh", "öhm", "uh", "uhm", "erm"]
-        func mayDelete(_ index: Int, cleanIndex: Int) -> Bool {
-            let word = rawTokens[index].norm
-            if hesitationWords.contains(word) { return true }
-            guard !word.contains(where: { $0.isNumber }) else { return false }
-            for (rawNeighbor, cleanNeighbor) in [(index - 1, cleanIndex - 1),
-                                                 (index + 1, cleanIndex)] {
-                guard rawNeighbor >= 0, rawNeighbor < n,
-                      cleanNeighbor >= 0, cleanNeighbor < m,
-                      rawTokens[rawNeighbor].norm == word,
-                      cleanTokens[cleanNeighbor].norm == word else { continue }
-                let left = min(index, rawNeighbor), right = max(index, rawNeighbor)
-                let between = rawTokens[left].range.upperBound..<rawTokens[right].range.lowerBound
-                let separator = raw[between]
-                if !separator.isEmpty, separator.allSatisfy({ $0.isWhitespace }) { return true }
-            }
-            return false
-        }
+        // Eine Satzgrenze kann vor einem ebenfalls gelöschten Füllwort stehen
+        // und bestimmt auch dann, zu welchem Satzteil das Inhaltswort gehört.
+        var droppedMeaning: [(rawWord: Int, rawGap: Range<Int>, cleanIndex: Int)] = []
         // Bewertet die Lücke rawTokens[rs..<re] / cleanTokens[cs..<ce] vor einem Anker.
         func classifyGap(_ rs: Int, _ re: Int, _ cs: Int, _ ce: Int) {
             guard ce > cs else {
                 // Jede unbelegte Löschung zurücksetzen, nicht nur Verneinungen:
                 // auch Beträge, Termine und mehrdeutige Wörter bleiben erhalten.
                 guard rs < re else { return }
-                for rawIndex in rs..<re where !mayDelete(rawIndex, cleanIndex: cs) {
-                    droppedMeaning.append((rawIndex, rawIndex + 1, rs, re, cs))
+                for rawIndex in rs..<re where !mayDeleteWord(at: rawIndex, before: cs, in: raw,
+                                                              rawTokens: rawTokens, cleanTokens: cleanTokens) {
+                    droppedMeaning.append((rawIndex, rs..<re, cs))
                 }
                 return
             }
@@ -136,17 +104,14 @@ enum TranscriptReconciler {
             )
             if allowed { corrections += max(re - rs, ce - cs) }
             for c in cs..<ce {
-                tainted[c] = !allowed  // rs == re wäre eine reine Einfügung: verboten
-                rawLo[c] = rs
-                rawHi[c] = re
+                alignment[c] = WordAlignment(rawWords: rs..<re, needsRevert: !allowed)
             }
         }
         // Anker vorwärts ablaufen: Alles zwischen zwei Ankern ist eine Lücke.
         var gapRawStart = 0, gapCleanStart = 0
         for anchor in anchors {
             classifyGap(gapRawStart, anchor.raw, gapCleanStart, anchor.clean)
-            rawLo[anchor.clean] = anchor.raw
-            rawHi[anchor.clean] = anchor.raw + 1
+            alignment[anchor.clean] = WordAlignment(rawWords: anchor.raw..<(anchor.raw + 1))
             gapRawStart = anchor.raw + 1
             gapCleanStart = anchor.clean + 1
         }
@@ -167,41 +132,23 @@ enum TranscriptReconciler {
             guard lower <= upper else { return false }
             return (lower...upper).contains(where: rawClauseBoundary(before:))
         }
-        // Unzulässig weggelassene Wörter nachtragen. Eine reine Löschung hat kein
-        // eigenes Ausgabe-Wort, an dem die Rücksetzung hängen könnte — deshalb
-        // erbt sie normalerweise das Ausgabe-Wort direkt VOR der Lücke (steht die
-        // Lücke ganz am Anfang, das erste Wort dahinter; die Ausnahme an der
-        // Satzteil-Grenze steht in der Schleife). Genau dessen Satzteil ist der,
-        // aus dem das Wort verschwunden ist. Sein Roh-Deckungsbereich wächst
-        // um die gelöschten Roh-Wörter, damit der Wiederaufbau sie wieder einsetzt.
-        // Erst hier und nicht in `classifyGap`, weil der Ankerlauf oben rawLo/rawHi
-        // der Anker-Wörter nach dem Lückenaufruf noch überschreibt.
-        // Mehrfach dasselbe Wort zu markieren ist harmlos: `tainted` ist ein
-        // Ja/Nein-Merker, und der Wiederaufbau setzt jeden Satzteil genau einmal
-        // zurück (`nextRaw` verhindert doppelt eingefügte Roh-Wörter).
+        // Eine reine Löschung hat kein eigenes Ausgabe-Wort. Sie wird dem
+        // vorhergehenden Ausgabe-Wort zugeordnet, am Textanfang dem ersten Wort.
+        // Beginnt das gelöschte Wort im Rohtext einen Satzteil ("… . nicht machen
+        // wir das"), gehört es zum folgenden Ausgabe-Wort. Die Zuordnung erfolgt
+        // erst nach dem Ankerlauf, der sonst den erweiterten Bereich überschriebe.
         for drop in droppedMeaning {
-            var neighbor = max(drop.cleanIndex - 1, 0)  // m > 0 ist oben sichergestellt
-            // Zu welchem Satzteil das verschluckte Wort gehörte, steht im
-            // Rohtext: Eröffnete es dort einen neuen Satzteil — direkt davor ein
-            // Punkt/Komma, direkt dahinter keiner —, gehört es zum FOLGENDEN
-            // Ausgabe-Wort. Ohne diese Unterscheidung wurde bei
-            // „erster satz. nicht machen wir das“ -> „Erster Satz. Machen wir
-            // das.“ der unveränderte erste Satz zurückgesetzt, und die
-            // Verneinung hing als Rest an dessen Ende. Umgekehrt schließt
-            // „das geht so nicht, wir machen …“ den ERSTEN Satzteil ab — dort
-            // bleibt es beim Wort davor.
+            var neighbor = max(drop.cleanIndex - 1, 0)
             let boundaryBeforeWord = rawClauseBoundary(
-                from: drop.gapStart, through: drop.rawStart
+                from: drop.rawGap.lowerBound, through: drop.rawWord
             )
             let boundaryAfterWord = rawClauseBoundary(
-                from: drop.rawEnd, through: drop.gapEnd
+                from: drop.rawWord + 1, through: drop.rawGap.upperBound
             )
             if drop.cleanIndex < m, boundaryBeforeWord, !boundaryAfterWord {
                 neighbor = drop.cleanIndex
             }
-            tainted[neighbor] = true
-            rawLo[neighbor] = min(rawLo[neighbor], drop.rawStart)
-            rawHi[neighbor] = max(rawHi[neighbor], drop.rawEnd)
+            alignment[neighbor].include(rawWords: drop.rawWord..<(drop.rawWord + 1), needsRevert: true)
         }
 
         // Backstop gegen schleichendes Umschreiben: viele erlaubte Mini-Korrekturen.
@@ -209,37 +156,15 @@ enum TranscriptReconciler {
         if corrections > budget {
             return .rejected(reason: L10n.text("core.cleanup.words_changed"))
         }
-        if !tainted.contains(true) {
+        if !alignment.contains(where: \.needsRevert) {
             return .accepted(text: cleaned, revertedClauses: 0)
         }
 
-        // Satzteile bilden: Jede Interpunktion zwischen zwei Ausgabe-Wörtern
-        // eröffnet einen neuen Satzteil.
-        var clauseOf = [Int](repeating: 0, count: m)
-        var clause = 0
-        for j in 1..<m {
-            let gap = cleaned[cleanTokens[j - 1].range.upperBound..<cleanTokens[j].range.lowerBound]
-            if isClauseBoundary(gap) { clause += 1 }
-            clauseOf[j] = clause
-        }
-        let clauseCount = clause + 1
-        var clauseTainted = [Bool](repeating: false, count: clauseCount)
-        var clauseRawLo = [Int](repeating: Int.max, count: clauseCount)
-        var clauseRawHi = [Int](repeating: 0, count: clauseCount)
-        var clauseFirst = [Int](repeating: Int.max, count: clauseCount)
-        var clauseLast = [Int](repeating: 0, count: clauseCount)
-        for j in 0..<m {
-            let k = clauseOf[j]
-            if tainted[j] { clauseTainted[k] = true }
-            clauseRawLo[k] = min(clauseRawLo[k], rawLo[j])
-            clauseRawHi[k] = max(clauseRawHi[k], rawHi[j])
-            clauseFirst[k] = min(clauseFirst[k], j)
-            clauseLast[k] = max(clauseLast[k], j)
-        }
-        let revertedCount = clauseTainted.filter { $0 }.count
+        let clauses = clauses(in: cleaned, tokens: cleanTokens, alignment: alignment)
+        let revertedCount = clauses.count(where: { $0.alignment.needsRevert })
         // Muss mehr als die Hälfte zurückgesetzt werden, ist die Ausgabe insgesamt
         // nicht vertrauenswürdig — dann ist der komplette Rohtext die ehrlichere Wahl.
-        if revertedCount * 2 > clauseCount {
+        if revertedCount * 2 > clauses.count {
             return .rejected(reason: L10n.text("core.cleanup.words_changed"))
         }
 
@@ -250,13 +175,14 @@ enum TranscriptReconciler {
         var result = ""
         var cursor = cleaned.startIndex
         var nextRaw = 0
-        for k in 0..<clauseCount {
-            let firstToken = cleanTokens[clauseFirst[k]]
-            let lastToken = cleanTokens[clauseLast[k]]
-            if clauseTainted[k] {
+        for clause in clauses {
+            let firstToken = cleanTokens[clause.cleanWords.lowerBound]
+            let lastToken = cleanTokens[clause.cleanWords.upperBound - 1]
+            let rawWords = clause.alignment.rawWords
+            if clause.alignment.needsRevert {
                 result += cleaned[cursor..<firstToken.range.lowerBound]
-                let lo = min(max(clauseRawLo[k], nextRaw), n)
-                let hi = min(max(clauseRawHi[k], lo), n)
+                let lo = min(max(rawWords.lowerBound, nextRaw), n)
+                let hi = min(max(rawWords.upperBound, lo), n)
                 if lo < hi {
                     // Original-Substring statt mit Leerzeichen zusammengesetzter
                     // Einzelwörter: So überleben Binde-/Schrägstriche, Apostrophe
@@ -266,12 +192,47 @@ enum TranscriptReconciler {
                 nextRaw = hi
             } else {
                 result += cleaned[cursor..<lastToken.range.upperBound]
-                nextRaw = max(nextRaw, clauseRawHi[k])
+                nextRaw = max(nextRaw, rawWords.upperBound)
             }
             cursor = lastToken.range.upperBound
         }
         result += cleaned[cursor...]  // Interpunktion nach dem letzten Wort
         return .accepted(text: result, revertedClauses: revertedCount)
+    }
+
+    private struct WordAlignment {
+        var rawWords: Range<Int>
+        var needsRevert = false
+
+        mutating func include(rawWords: Range<Int>, needsRevert: Bool) {
+            let start = min(self.rawWords.lowerBound, rawWords.lowerBound)
+            let end = max(self.rawWords.upperBound, rawWords.upperBound)
+            self.rawWords = start..<end
+            self.needsRevert = self.needsRevert || needsRevert
+        }
+    }
+
+    private struct Clause {
+        var cleanWords: Range<Int>
+        var alignment: WordAlignment
+    }
+
+    private static func clauses(in text: String, tokens: [Token], alignment: [WordAlignment]) -> [Clause] {
+        var clauses: [Clause] = []
+        var current = Clause(cleanWords: 0..<1, alignment: alignment[0])
+        for index in tokens.indices.dropFirst() {
+            let gap = text[tokens[index - 1].range.upperBound..<tokens[index].range.lowerBound]
+            let word = alignment[index]
+            if isClauseBoundary(gap) {
+                clauses.append(current)
+                current = Clause(cleanWords: index..<(index + 1), alignment: word)
+            } else {
+                current.cleanWords = current.cleanWords.lowerBound..<(index + 1)
+                current.alignment.include(rawWords: word.rawWords, needsRevert: word.needsRevert)
+            }
+        }
+        clauses.append(current)
+        return clauses
     }
 
     /// Ein Wort des Originaltexts samt Fundstelle und normalisierter Form.
@@ -294,26 +255,36 @@ enum TranscriptReconciler {
     /// zusätzlich; kleine Wortersetzungen sind für diesen Lagebeleg zu unsicher.
     static func preservesFormattingPosition(raw: String, cleaned: String) -> Bool {
         let original = tokens(in: raw), output = tokens(in: cleaned)
-        let pauses: Set<String> = ["äh", "ähm", "ähh", "öh", "öhm", "uh", "uhm", "erm"]
         func norm(_ token: Token) -> String { token.norm == "contractednot" ? "not" : token.norm }
         var index = 0
         for (rawIndex, token) in original.enumerated() {
             if index < output.count, norm(token) == norm(output[index]) { index += 1; continue }
-            if pauses.contains(token.norm) { continue }
-            let repeated = [(rawIndex - 1, index - 1), (rawIndex + 1, index)].contains { neighbor, target in
-                guard !token.norm.contains(where: \.isNumber),
-                      original.indices.contains(neighbor), output.indices.contains(target),
-                      norm(original[neighbor]) == norm(token), norm(output[target]) == norm(token) else { return false }
-                let left = min(rawIndex, neighbor), right = max(rawIndex, neighbor)
-                let gap = raw[original[left].range.upperBound..<original[right].range.lowerBound]
-                return !gap.isEmpty && gap.allSatisfy(\.isWhitespace)
-            }
-            if !repeated { return false }
+            guard mayDeleteWord(at: rawIndex, before: index, in: raw,
+                                rawTokens: original, cleanTokens: output, key: norm) else { return false }
         }
         func symbols(_ text: String) -> String {
             String(text.unicodeScalars.filter { CharacterSet.symbols.contains($0) })
         }
         return index == output.count && symbols(raw) == symbols(cleaned)
+    }
+
+    // Mehrdeutige Wörter wie „um“ oder „halt“ können Inhalt tragen. Eine
+    // Wiederholung muss unmittelbar benachbart sein und in der Ausgabe bleiben.
+    private static let hesitationWords: Set<String> = ["äh", "ähm", "ähh", "öh", "öhm", "uh", "uhm", "erm"]
+
+    private static func mayDeleteWord(at index: Int, before cleanIndex: Int, in raw: String,
+                                      rawTokens: [Token], cleanTokens: [Token],
+                                      key: (Token) -> String = { $0.norm }) -> Bool {
+        let word = key(rawTokens[index])
+        if hesitationWords.contains(word) { return true }
+        guard !word.contains(where: \.isNumber) else { return false }
+        return [(index - 1, cleanIndex - 1), (index + 1, cleanIndex)].contains { rawNeighbor, cleanNeighbor in
+            guard rawTokens.indices.contains(rawNeighbor), cleanTokens.indices.contains(cleanNeighbor),
+                  key(rawTokens[rawNeighbor]) == word, key(cleanTokens[cleanNeighbor]) == word else { return false }
+            let left = min(index, rawNeighbor), right = max(index, rawNeighbor)
+            let gap = raw[rawTokens[left].range.upperBound..<rawTokens[right].range.lowerBound]
+            return !gap.isEmpty && gap.allSatisfy(\.isWhitespace)
+        }
     }
 
     /// Zerlegt Text Unicode-sicher in Wörter (Buchstaben-/Ziffernfolgen).
