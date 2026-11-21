@@ -217,6 +217,13 @@ public final class HistoryStore: @unchecked Sendable {
         return audioDir.appendingPathComponent(name)
     }
 
+    func retainedRegularAudioURL(for entry: Entry) -> URL? {
+        guard let url = audioURL(for: entry),
+              let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              attributes[.type] as? FileAttributeType == .typeRegular else { return nil }
+        return url
+    }
+
     /// Erzeugt einen neuen, eindeutigen Ziel-Pfad für eine Aufnahme.
     public func newRecordingURL() -> URL {
         // ISO-Zeitstempel im Dateinamen -> alphabetisch = chronologisch sortiert.

@@ -303,6 +303,12 @@ public final class DictationEngine {
     /// Die optionale Haltbedingung wird mehrfach gelesen und muss eine reine
     /// Zustandsabfrage sein. false bricht den noch laufenden Start ab.
     public func start(configuration: Config? = nil, onlyWhile shouldContinue: @escaping () -> Bool = { true }) {
+        start(appBundleID: requestAppBundleID?(), configuration: configuration, onlyWhile: shouldContinue)
+    }
+
+    /// Der Aufrufer kann Profilwahl und Ausgabeziel auf dieselbe App-Identität binden.
+    public func start(appBundleID: String?, configuration: Config? = nil,
+                      onlyWhile shouldContinue: @escaping () -> Bool = { true }) {
         guard !importingAudio else { return }
         guard state == .idle || {
             if case .error = state { return true } else { return false }
@@ -313,7 +319,7 @@ public final class DictationEngine {
         processingAudioIsComplete = nil
         sessionGeneration &+= 1
         let generation = sessionGeneration
-        sessionRequest = requests.snapshot(appBundleID: requestAppBundleID?(), overriding: configuration)
+        sessionRequest = requests.snapshot(appBundleID: appBundleID, overriding: configuration)
         vadFallbackReason = nil
         previewSuppressed = false
         previewRevision = 0
@@ -444,8 +450,9 @@ public final class DictationEngine {
             let wavURL = history.newRecordingURL()
             do { writer = try makeWavWriter(wavURL) }
             catch {
-                segmentResults = nil
-                setState(.error(L10n.format("core.dictation.audio_writer_start_failed", wavURL.path, error.localizedDescription)))
+                let message = L10n.format("core.dictation.audio_writer_start_failed", wavURL.path, error.localizedDescription)
+                failRecording(RecordingStartupFailure(message: message), generation: generation,
+                              writerAlreadyFailed: true, diagnosticURL: wavURL)
                 return
             }
             wavWriter = writer
@@ -511,20 +518,8 @@ public final class DictationEngine {
                 self.recorder = recorder
                 failRecording(error, generation: generation)
             } else {
-                audioSession.closePhase()
-                recordingPhaseID = nil
-                wavWriter = nil
-                self.segmentTasks?.cancel()
-                self.segmentTasks = nil
-                self.recordingFailure = nil
-                segmentResults = nil
-                let startError = error
-                do {
-                    try writer.finish()
-                    setState(.error(L10n.format("core.dictation.recording_start_failed_retained", writer.url.path, startError.localizedDescription)))
-                } catch {
-                    setState(.error(L10n.format("core.dictation.audio_write_failed", writer.url.path, error.localizedDescription)))
-                }
+                let message = L10n.format("core.dictation.recording_start_failed_retained", writer.url.path, error.localizedDescription)
+                failRecording(RecordingStartupFailure(message: message), generation: generation)
             }
             return
         }
@@ -551,8 +546,12 @@ public final class DictationEngine {
 
     /// Ein unterbrochenes Mikrofon darf nicht den normalen Stopp auslösen:
     /// dessen Flush und Bereinigung würden aus einer Teilaufnahme einen Erfolg machen.
-    private func failRecording(_ error: Error, generation: UInt64, writerAlreadyFailed: Bool = false) {
-        guard isCurrentSession(generation), state == .recording || state == .paused || state == .resuming else { return }
+    private func failRecording(_ error: Error, generation: UInt64, writerAlreadyFailed: Bool = false,
+                               diagnosticURL: URL? = nil) {
+        guard isCurrentSession(generation),
+              state == .starting || state == .recording || state == .paused || state == .resuming else { return }
+        let policy = sessionRequest.config.history
+        let unfinishedStart = state == .starting
         _ = closeAudioPhase()
         let duration = recordingDuration
         timingStore?.finishRecording(seconds: duration)
@@ -571,7 +570,7 @@ public final class DictationEngine {
         wavWriter = nil
         processingWavURL = nil
         var message = error.localizedDescription
-        var validAudio = !writerAlreadyFailed && !(error is RecordingWriteFailure)
+        var validAudio = !unfinishedStart && !writerAlreadyFailed && !(error is RecordingWriteFailure)
         if !writerAlreadyFailed {
             do { try writer?.finish() }
             catch let finishError {
@@ -581,10 +580,13 @@ public final class DictationEngine {
                 }
             }
         }
-        setState(.error(message))
-        let policy = sessionRequest.config.history
         let finalMessage = message
-        let audioName = validAudio ? writer?.url.lastPathComponent : nil
+        let retainedURL = writer?.url ?? diagnosticURL
+        let audioName = retainedURL.flatMap { url in
+            FileManager.default.fileExists(atPath: url.path) ? url.lastPathComponent : nil
+        }
+        let completeness: Bool? = validAudio ? nil : false
+        setState(.error(message))
         // Schon erkannte Phasen bleiben als unbereinigter Teiltext erhalten.
         // Die Politik muss vor dem Await feststehen, auch bei sofortigem Neustart.
         trackHistoryWork { @MainActor in
@@ -593,12 +595,12 @@ public final class DictationEngine {
             let entry = policy.applying(to: HistoryStore.Entry(
                 rawText: raw, cleanText: raw, status: "failed", errorMessage: finalMessage,
                 audioFileName: audioName, durationSec: duration,
-                cleanupFellBack: true, cleanupFallbackReason: finalMessage
+                cleanupFellBack: true, cleanupFallbackReason: finalMessage, audioIsComplete: completeness
             ))
             do { try await self.history.appendAsync(entry) }
             catch {
                 guard self.isCurrentSession(failureGeneration) else { return }
-                self.setState(.error(L10n.format("core.dictation.failure_history_write_failed", writer?.url.path ?? "–", error.localizedDescription)))
+                self.setState(.error(L10n.format("core.dictation.failure_history_write_failed", retainedURL?.path ?? "–", error.localizedDescription)))
             }
         }
     }
@@ -1061,8 +1063,7 @@ public final class DictationEngine {
         if let expiry = stored.textExpiresAt {
             entry.textExpiresAt = entry.textExpiresAt.map { min($0, expiry) } ?? expiry
         }
-        guard let audioURL = history.audioURL(for: entry),
-              FileManager.default.fileExists(atPath: audioURL.path) else {
+        guard let audioURL = history.retainedRegularAudioURL(for: entry) else {
             var updated = entry
             updated.errorMessage = L10n.text("core.dictation.audio_missing")
             if stored.audioIsComplete == true { updated.audioIsComplete = false }
@@ -1363,4 +1364,9 @@ private struct RecordingWriteFailure: LocalizedError {
     var errorDescription: String? {
         L10n.format("core.dictation.audio_write_failed", url.path, underlying.localizedDescription)
     }
+}
+
+private struct RecordingStartupFailure: LocalizedError {
+    let message: String
+    var errorDescription: String? { message }
 }

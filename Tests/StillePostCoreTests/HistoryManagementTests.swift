@@ -229,6 +229,28 @@ final class HistoryManagementTests: XCTestCase {
     }
 
     @MainActor
+    func testRetryRequiresARegularRecordingInTheHistoryDirectory() async throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent("sp-retry-regular-\(UUID())")
+        let history = HistoryStore(baseDir: base)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let recording = history.newRecordingURL()
+        let otherFile = base.appendingPathComponent("not-a-recording.txt")
+        let bytes = Data("unrelated artificial file".utf8)
+        try bytes.write(to: otherFile)
+        try FileManager.default.createSymbolicLink(at: recording, withDestinationURL: otherFile)
+        let entry = HistoryStore.Entry(rawText: "", cleanText: "", status: "failed",
+            audioFileName: recording.lastPathComponent, durationSec: 1)
+        try history.append(entry)
+
+        let transcriber = HistoryRetryTranscriber()
+        let updated = try await retryEngine(history: history, transcriber: transcriber).retry(entry: entry)
+
+        XCTAssertEqual(transcriber.calls, 0)
+        XCTAssertEqual(updated.status, "failed")
+        XCTAssertEqual(try Data(contentsOf: otherFile), bytes)
+    }
+
+    @MainActor
     func testDeletionDuringRetryCannotReturnOrRestoreText() async throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent("sp-retry-delete-\(UUID())")
         let history = HistoryStore(baseDir: base)

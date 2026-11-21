@@ -186,7 +186,9 @@ final class AudioFailureLifecycleTests: XCTestCase {
     @MainActor
     func testWriterFailureRetainsDiagnosticWavAndDoesNotAdvertiseRetry() async throws {
         for failure in [LossWriter.Failure.append, .finish] {
-            let fixture = try LossFixture(writerFailure: failure)
+            var config = Config()
+            config.history.audioRetentionDays = 7
+            let fixture = try LossFixture(writerFailure: failure, config: config)
             defer { fixture.removeFiles() }
             await start(fixture)
             fixture.recorder.onSamples?([0.1])
@@ -197,11 +199,15 @@ final class AudioFailureLifecycleTests: XCTestCase {
             XCTAssertTrue(message.contains(url.path))
             XCTAssertTrue(message.contains("Künstlicher Schreibfehler"))
             XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
-            XCTAssertTrue(try fixture.history.list().isEmpty)
             XCTAssertEqual(fixture.cleanup.calls, 0)
             XCTAssertEqual(fixture.deliveries, 0)
-            fixture.engine.shutdown()
-            XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+            await fixture.engine.shutdown().value
+            let retained = try XCTUnwrap(fixture.history.list().first)
+            XCTAssertEqual(retained.audioFileName, url.lastPathComponent)
+            XCTAssertFalse(retained.canRetry)
+            XCTAssertNotNil(retained.audioExpiresAt)
+            try fixture.history.deleteAll()
+            XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
         }
     }
 
@@ -220,8 +226,13 @@ final class AudioFailureLifecycleTests: XCTestCase {
         XCTAssertTrue(message.contains(url.path))
         XCTAssertEqual(fixture.deliveries, 0)
         XCTAssertEqual(fixture.cleanup.calls, 0)
-        fixture.engine.shutdown()
+        await fixture.engine.shutdown().value
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        let retained = try XCTUnwrap(fixture.history.list().first)
+        XCTAssertEqual(retained.audioFileName, url.lastPathComponent)
+        XCTAssertFalse(retained.canRetry)
+        try await fixture.history.deleteAsync(id: retained.id)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
     }
 
     @MainActor
