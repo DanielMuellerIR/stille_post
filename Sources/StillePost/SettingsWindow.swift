@@ -4,11 +4,35 @@ import StillePostCore
 
 /// Fenster mit den App-Einstellungen: bearbeitet eine Kopie der Config und gibt
 /// sie beim Speichern an die App zurück (die schreibt config.json und aktualisiert die
-/// betroffenen Bausteine). Die Datei bleibt weiterhin von Hand editierbar — das
-/// Fenster liest bei jedem Öffnen frisch von Platte.
-final class SettingsWindowController {
+/// betroffenen Bausteine). Nach dem Schließen beginnt der nächste Entwurf mit
+/// dem aktuellen Stand der Datei.
+final class SettingsWindowController: NSObject, NSWindowDelegate {
+
+    /// Die Rohwerte bleiben für STILLEPOST_OPEN_SETTINGS erhalten.
+    enum Tab: String, CaseIterable {
+        case general = "allgemein"
+        case profiles = "profile"
+        case appProfiles = "apps"
+        case cleanup = "bereinigung"
+        case speechRecognition = "spracherkennung"
+        case recording = "aufnahme"
+        case history = "verlauf"
+
+        var title: String {
+            switch self {
+            case .general: return L10n.text("settings.tab.general")
+            case .profiles: return L10n.text("profiles.title")
+            case .appProfiles: return L10n.text("app_profiles.title")
+            case .cleanup: return L10n.text("settings.tab.cleanup")
+            case .speechRecognition: return L10n.text("settings.tab.speech")
+            case .recording: return L10n.text("settings.tab.recording")
+            case .history: return L10n.text("settings.tab.history")
+            }
+        }
+    }
 
     private var window: NSWindow?
+    private var tabSelection: SettingsTabSelection?
     /// Wird beim Speichern mit der neuen Config aufgerufen (App wendet sie an).
     private let onApply: (Config, Config) throws -> Void
     /// true = registrierte Hotkeys an den aktiven Recorder statt an das Diktat leiten.
@@ -22,7 +46,7 @@ final class SettingsWindowController {
         self.onDiagnostics = onDiagnostics
     }
 
-    func show(tab: String? = nil) {
+    func show(tab: Tab? = nil) {
         if window == nil {
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 720, height: 720),
@@ -33,49 +57,52 @@ final class SettingsWindowController {
             window.center()
             window.isReleasedWhenClosed = false
             window.contentMinSize = NSSize(width: 700, height: 680)
+            window.delegate = self
             self.window = window
         }
-        // Bei jedem Öffnen frisch von Platte laden — die Datei kann inzwischen
-        // von Hand oder von einer anderen Stelle geändert worden sein.
-        let expected = Config.load()
-        window?.contentView = NSHostingView(rootView: SettingsView(
-            config: expected,
-            onApply: { [weak self] newConfig in
-                try self?.onApply(newConfig, expected)
-                self?.window?.close()
-            },
-            onCancel: { [weak self] in self?.window?.close() },
-            onHotkeyRecording: { [weak self] recording in self?.onHotkeyRecording(recording) },
-            onDiagnostics: { [weak self] in self?.onDiagnostics() }, requestedTab: tab
-        ))
+        if let tabSelection {
+            if let tab { tabSelection.tab = tab }
+        } else {
+            let envTab = ProcessInfo.processInfo.environment["STILLEPOST_OPEN_SETTINGS"].flatMap(Tab.init(rawValue:))
+            let selection = SettingsTabSelection(tab: tab ?? envTab ?? .general)
+            tabSelection = selection
+
+            let expected = Config.load()
+            window?.contentView = NSHostingView(rootView: SettingsView(
+                config: expected, selection: selection,
+                onApply: { [weak self] newConfig in
+                    try self?.onApply(newConfig, expected)
+                    self?.window?.close()
+                },
+                onCancel: { [weak self] in self?.window?.close() },
+                onHotkeyRecording: { [weak self] recording in self?.onHotkeyRecording(recording) },
+                onDiagnostics: { [weak self] in self?.onDiagnostics() }
+            ))
+        }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        tabSelection = nil
+        window?.contentView = nil
     }
 }
 
 // MARK: - Hauptansicht
 
-struct SettingsView: View {
-    /// Die Einstellungs-Bereiche (eigener Umschalter statt TabView — der
-    /// rendert als Fenster-Toolbar und ließ die Tabs ins Overflow-Menü rutschen).
-    enum Tab: String, CaseIterable {
-        case allgemein, profile, apps, bereinigung, spracherkennung, aufnahme, verlauf
-        var title: String {
-            switch self {
-            case .apps: return L10n.text("app_profiles.title")
-            case .profile: return L10n.text("profiles.title")
-            case .allgemein: return L10n.text("settings.tab.general")
-            case .bereinigung: return L10n.text("settings.tab.cleanup")
-            case .spracherkennung: return L10n.text("settings.tab.speech")
-            case .aufnahme: return L10n.text("settings.tab.recording")
-            case .verlauf: return L10n.text("settings.tab.history")
-            }
-        }
-    }
+private final class SettingsTabSelection: ObservableObject {
+    @Published var tab: SettingsWindowController.Tab
 
+    init(tab: SettingsWindowController.Tab) {
+        self.tab = tab
+    }
+}
+
+private struct SettingsView: View {
     /// Arbeitskopie — erst "Speichern" gibt sie an die App weiter.
     @State var config: Config
-    @State private var tab: Tab
+    @ObservedObject var selection: SettingsTabSelection
     let onApply: (Config) throws -> Void
     @State private var saveError: String?
     let onCancel: () -> Void
@@ -91,37 +118,24 @@ struct SettingsView: View {
         }
     }
 
-    init(config: Config, onApply: @escaping (Config) throws -> Void, onCancel: @escaping () -> Void,
-         onHotkeyRecording: @escaping (Bool) -> Void = { _ in },
-         onDiagnostics: @escaping () -> Void = {}, requestedTab: String? = nil) {
-        _config = State(initialValue: config)
-        self.onDiagnostics = onDiagnostics
-        self.onHotkeyRecording = onHotkeyRecording
-        // Automatisierte GUI-Checks können über die Env-Var direkt einen
-        // bestimmten Bereich öffnen (Wert = Tab-Name, sonst "Allgemein").
-        let requested = requestedTab ?? ProcessInfo.processInfo.environment["STILLEPOST_OPEN_SETTINGS"] ?? ""
-        _tab = State(initialValue: Tab(rawValue: requested) ?? .allgemein)
-        self.onApply = onApply
-        self.onCancel = onCancel
-    }
-
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $tab) {
-                ForEach(Tab.allCases, id: \.self) { Text($0.title).tag($0) }
+            // TabView würde die Bereiche in der Fenster-Toolbar teilweise im Überlaufmenü verstecken.
+            Picker("", selection: $selection.tab) {
+                ForEach(SettingsWindowController.Tab.allCases, id: \.self) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
             .labelsHidden()
             .padding(12)
 
-            switch tab {
-            case .apps: AppProfilesTab(config: $config)
-            case .profile: ProfilesTab(config: $config)
-            case .allgemein: GeneralTab(config: $config, onHotkeyRecording: onHotkeyRecording, onDiagnostics: onDiagnostics)
-            case .bereinigung: CleanupTab(cleanup: $config.cleanup)
-            case .spracherkennung: WhisperTab(whisper: $config.whisper)
-            case .aufnahme: RecordingTab(audio: $config.audio, vad: $config.vad)
-            case .verlauf: HistorySettingsTab(history: $config.history)
+            switch selection.tab {
+            case .general: GeneralTab(config: $config, onHotkeyRecording: onHotkeyRecording, onDiagnostics: onDiagnostics)
+            case .profiles: ProfilesTab(config: $config)
+            case .appProfiles: AppProfilesTab(config: $config)
+            case .cleanup: CleanupTab(cleanup: $config.cleanup)
+            case .speechRecognition: WhisperTab(whisper: $config.whisper)
+            case .recording: RecordingTab(audio: $config.audio, vad: $config.vad)
+            case .history: HistorySettingsTab(history: $config.history)
             }
 
             Divider()

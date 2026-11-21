@@ -1143,10 +1143,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private func performDiagnosticAction(_ action: DiagnosticFinding.Action) {
         switch action {
         case .none: break
-        case .recordingSettings: settingsWindow.show(tab: "aufnahme")
-        case .speechSettings: settingsWindow.show(tab: "spracherkennung")
-        case .cleanupSettings: settingsWindow.show(tab: "bereinigung")
-        case .generalSettings: settingsWindow.show(tab: "allgemein")
+        case .recordingSettings: settingsWindow.show(tab: .recording)
+        case .speechSettings: settingsWindow.show(tab: .speechRecognition)
+        case .cleanupSettings: settingsWindow.show(tab: .cleanup)
+        case .generalSettings: settingsWindow.show(tab: .general)
         case .microphonePrivacy:
             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
         case .accessibilityPrivacy:
