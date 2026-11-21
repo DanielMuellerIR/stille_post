@@ -217,6 +217,40 @@ class UpdateTests(unittest.TestCase):
             STILLEPOST_SKIP_MODEL_SETUP="1",
         )
 
+    def test_local_installer_resumes_failed_model_setup_without_reactivation(self):
+        env = self.install_environment()
+        (self.bundle / "AppRun").touch()
+        env["STILLEPOST_SKIP_MODEL_SETUP"] = "0"
+        version = "0.9.48"
+        source = self.install_source(version, "exit 0\n")
+        model_marker = self.root / "model-attempt"
+        env["STILLEPOST_TEST_MODEL_ATTEMPT"] = str(model_marker)
+        (source / "setup-models.py").write_text(
+            "from pathlib import Path\nimport os, sys\n"
+            "marker = Path(os.environ['STILLEPOST_TEST_MODEL_ATTEMPT'])\n"
+            "if not marker.exists():\n    marker.touch()\n    sys.exit(1)\n"
+        )
+
+        command = [source / "install.sh"]
+        self.assertNotEqual(subprocess.run(command, env=env, capture_output=True).returncode, 0)
+        current = self.bundle.parent / "current"
+        installed = current.resolve()
+        self.assertEqual(installed.name, version)
+        generation = (self.bundle.parent / "previous-version").read_bytes()
+        launcher = self.root / "home/.local/bin/stillepost"
+        launcher.unlink()
+
+        result = subprocess.run(command, env=env, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr.decode())
+        self.assertTrue(os.access(launcher, os.X_OK))
+        self.assertEqual(current.resolve(), installed)
+        self.assertEqual((self.bundle.parent / "previous-version").read_bytes(), generation)
+        with patch.dict(os.environ, {"XDG_DATA_HOME": str(self.root)}):
+            Updater(installed).rollback()
+            with self.assertRaises(UpdateError):
+                Updater(source).install_local()
+        self.assertEqual(current.resolve(), self.bundle)
+
     def test_late_launcher_failure_preserves_concurrent_local_install(self):
         env = self.install_environment()
         (self.bundle.parent / "current").unlink()

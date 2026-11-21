@@ -8,14 +8,24 @@ if ! result=$(python3 "$source_dir/update.py" install-local); then
     printf '%s\n' "$result" >&2
     exit 1
 fi
-mkdir -p "$HOME/.local/bin" "${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+bin_dir="$HOME/.local/bin"
+desktop_dir="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+mkdir -p "$bin_dir" "$desktop_dir"
+launcher_tmp=$(mktemp "$bin_dir/.stillepost.XXXXXXXX")
+desktop_tmp=""
+trap 'rm -f -- "$launcher_tmp" "$desktop_tmp"' EXIT
+trap 'exit 1' HUP INT TERM
+desktop_tmp=$(mktemp "$desktop_dir/.stillepost.XXXXXXXX")
 # Der Launcher bleibt auch bei einem späteren Versionswechsel unverändert.
-cat > "$HOME/.local/bin/stillepost" <<EOF
+cat > "$launcher_tmp" <<EOF
 #!/bin/sh
 exec python3 "$install_root/current/launcher.py" "\$@"
 EOF
-chmod 755 "$HOME/.local/bin/stillepost"
-sed -e "s|^Exec=.*|Exec=\"$HOME/.local/bin/stillepost\"|" -e "s|^Icon=.*|Icon=$install_root/current/icon.png|" "$source_dir/stillepost.desktop" > "${XDG_DATA_HOME:-$HOME/.local/share}/applications/io.github.danielmuellerir.stillepost.desktop"
+chmod 755 "$launcher_tmp"
+sed -e "s|^Exec=.*|Exec=\"$bin_dir/stillepost\"|" -e "s|^Icon=.*|Icon=$install_root/current/icon.png|" "$source_dir/stillepost.desktop" > "$desktop_tmp"
+chmod 644 "$desktop_tmp"
+mv -fT "$launcher_tmp" "$bin_dir/stillepost"
+mv -fT "$desktop_tmp" "$desktop_dir/io.github.danielmuellerir.stillepost.desktop"
 if [ "${STILLEPOST_SKIP_MODEL_SETUP:-0}" != 1 ]; then
     python3 "$install_root/$version/setup-models.py"
 fi

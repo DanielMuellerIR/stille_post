@@ -339,24 +339,42 @@ class Updater:
             raise UpdateError("Ungültige Version.")
         root = install_root()
         root.mkdir(parents=True, exist_ok=True)
-        with update_lock(root), tempfile.TemporaryDirectory(
-            prefix=".install-", dir=root
-        ) as temp:
-            destination = self._unused_destination(root, version)
-            stage = pathlib.Path(temp) / "app"
-            shutil.copytree(self.bundle, stage, symlinks=True)
-            library_path = str(stage / "lib")
-            if os.environ.get("LD_LIBRARY_PATH"):
-                library_path += ":" + os.environ["LD_LIBRARY_PATH"]
-            env = dict(os.environ, LD_LIBRARY_PATH=library_path)
-            subprocess.run(
-                [str(stage / "bin/stillepost-linux"), "--version"],
-                env=env,
-                stdout=subprocess.DEVNULL,
-                check=True,
-            )
-            self._publish(stage, destination)
+        with update_lock(root):
+            destination = root / version
+            if os.path.lexists(destination):
+                current = root / "current"
+                if (
+                    destination.is_symlink()
+                    or not current.is_symlink()
+                    or current.resolve() != destination
+                    or (destination / "VERSION").read_text().strip() != version
+                ):
+                    raise UpdateError("Diese Version ist bereits installiert.")
+                # Launcher, Desktop-Eintrag oder Modell-Setup können nach der
+                # Aktivierung abbrechen. Dasselbe aktive Paket bleibt erhalten.
+                self._probe_local_bundle(destination)
+                return {"installed": True, "version": version}
+
+            with tempfile.TemporaryDirectory(prefix=".install-", dir=root) as temp:
+                stage = pathlib.Path(temp) / "app"
+                shutil.copytree(self.bundle, stage, symlinks=True)
+                self._probe_local_bundle(stage)
+                self._publish(stage, destination)
         return {"installed": True, "version": version}
+
+    @staticmethod
+    def _probe_local_bundle(bundle):
+        library_path = str(bundle / "lib")
+        if os.environ.get("LD_LIBRARY_PATH"):
+            library_path += ":" + os.environ["LD_LIBRARY_PATH"]
+        env = dict(os.environ, LD_LIBRARY_PATH=library_path)
+        subprocess.run(
+            [str(bundle / "bin/stillepost-linux"), "--version"],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            check=True,
+            timeout=15,
+        )
 
     @staticmethod
     def _unused_destination(root, version):
