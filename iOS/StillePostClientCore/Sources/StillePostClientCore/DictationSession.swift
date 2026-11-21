@@ -67,27 +67,28 @@ public struct MobileState: Equatable, Sendable {
 
     public func configure(mode: DictationMode, language: DictationLanguage) {
         guard operation == nil, state.phase != .recording else { return }
-        state.mode = mode
-        state.language = language
+        var next = state
+        next.mode = mode
+        next.language = language
+        state = next
     }
 
-    private func reset() {
-        let mode = state.mode
-        let language = state.language
-        state = MobileState()
-        state.mode = mode
-        state.language = language
+    private func reset(phase: MobileState.Phase = .idle) {
+        var next = MobileState()
+        next.phase = phase
+        next.mode = state.mode
+        next.language = state.language
+        state = next
     }
 
     public func record() {
         guard operation == nil, state.recording == nil, state.phase != .recording else { return }
         generation = UUID()
         let current = generation
-        reset()
-        state.phase = .permission
         operation = Task { [weak self] in
             guard let self else { return }
             do {
+                try Task.checkCancellation()
                 let url = try files.prepare()
                 try await capture.start(at: url, maxDuration: BridgeClient.maxRecordingSeconds)
                 guard generation == current else { return }
@@ -96,12 +97,18 @@ public struct MobileState: Equatable, Sendable {
             } catch {
                 guard generation == current else { return }
                 operation = nil
-                if error is CancellationError { return }
-                state.recording = try? files.existing()
-                state.phase = .failed
-                state.failure = error as? ClientFailure ?? .recordingFailed
+                var next = state
+                next.recording = try? files.existing()
+                if error is CancellationError {
+                    next.phase = next.recording == nil ? .idle : .ready
+                } else {
+                    next.phase = .failed
+                    next.failure = error as? ClientFailure ?? .recordingFailed
+                }
+                state = next
             }
         }
+        reset(phase: .permission)
     }
 
     public func stop() {
@@ -137,6 +144,7 @@ public struct MobileState: Equatable, Sendable {
         operation = Task { [weak self] in
             guard let self else { return }
             do {
+                try Task.checkCancellation()
                 let reply = try await bridge.dictate(recording, credentials: credentials) { [weak self] progress in
                     Task { @MainActor in
                         guard let self, self.generation == current, self.state.phase == .sending else { return }
@@ -145,10 +153,7 @@ public struct MobileState: Equatable, Sendable {
                 }
                 try Task.checkCancellation()
                 guard generation == current else { return }
-                state.reply = reply
-                try files.discard()
-                state.recording = nil
-                state.phase = .result
+                completeRecording(with: reply)
                 operation = nil
             } catch {
                 guard generation == current else { return }
@@ -175,6 +180,7 @@ public struct MobileState: Equatable, Sendable {
             guard let self else { return }
             defer { if generation == current { operation = nil } }
             do {
+                try Task.checkCancellation()
                 guard let offline else { throw LocalModelFailure.missing }
                 let text = try await offline.transcribe(recording, language: language) { [weak self] progress in
                     Task { @MainActor in
@@ -187,24 +193,40 @@ public struct MobileState: Equatable, Sendable {
                 guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                     throw ClientFailure.noSpeech
                 }
-                state.reply = DictationReply(text: text, origin: "local")
-                state.localText = text
-                try files.discard()
-                state.recording = nil
-                state.phase = .result
-                state.recovered = false
-            } catch is CancellationError {
-                state.phase = .ready
-                state.failure = interruptionFailure
+                completeRecording(with: DictationReply(text: text, origin: "local"), localText: text)
             } catch {
-                state.phase = .failed
-                if let failure = error as? LocalModelFailure {
-                    state.modelFailure = failure
+                guard generation == current else { return }
+                var next = state
+                if Task.isCancelled || error is CancellationError {
+                    next.phase = .ready
+                    next.failure = interruptionFailure
                 } else {
-                    state.failure = error as? ClientFailure ?? .recordingFailed
+                    next.phase = .failed
+                    if let failure = error as? LocalModelFailure {
+                        next.modelFailure = failure
+                    } else {
+                        next.failure = error as? ClientFailure ?? .recordingFailed
+                    }
                 }
+                state = next
             }
         }
+    }
+
+    private func completeRecording(with reply: DictationReply, localText: String? = nil) {
+        var next = state
+        next.reply = reply
+        next.localText = localText
+        do {
+            try files.discard()
+            next.recording = nil
+            next.phase = .result
+            next.recovered = false
+        } catch {
+            next.phase = .failed
+            next.failure = .storageFailed
+        }
+        state = next
     }
 
     public func cleanText(credentials: BridgeCredentials) {
@@ -217,15 +239,18 @@ public struct MobileState: Equatable, Sendable {
             guard let self else { return }
             defer { if generation == current { operation = nil } }
             do {
+                try Task.checkCancellation()
                 let reply = try await bridge.cleanup(text, credentials: credentials)
                 try Task.checkCancellation()
                 guard generation == current else { return }
                 state.reply = reply
                 state.phase = .result
-            } catch is CancellationError {} catch {
+            } catch {
                 guard generation == current else { return }
-                state.phase = .result
-                state.failure = error as? ClientFailure ?? .unavailable
+                var next = state
+                next.phase = .result
+                if !(error is CancellationError) { next.failure = error as? ClientFailure ?? .unavailable }
+                state = next
             }
         }
     }

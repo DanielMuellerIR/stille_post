@@ -56,6 +56,25 @@ final class ModelDownloadTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: target), data)
     }
 
+    func testInvalidFullResponseLeavesResumableBytesIntact() async throws {
+        let target = try destination(), data = data
+        try data.prefix(5).write(to: target)
+        let invalid = downloader { _ in
+            .init(status: 200, headers: ["Content-Length": "11"], parts: [data.dropFirst(5)])
+        }
+        do {
+            try await invalid.download(file(), to: target) { _ in }
+            XCTFail("Falsche Länge der Vollantwort muss scheitern")
+        } catch { XCTAssertEqual(error as? LocalModelFailure, .invalidResponse) }
+        XCTAssertEqual(try Data(contentsOf: target), data.prefix(5))
+        let next = downloader { request in
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Range"), "bytes=5-")
+            return .init(status: 206, headers: ["Content-Range": "bytes 5-15/16", "Content-Length": "11"], parts: [data.dropFirst(5)])
+        }
+        try await next.download(file(), to: target) { _ in }
+        XCTAssertEqual(try Data(contentsOf: target), data)
+    }
+
     func testMismatchedRangeIsRejectedBeforeWriting() async throws {
         let target = try destination(), data = data
         try data.prefix(5).write(to: target)

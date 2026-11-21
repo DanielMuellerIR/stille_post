@@ -46,7 +46,11 @@ import XCTest
         XCTAssertEqual(offline.calls, 0)
         session.send(credentials: credentials)
         let before = await bridge.audioCalls; XCTAssertEqual(before, 0)
-        session.transcribe(); try await wait { offline.calls == 1 }
+        session.transcribe()
+        session.configure(mode: .mac, language: .de)
+        try await wait { offline.calls == 1 }
+        XCTAssertEqual(session.state.mode, .offline)
+        XCTAssertEqual(session.state.language, .en)
         XCTAssertEqual(offline.language, .en); XCTAssertNotNil(files.recording)
         offline.finish("No, not thirteen copies.")
         try await wait { session.state.phase == .result }
@@ -67,6 +71,21 @@ import XCTest
         try await wait { session.state.phase == .ready }
         XCTAssertEqual(session.state.failure, .interrupted); XCTAssertNil(session.state.reply)
         XCTAssertNotNil(files.recording); XCTAssertEqual(files.discards, 0)
+    }
+
+    func testNativeErrorAfterInterruptionKeepsAudioAndShowsInterruption() async throws {
+        let files = FakeFiles(recording: clip), offline = ControlledOffline()
+        let session = DictationSession(capture: FakeCapture(), files: files, bridge: TextBridge(), offline: offline, mode: .offline)
+        session.transcribe()
+        try await wait { offline.calls == 1 }
+        session.interrupt(failure: .memoryPressure)
+        offline.fail(.recognition)
+        try await wait { session.state.phase == .ready || session.state.phase == .failed }
+        XCTAssertEqual(session.state.phase, .ready)
+        XCTAssertEqual(session.state.failure, .memoryPressure)
+        XCTAssertNil(session.state.modelFailure)
+        XCTAssertNotNil(files.recording)
+        XCTAssertEqual(files.discards, 0)
     }
 
     func testModelFailureAndEmptyResultKeepAudioAndRestartDoesNotProcess() async throws {
@@ -92,7 +111,9 @@ import XCTest
         session.cleanText(credentials: credentials); try await wait { session.state.failure == .unavailable }
         XCTAssertEqual(session.state.reply?.text, "Keine dreizehn Kopien.")
         await bridge.setFailure(nil)
-        session.cleanText(credentials: credentials); try await wait { session.state.reply?.origin == "cleaned" }
+        session.cleanText(credentials: credentials)
+        session.cleanText(credentials: credentials)
+        try await wait { session.state.reply?.origin == "cleaned" }
         XCTAssertEqual(session.state.localText, "Keine dreizehn Kopien.")
         let texts = await bridge.texts, audio = await bridge.audioCalls
         XCTAssertEqual(texts, ["Keine dreizehn Kopien.", "Keine dreizehn Kopien."]); XCTAssertEqual(audio, 0)

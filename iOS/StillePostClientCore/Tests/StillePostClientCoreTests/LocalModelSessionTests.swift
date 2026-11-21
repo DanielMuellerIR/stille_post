@@ -81,6 +81,27 @@ import XCTest
         XCTAssertTrue(session.state.installed); XCTAssertEqual(session.state.phase, .available)
     }
 
+    func testCancellationDuringReleaseDoesNotUnloadModelTwice() async throws {
+        let adapter = ControlledModelAdapter(), session = try await session(adapter: adapter)
+        await adapter.suspendUnload()
+        let work = Task {
+            try await session.transcribe(
+                samples: Array(repeating: 0.04, count: 16_000), language: .de, progress: { _ in })
+        }
+        try await wait { await adapter.loading }
+        await adapter.finishLoading()
+        try await wait { await adapter.unloading }
+        session.interrupt(.background)
+        XCTAssertEqual(session.state.phase, .stopping)
+        await adapter.finishUnloading()
+        do { _ = try await work.value; XCTFail("Abbruch erwartet") } catch is CancellationError { }
+        let releases = await adapter.unloads
+        XCTAssertEqual(releases, 1)
+        XCTAssertTrue(session.state.installed)
+        XCTAssertEqual(session.state.phase, .available)
+        XCTAssertEqual(session.state.notice, .background)
+    }
+
     private func wait(_ condition: () async -> Bool) async throws {
         for _ in 0..<400 {
             if await condition() { return }
@@ -94,6 +115,9 @@ import XCTest
 private actor ControlledModelAdapter: LocalSpeechRecognizing {
     private var continuation: CheckedContinuation<Void, Never>?
     private(set) var loading = false
+    private var waitForUnload = false
+    private var unloadContinuation: CheckedContinuation<Void, Never>?
+    var unloading: Bool { unloadContinuation != nil }
     private(set) var loads = 0
     private(set) var unloads = 0
     private(set) var languages: [String] = []
@@ -105,7 +129,16 @@ private actor ControlledModelAdapter: LocalSpeechRecognizing {
         loading = false
     }
     func finishLoading() { continuation?.resume(); continuation = nil }
-    func unload() async { unloads += 1 }
+    func suspendUnload() { waitForUnload = true }
+    func finishUnloading() {
+        waitForUnload = false
+        unloadContinuation?.resume()
+        unloadContinuation = nil
+    }
+    func unload() async {
+        unloads += 1
+        if waitForUnload { await withCheckedContinuation { unloadContinuation = $0 } }
+    }
     func recognize(samples: [Float], language: String) async throws -> String {
         languages.append(language); return "part\(languages.count)"
     }

@@ -10,6 +10,11 @@ import UniformTypeIdentifiers
         case ready(String)
         case failed(ClientFailure)
     }
+    private enum BridgeAction {
+        case send(Recording)
+        case clean(String)
+    }
+
     @Published private(set) var state: MobileState
     @Published private(set) var configuration: BridgeConfiguration
     @Published private(set) var hasToken = false
@@ -58,14 +63,22 @@ import UniformTypeIdentifiers
     }
 
     func load() async {
+        guard !busy else { return }
+        pendingAction = true
         do {
             if let credentials = try await keychain.load() {
+                try Task.checkCancellation()
                 configuration = credentials.configuration
                 hasToken = true
             }
-        } catch { setupFailure = error as? ClientFailure ?? .storageFailed }
+        } catch {
+            if !Task.isCancelled { setupFailure = error as? ClientFailure ?? .storageFailed }
+        }
+        pendingAction = false
         #if DEBUG
-            if ProcessInfo.processInfo.environment["STILLEPOST_MOBILE_IMPORT_TEST_CONNECTION"] == "1" {
+            if !Task.isCancelled,
+                ProcessInfo.processInfo.environment["STILLEPOST_MOBILE_IMPORT_TEST_CONNECTION"] == "1"
+            {
                 await importDevelopmentConnection()
             }
         #endif
@@ -73,7 +86,7 @@ import UniformTypeIdentifiers
 
     func save(configuration: BridgeConfiguration, token: String) async -> Bool {
         guard !busy else { return false }
-        connectionTask?.cancel()
+        cancelConnectionCheck()
         pendingAction = true
         defer { pendingAction = false }
         do {
@@ -99,7 +112,7 @@ import UniformTypeIdentifiers
 
     func forgetConnection() async {
         guard !busy else { return }
-        connectionTask?.cancel()
+        cancelConnectionCheck()
         pendingAction = true
         defer { pendingAction = false }
         do {
@@ -125,12 +138,16 @@ import UniformTypeIdentifiers
                 let health = try await bridge.health(credentials)
                 try Task.checkCancellation()
                 connection = .ready(health.version)
-            } catch is CancellationError {} catch { connection = .failed(error as? ClientFailure ?? .unavailable) }
+            } catch {
+                guard !Task.isCancelled else { return }
+                connection = .failed(error as? ClientFailure ?? .unavailable)
+            }
         }
     }
 
     func record() {
-        connectionTask?.cancel()
+        guard !busy else { return }
+        cancelConnectionCheck()
         connection = .unchecked
         setupFailure = nil
         session.record()
@@ -147,62 +164,76 @@ import UniformTypeIdentifiers
         session.transcribe()
     }
     func stop() { session.stop() }
-    func cancel() { session.cancel() }
-    func discard() { session.discard() }
+    func cancel() {
+        cancelBridgeAction()
+        session.cancel()
+    }
+    func discard() {
+        guard !busy else { return }
+        session.discard()
+    }
     func interrupt(failure: ClientFailure = .interrupted) {
-        connectionTask?.cancel()
-        actionTask?.cancel()
-        pendingAction = false
-        actionGeneration = UUID()
-        if connection == .checking { connection = .unchecked }
+        cancelConnectionCheck()
+        cancelBridgeAction()
         session.interrupt(failure: failure)
     }
 
-    func send() {
-        guard canSend else { return }
-        pendingAction = true
+    private func cancelConnectionCheck() {
+        connectionTask?.cancel()
+        connectionTask = nil
+        if connection == .checking { connection = .unchecked }
+    }
+
+    private func cancelBridgeAction() {
+        guard let actionTask else { return }
         actionGeneration = UUID()
-        let current = actionGeneration
-        let config = configuration
-        let recording = state.recording
-        actionTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                let credentials = try await credentials(config)
-                try Task.checkCancellation()
-                guard actionGeneration == current else { return }
-                pendingAction = false
-                guard state.recording == recording else { return }
-                session.send(credentials: credentials)
-            } catch is CancellationError { if actionGeneration == current { pendingAction = false } } catch {
-                guard actionGeneration == current else { return }
-                pendingAction = false
-                setupFailure = error as? ClientFailure ?? .storageFailed
-            }
-        }
+        actionTask.cancel()
+        self.actionTask = nil
+        pendingAction = false
+    }
+
+    func send() {
+        guard canSend, let recording = state.recording else { return }
+        performBridgeAction(.send(recording))
     }
 
     func cleanText() {
-        guard canCleanText else { return }
-        pendingAction = true
-        setupFailure = nil
+        guard canCleanText, let text = state.localText else { return }
+        performBridgeAction(.clean(text))
+    }
+
+    private func performBridgeAction(_ action: BridgeAction) {
         actionGeneration = UUID()
         let current = actionGeneration
         let config = configuration
         actionTask = Task { [weak self] in
             guard let self else { return }
+            defer {
+                if actionGeneration == current {
+                    actionTask = nil
+                    pendingAction = false
+                }
+            }
             do {
+                try Task.checkCancellation()
                 let credentials = try await credentials(config)
                 try Task.checkCancellation()
                 guard actionGeneration == current else { return }
-                pendingAction = false
-                session.cleanText(credentials: credentials)
-            } catch is CancellationError { if actionGeneration == current { pendingAction = false } } catch {
-                guard actionGeneration == current else { return }
-                pendingAction = false
+                switch action {
+                case .send(let recording):
+                    guard state.recording == recording else { return }
+                    session.send(credentials: credentials)
+                case .clean(let originalText):
+                    guard state.localText == originalText else { return }
+                    session.cleanText(credentials: credentials)
+                }
+            } catch {
+                guard actionGeneration == current, !Task.isCancelled else { return }
                 setupFailure = error as? ClientFailure ?? .storageFailed
             }
         }
+        pendingAction = true
+        setupFailure = nil
     }
 
     func copyResult() {

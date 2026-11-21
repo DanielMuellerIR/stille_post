@@ -101,10 +101,10 @@ public struct LocalModelState: Equatable, Sendable {
             } catch is CancellationError {
                 // CoreML-Laden kann trotz Cancellation weiterlaufen. Erst nach seiner
                 // Rückkehr freigeben und neue Aktionen wieder zulassen.
-                await adapter.unload()
+                if case .load = action { await adapter.unload() }
                 await updateInventory()
             } catch {
-                await adapter.unload()
+                if case .load = action { await adapter.unload() }
                 await updateInventory()
                 state.failure = error as? LocalModelFailure ?? .storage
                 state.phase = .failed
@@ -122,6 +122,7 @@ public struct LocalModelState: Equatable, Sendable {
         let alreadyLoaded = state.phase == .loaded
         state.failure = nil; state.notice = nil; state.phase = .validating
         let work = Task { [self] in
+            let result: Result<String, Error>
             do {
                 let folder = try await store.validateInstalled()
                 try Task.checkCancellation()
@@ -140,16 +141,18 @@ public struct LocalModelState: Equatable, Sendable {
                 }
                 let text = OfflineSpeech.join(parts)
                 guard !text.isEmpty else { throw ClientFailure.noSpeech }
-                await recognizer.unload()
-                await updateInventory()
-                try Task.checkCancellation()
-                return text
+                result = .success(text)
             } catch {
-                await recognizer.unload()
-                await updateInventory()
-                if let failure = error as? LocalModelFailure { state.failure = failure; state.phase = .failed }
-                throw error
+                result = .failure(error)
             }
+            await recognizer.unload()
+            await updateInventory()
+            try Task.checkCancellation()
+            if case .failure(let failure as LocalModelFailure) = result {
+                state.failure = failure
+                state.phase = .failed
+            }
+            return try result.get()
         }
         recognition = work
         defer { recognition = nil }

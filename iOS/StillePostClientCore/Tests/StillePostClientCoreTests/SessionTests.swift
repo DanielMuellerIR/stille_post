@@ -1,3 +1,4 @@
+import AVFAudio
 import XCTest
 @testable import StillePostClientCore
 
@@ -26,10 +27,13 @@ import XCTest
         XCTAssertEqual(session.state.failure, .unauthorized)
         XCTAssertNotNil(files.recording); XCTAssertEqual(files.discards, 0)
         await bridge.setFailure(nil)
-        session.send(credentials: BridgeCredentials(configuration: credentials.configuration, token: "second-fixture"))
+        let newPairing = BridgeConfiguration(address: "https://other.local", fingerprint: String(repeating: "a", count: 64))
+        session.send(credentials: BridgeCredentials(configuration: newPairing, token: "second-fixture"))
         try await wait { session.state.phase == .result }
         let tokens = await bridge.tokens
         XCTAssertEqual(tokens, ["fixture-token", "second-fixture"])
+        let configurations = await bridge.configurations
+        XCTAssertEqual(configurations, [credentials.configuration, newPairing])
     }
 
     func testCancelDuringUploadIgnoresLateSuccessAndKeepsAudio() async throws {
@@ -93,6 +97,40 @@ import XCTest
         XCTAssertTrue(FileManager.default.fileExists(atPath: neighbor.path))
     }
 
+    func testRecoversFinalizedAudioWithoutMetadataAndClearsOrphanMetadataBeforeRecording() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let files = PendingRecordingFiles(directory: directory)
+        _ = try files.prepare()
+        let metadata = directory.appendingPathComponent("pending.json")
+        try JSONEncoder().encode(150.0).write(to: metadata)
+        let url = try files.prepare()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: metadata.path))
+
+        try writeSyntheticAAC(to: url)
+        let reopened = PendingRecordingFiles(directory: directory)
+        let session = DictationSession(capture: FakeCapture(), files: reopened, bridge: FakeBridge())
+        XCTAssertTrue(session.state.recovered)
+        let recording = try XCTUnwrap(session.state.recording)
+        XCTAssertGreaterThan(recording.bytes, 0)
+        XCTAssertEqual(recording.duration, 1, accuracy: 0.15)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: metadata.path))
+    }
+
+    private func writeSyntheticAAC(to url: URL) throws {
+        let file = try AVAudioFile(forWriting: url, settings: [
+            AVFormatIDKey: kAudioFormatMPEG4AAC,
+            AVNumberOfChannelsKey: 1,
+            AVSampleRateKey: 16_000,
+            AVEncoderBitRateKey: 32_000,
+        ])
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 16_000))
+        buffer.frameLength = buffer.frameCapacity
+        let channel = try XCTUnwrap(buffer.floatChannelData)[0]
+        for index in 0..<Int(buffer.frameLength) { channel[index] = 0 }
+        try file.write(from: buffer)
+    }
+
     private var clip: Recording { Recording(url: URL(fileURLWithPath: "/fixture.m4a"), duration: 3, bytes: 100) }
     private var credentials: BridgeCredentials {
         BridgeCredentials(configuration: BridgeConfiguration(address: "http://mac.local", allowInsecureDevelopment: true), token: "fixture-token")
@@ -135,13 +173,16 @@ import XCTest
 actor FakeBridge: BridgeAccess {
     var count = 0
     var tokens: [String] = []
+    var configurations: [BridgeConfiguration] = []
     private var failure: ClientFailure?
     private var delay: UInt64 = 0
     func setFailure(_ failure: ClientFailure?) { self.failure = failure }
     func setDelay(_ delay: UInt64) { self.delay = delay }
     func health(_ credentials: BridgeCredentials) async throws -> BridgeHealth { throw ClientFailure.unavailable }
     func dictate(_ recording: Recording, credentials: BridgeCredentials, progress: @escaping @Sendable (Double) -> Void) async throws -> DictationReply {
-        count += 1; tokens.append(credentials.token)
+        count += 1
+        tokens.append(credentials.token)
+        configurations.append(credentials.configuration)
         if delay > 0 { try? await Task.sleep(nanoseconds: delay) }
         if let failure { throw failure }
         return DictationReply(text: "Ein Test.")

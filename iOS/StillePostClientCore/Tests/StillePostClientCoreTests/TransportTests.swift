@@ -65,12 +65,19 @@ final class TransportTests: XCTestCase {
         catch { XCTAssertTrue(error is CancellationError) }
     }
 
-    func testWrongFingerprintSendsNoHTTPBytes() async throws {
+    func testWrongFingerprintSendsNeitherTokenNorAudio() async throws {
         let server = try HTTPFixture(response: nil)
         defer { server.stop() }
         let credentials = BridgeCredentials(configuration: BridgeConfiguration(address: server.address, fingerprint: String(repeating: "0", count: 64)), token: "fixture-token")
-        do { _ = try await BridgeClient().health(credentials); XCTFail("Falscher Pin wurde akzeptiert") }
-        catch { XCTAssertEqual(error as? ClientFailure, .identityChanged) }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let audio = Data(repeating: 7, count: 256_000)
+        try audio.write(to: url)
+        let recording = Recording(url: url, duration: 2, bytes: audio.count)
+        do {
+            _ = try await BridgeClient().dictate(recording, credentials: credentials, progress: { _ in })
+            XCTFail("Falscher Pin wurde akzeptiert")
+        } catch { XCTAssertEqual(error as? ClientFailure, .identityChanged) }
         XCTAssertTrue(server.received().isEmpty, "Token und Audio dürfen erst nach Pin-Prüfung gesendet werden")
     }
 

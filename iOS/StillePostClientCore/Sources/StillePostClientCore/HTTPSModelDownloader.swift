@@ -100,13 +100,18 @@ private final class ModelDownloadOperation: NSObject, URLSessionDataDelegate, @u
             guard http.value(forHTTPHeaderField: "Content-Range") == expected else {
                 failure = .invalidResponse; completionHandler(.cancel); return
             }
-        } else if received > 0 {
-            // Manche CDNs ignorieren Range. Die neue Vollantwort darf keine alten Bytes anhängen.
-            do { try handle?.truncate(atOffset: 0); try handle?.seek(toOffset: 0); received = 0 }
-            catch { failure = .storage; completionHandler(.cancel); return }
         }
-        guard response.expectedContentLength < 0 || response.expectedContentLength == file.size - received else {
+        let offset = http.statusCode == 206 ? received : 0
+        guard response.expectedContentLength < 0 || response.expectedContentLength == file.size - offset else {
             failure = .invalidResponse; completionHandler(.cancel); return
+        }
+        if offset == 0, received > 0 {
+            // Manche CDNs ignorieren Range. Erst nach Prüfung der Vollantwort neu beginnen.
+            do {
+                try handle?.truncate(atOffset: 0)
+                try handle?.seek(toOffset: 0)
+                received = 0
+            } catch { failure = .storage; completionHandler(.cancel); return }
         }
         accepted = true; progress(received); completionHandler(.allow)
     }
