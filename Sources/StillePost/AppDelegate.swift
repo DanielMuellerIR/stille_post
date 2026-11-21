@@ -59,6 +59,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
     private var audioImportWindow: AudioImportWindowController!
     /// Netzwerkzugang für eigene Geräte im Heimnetz; nil = ausgeschaltet.
     private var bridge: BridgeServer?
+    private var bridgeStarting = false
     private var bridgeCredentialsObserver: NSObjectProtocol?
     private var bridgeTransition: Task<Void, Never>?
     private var bridgeGeneration = 0
@@ -211,7 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         diagnosticsWindow = DiagnosticsWindowController(
             configuration: { [weak self] in Config.load().resolvedForRequest(appBundleID: self?.targetAppBundleID) },
             bridgeState: { [weak self] in
-                guard let self, self.bridgeTransition == nil else { return .unknown }
+                guard let self, self.bridgeTransition == nil, !self.bridgeStarting else { return .unknown }
                 return self.bridge?.isRunning == true ? .running : .stopped
             }, onAction: { [weak self] in self?.performDiagnosticAction($0) },
             onTestDictation: { [weak self] in self?.showTestDictation() }
@@ -271,6 +272,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
         let currentBridge = bridge
         let transition = bridgeTransition
         bridge = nil
+        bridgeStarting = false
         bridgeTransition = nil
         warmUpTimer?.invalidate()
         if let appActivationObserver { NSWorkspace.shared.notificationCenter.removeObserver(appActivationObserver) }
@@ -374,18 +376,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             guard let self, self.bridgeGeneration == generation else { return }
             let old = self.bridge
             self.bridge = nil
+            self.bridgeStarting = false
             if let old {
                 await withCheckedContinuation { continuation in
                     old.stop { continuation.resume() }
                 }
             }
             guard self.bridgeGeneration == generation else { return }
-            if self.config.bridge.enabled { self.launchBridge() }
+            if self.config.bridge.enabled { self.launchBridge(generation: generation) }
             self.bridgeTransition = nil
         }
     }
 
-    private func launchBridge() {
+    private func launchBridge(generation: Int) {
         let server = BridgeServer(config: requestConfiguration)
         // Zusätzlich zur Datei: stderr bleibt für `swift run` und Diagnoseläufe.
         // Bei der aus dem Finder gestarteten App landet stderr nirgends — deshalb
@@ -396,10 +399,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSMenu
             logFile.append(message)
         }
         bridge = server
+        bridgeStarting = true
         server.start { [weak self, weak server] result in
             Task { @MainActor in
-                guard let self, let server, self.bridge === server else { return }
-                if case .failure(let error) = result {
+                guard let self, let server, self.bridge === server,
+                      self.bridgeGeneration == generation else { return }
+                self.bridgeStarting = false
+                // Eine Schlüsselrotation kann den ersten Start abbrechen und
+                // dieselbe Serverinstanz intern neu starten.
+                if case .failure(let error) = result, !(error is CancellationError) {
                     self.bridge = nil
                     let message = L10n.format("app.bridge_start_failed", error.localizedDescription)
                     logFile.append(message)

@@ -45,12 +45,9 @@ public enum BridgeAddress {
 /// Der Zugang hängt an einem Token aus dem Schlüsselbund. Ohne Token ist die
 /// Brücke gesperrt, und ohne `bridge.enabled` lauscht überhaupt kein Port.
 ///
-/// `@unchecked Sendable` ist hier belegbar und nicht bloß behauptet: Jeder
-/// veränderliche Zustand (`listener`, `openConnections`, die Puffer der
-/// Verbindungen) wird ausschließlich auf `queue` angefasst. Network.framework
-/// ruft alle Handler auf genau dieser Queue auf; der einzige Sprung heraus ist
-/// der `Task` in `handle`, und der kehrt vor jedem Zugriff wieder auf die Queue
-/// zurück.
+/// Listener, Verbindungen und Puffer gehören der Server-Queue. Für Statusabfragen
+/// veröffentlicht sie unter einem eigenen kurzen Lock zwei Zustandswerte. Die GUI
+/// muss dafür weder auf Netzwerkereignisse noch auf den Schlüsselbund warten.
 public final class BridgeServer: @unchecked Sendable {
 
     private let config: Config.Bridge
@@ -60,10 +57,20 @@ public final class BridgeServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "de.stillepost.bridge")
     private var listener: NWListener?
     private var credentialObserver: NSObjectProtocol?
-    private var running = false
+    private struct PublishedStatus {
+        var isRunning = false
+        var hasInFlightRequests = false
+    }
+    private let statusLock = NSLock()
+    private var publishedStatus = PublishedStatus()
+    private var running = false {
+        didSet { statusLock.withLock { publishedStatus.isRunning = running } }
+    }
     private var stoppingListener: NWListener?
     private var stopCallbacks: [@Sendable () -> Void] = []
-    private var sessions: [ObjectIdentifier: Session] = [:]
+    private var sessions: [ObjectIdentifier: Session] = [:] {
+        didSet { statusLock.withLock { publishedStatus.hasInFlightRequests = !sessions.isEmpty } }
+    }
     private var startCallbacks: [@Sendable (Result<Void, Error>) -> Void] = []
     private var startTimeout: DispatchWorkItem?
     private let queueKey = DispatchSpecificKey<Bool>()
@@ -329,15 +336,9 @@ public final class BridgeServer: @unchecked Sendable {
         callbacks.forEach { $0() }
     }
 
-    public var isRunning: Bool {
-        if DispatchQueue.getSpecific(key: queueKey) != nil { return running }
-        return queue.sync { running }
-    }
+    public var isRunning: Bool { statusLock.withLock { publishedStatus.isRunning } }
 
-    public var hasInFlightRequests: Bool {
-        if DispatchQueue.getSpecific(key: queueKey) != nil { return !sessions.isEmpty }
-        return queue.sync { !sessions.isEmpty }
-    }
+    public var hasInFlightRequests: Bool { statusLock.withLock { publishedStatus.hasInFlightRequests } }
 
     // MARK: - Verbindungen
 
