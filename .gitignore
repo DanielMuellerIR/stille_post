@@ -22,3 +22,6 @@ xcuserdata/
 
 # Python-Hilfsprogramme der Linux-Auslieferung
 /linux/__pycache__/
+
+# Lokale Prüfkampagnen
+.codeqa/

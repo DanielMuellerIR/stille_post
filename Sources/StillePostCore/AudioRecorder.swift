@@ -4,8 +4,7 @@ import CoreAudio
 
 /// Nimmt Audio vom konfigurierten Mikrofon auf und liefert 16-kHz-mono-Float-Samples.
 ///
-/// Wichtig (gelernt aus dem Hammerspoon-Prototyp): KEIN fest verdrahteter Mikrofon-
-/// Index! Ohne konkrete Auswahl nutzt `AVAudioEngine.inputNode` automatisch das im
+/// Ohne konkrete Auswahl nutzt `AVAudioEngine.inputNode` automatisch das im
 /// System eingestellte Standard-Eingabegerät. Eine ausdrückliche Auswahl wird über
 /// die stabile CoreAudio-UID verbunden, nie über eine flüchtige Gerätenummer.
 ///

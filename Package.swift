@@ -1,10 +1,10 @@
 // swift-tools-version:6.0
-// Stille Post — lokale Diktier-App (Whisper-STT + LLM-Textbereinigung), Ersatz für OpenWhispr.
+// Stille Post — lokale Diktier-App mit Whisper und optionaler Textbereinigung.
 // Aufbau:
 //   StillePostCore  — die gesamte Logik ohne GUI (Aufnahme, VAD, Whisper, Ollama, Verlauf).
 //                     Bewusst getrennt, damit CLI und Tests dieselbe Logik nutzen wie die App.
 //   StillePost      — die Menüleisten-App (Hotkey, Overlay, Verlaufsfenster).
-//   stillepost-cli  — Headless-Zugang für Tests und AI-Agenten (transcribe/cleanup/doctor/history).
+//   stillepost-cli  — Kommandozeile für Skripte, Automatisierung und Tests.
 import PackageDescription
 
 #if os(Linux)

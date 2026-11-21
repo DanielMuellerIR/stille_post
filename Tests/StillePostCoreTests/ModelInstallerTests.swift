@@ -68,9 +68,8 @@ final class ModelInstallerTests: XCTestCase {
     }
 
     /// Der eigentliche Bug: `fileExists` und `[ -f ]` folgen Symlinks und melden für
-    /// einen geliehenen Verweis "ist da". Auf dem Entwicklungsrechner zeigte der Modellpfad in den
-    /// OpenWhispr-Cache — Stille Post hätte sein Modell verloren, sobald OpenWhispr
-    /// aufräumt.
+    /// einen geliehenen Verweis "ist da". Eine fremde Anwendung kann ihren Cache
+    /// räumen, deshalb zählt der Verweis gesondert.
     func testSymlinkIsReportedAsBorrowedNotInstalled() throws {
         let foreign = directory.appendingPathComponent("fremder-cache.bin")
         try Data(repeating: 1, count: 100).write(to: foreign)

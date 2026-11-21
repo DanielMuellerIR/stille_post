@@ -17,7 +17,7 @@ public enum L10n {
     /// unter `Contents/Resources` (siehe scripts/build-app.sh) bzw. — für die
     /// eingebettete CLI — neben dem Executable. Ohne diese eigene Auflösung
     /// stürzt die App deshalb auf JEDEM Rechner außer der Build-Maschine sofort
-    /// beim Start mit einem `Bundle.module`-fatalError ab (Vorfall M5, 0.8.13).
+    /// beim Start mit einem `Bundle.module`-fatalError ab.
     /// Kandidaten in dieser Reihenfolge, erster Treffer gewinnt; ganz zuletzt
     /// SwiftPMs `Bundle.module` (greift nur noch in Tests / auf der Build-Maschine).
     private static let resourceBundle: Bundle = {

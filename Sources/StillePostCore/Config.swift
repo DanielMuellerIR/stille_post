@@ -305,7 +305,7 @@ public struct Config: Codable, Equatable, Sendable {
         /// Virtueller Keycode (Carbon). 2 = Taste "D" auf ANSI-Tastaturen.
         public var keyCode: Int = 2
         /// Modifier als Liste von Strings: "cmd", "opt", "ctrl", "shift".
-        /// Default ⌘⌥D — gleiche Belegung wie der frühere Hammerspoon-Prototyp.
+        /// Standardbelegung ⌘⌥D.
         public var modifiers: [String] = ["cmd", "opt"]
 
         /// Taugt die Kombination als GLOBALER Hotkey? Ohne ⌘, ⌥ oder ⌃ würde die

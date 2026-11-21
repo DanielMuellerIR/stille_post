@@ -84,7 +84,7 @@ private func argumentsAreValid(_ arguments: [String]) -> Bool {
 /// Headless-Kommandozeile von Stille Post.
 ///
 /// Damit lässt sich die komplette Pipeline OHNE GUI nutzen und testen — auch von
-/// Skripten und AI-Agenten aus (maschinenlesbarer Output, saubere Exit-Codes):
+/// Skripten und Automatisierung aus (maschinenlesbare Ausgabe, definierte Exitcodes):
 ///
 ///   stillepost-cli doctor                  # prüft whisper-server, Modell, Ollama, Cleanup-Provider
 ///   stillepost-cli install-model           # Whisper-Modell laden (Default: large-v3-turbo)
